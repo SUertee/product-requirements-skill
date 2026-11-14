@@ -18,6 +18,4 @@ python3 scripts/normalize_transcript.py --input /path/to/meeting.srt --project-i
 
 需求建模来自团队提供的 Skill 设计文档与方案讨论。工作台信息组织参考 ParTrace Vision。业务模型可适配用户的 schema-canvas Skill，仓库中保留环境缺少该 Skill 时的生成约定。
 
-格式参考 [Archify](https://github.com/tt-a1i/archify/blob/main/archify/SKILL.md)，2026-11-15 核对其 metadata.version 3.2 入口。借鉴任务路由、按需参考、执行流程、交付检查和简洁输出的组织方式。本仓库的主入口、参考、模板与脚本围绕产品需求工作流编写。
-
 项目方案在星宫赛事目录维护。工程源码在本仓库维护。
