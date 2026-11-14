@@ -1,0 +1,26 @@
+# 输出合同 v0.1
+
+每个客户项目生成到独立目录。原始录音与客户资料存放在本地运行目录。
+
+| 文件 | 内容 |
+| --- | --- |
+| sources.jsonl | 来源片段、材料标识、原文、时间或段落定位与来源版本 |
+| project.json | 项目标识、版本、前情关联、八要素、需求卡、业务模型、页面规格与人工锁定 |
+| proposal.md | 目标、范围、流程与实现思路 |
+| prd.md | 按 assets/prd-template.md 生成的内部产品需求文档 |
+| workbench/index.html | 内部总览、来源、需求、PRD、模型、规范与评审入口 |
+| prototype/index.html | 基于确认版本生成的核心任务交互原型 |
+| review.json | 疑问、冲突、变更差异、影响范围与人工确认 |
+| manifest.json | 文件状态、版本、依赖、生成信息、受众、检查和发布结果 |
+
+`project.json` 最少包含 project_id、schema_version、artifact_version、baseline_version、context_sources、requirement_profile、requirements、business_model、pages。requirements 使用 workflow.md 的需求卡字段。模型中区分 logical 与 foreign_key 关系，外键依据真实数据库定义。
+
+manifest 各项记录 path、generation_status（success／partial／failed）、review_status（draft／reviewed）、artifact_version、depends_on、source_ids、generator 和 validation_results。仅在实际生成时登记 success。模型版本无法取得时使用 unknown。
+
+原型依赖对应的已确认 PRD 与页面规范版本。部署后记录实际 URL 和发布版本，内部资料默认保持内部受众。
+
+## 检查
+
+来源引用存在，REQ ID 唯一稳定，页面关联有效。生成 HTML 使用 textContent 等安全方式显示导入文本。相对资源路径在本地与部署后均可解析。检查正常、空态和错误分支，保留真实验收结果。
+
+若采用 schema-canvas，记录 ERD 来源与生成版本。技术模块按实际内容启用。草稿、确认基线、示例数据及真实接口状态清楚标明。
