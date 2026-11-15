@@ -19,3 +19,8 @@ python3 scripts/normalize_transcript.py --input /path/to/meeting.srt --project-i
 需求建模来自团队提供的 Skill 设计文档与方案讨论。工作台信息组织参考 ParTrace Vision。业务模型可适配用户的 schema-canvas Skill，仓库中保留环境缺少该 Skill 时的生成约定。
 
 项目方案在星宫赛事目录维护。工程源码在本仓库维护。
+
+
+## 能力接入
+
+主 Skill 组织录音接入、需求转化、建模、方案与 PRD、人工确认、原型、工作台汇总和最终复核。图示、ERD 与 UI 生成按 [能力接入与设计路由](references/capabilities.md) 调用，固定依赖见 integrations.json。外部依赖通过宿主安装或工程旁 skill-dependencies 提供。

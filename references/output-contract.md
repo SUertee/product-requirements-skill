@@ -10,10 +10,12 @@
 | prd.md | 按 assets/prd-template.md 生成的内部产品需求文档 |
 | workbench/index.html | 内部总览、来源、需求、PRD、模型、规范与评审入口 |
 | prototype/index.html | 基于确认版本生成的核心任务交互原型 |
+| diagrams/*.html | Archify 生成的流程与架构图，实际生成时加入工作台 |
+| data-model/index.html | Schema Canvas 交互式 ERD，记录模型来源和版本 |
 | review.json | 疑问、冲突、变更差异、影响范围与人工确认 |
 | manifest.json | 文件状态、版本、依赖、生成信息、受众、检查和发布结果 |
 
-`project.json` 最少包含 project_id、schema_version、artifact_version、baseline_version、context_sources、requirement_profile、requirements、business_model、pages。requirements 使用 workflow.md 的需求卡字段。模型中区分 logical 与 foreign_key 关系，外键依据真实数据库定义。
+`project.json` 最少包含 project_id、schema_version、artifact_version、baseline_version、context_sources、requirement_profile、requirements、business_model、pages、design_context。requirements 使用 workflow.md 的需求卡字段。模型中区分 logical 与 foreign_key 关系，外键依据真实数据库定义。
 
 manifest 各项记录 path、generation_status（success／partial／failed）、review_status（draft／reviewed）、artifact_version、depends_on、source_ids、generator 和 validation_results。仅在实际生成时登记 success。模型版本无法取得时使用 unknown。
 
@@ -24,3 +26,8 @@ manifest 各项记录 path、generation_status（success／partial／failed）�
 来源引用存在，REQ ID 唯一稳定，页面关联有效。生成 HTML 使用 textContent 等安全方式显示导入文本。相对资源路径在本地与部署后均可解析。检查正常、空态和错误分支，保留真实验收结果。
 
 若采用 schema-canvas，记录 ERD 来源与生成版本。技术模块按实际内容启用。草稿、确认基线、示例数据及真实接口状态清楚标明。
+
+
+## 组合能力的追溯
+
+manifest 记录实际调用的 Skill、固定版本或提交、输入数据版本和关联图示。review.json 分别记录方案／PRD 确认与客户分享前的最终复核。UI 设计依据、产品类型和参考来源进入 project.json 的 design_context。
