@@ -23,4 +23,4 @@ python3 scripts/normalize_transcript.py --input /path/to/meeting.srt --project-i
 
 ## 能力接入
 
-主 Skill 组织录音接入、需求转化、建模、方案与 PRD、人工确认、原型、工作台汇总和最终复核。图示、ERD 与 UI 生成按 [能力接入与设计路由](references/capabilities.md) 调用，固定依赖见 integrations.json。外部依赖通过宿主安装或工程旁 skill-dependencies 提供。
+主 Skill 组织录音接入、需求转化、建模、方案与 PRD、人工确认、原型、工作台汇总和最终复核。图示与 ERD 按 [能力接入与设计路由](references/capabilities.md) 调用，原型和工作台采用 [内置 UI 规范](references/ui-design.md) 与 assets/ui.css，固定依赖见 integrations.json。外部依赖通过宿主安装或工程旁 skill-dependencies 提供。

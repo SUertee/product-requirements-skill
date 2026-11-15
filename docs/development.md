@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | 成员 A，产品与需求建模 | Skill 编排、会议理解、八要素、REQ 卡、证据与版本、评审修订 | SKILL.md、references/workflow.md、project.json 和 review.json 的生成与校验。消费 B 的来源片段，交给 C 需求与页面规范 |
 | 成员 B，输入与运行 | 录音设备接入调查、语音转写、文本标准化、PC 后台任务、去重及失败恢复 | scripts/、references/ingestion.md，产出 sources.jsonl 及任务阶段和错误。验证实际设备型号、传输方式与 ASR 服务 |
-| 成员 C，成果与交互 | PRD／方案生成、产品类型与样式判断、UI Skill 路由、HTML 工作台、Archify／Schema Canvas 接入、原型与部署 | assets/、生成脚本，消费已确认需求和业务模型，输出 PRD、工作台、原型及 manifest。记录人工演练和真实部署结果 |
+| 成员 C，成果与交互 | PRD／方案生成、产品类型与样式判断、内置 UI 规范与组件样式、HTML 工作台、Archify／Schema Canvas 接入、原型与部署 | assets/、生成脚本，消费已确认需求和业务模型，输出 PRD、工作台、原型及 manifest。记录人工演练和真实部署结果 |
 
 ## 联调顺序
 

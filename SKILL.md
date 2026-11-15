@@ -11,7 +11,8 @@ description: 将客户会议录音、逐字稿与前情资料整理为带依据�
 
 - 新会议或后台接收材料，读取 [输入与预处理](references/ingestion.md)。文本来源可使用 `scripts/normalize_transcript.py`，运行前查看 `--help`。
 - 首次需求整理，读取 [需求建模与评审](references/workflow.md)。
-- 绘制流程、架构、数据模型或生成界面，先读 [能力接入与设计路由](references/capabilities.md)。
+- 绘制流程、架构或数据模型，先读 [能力接入与设计路由](references/capabilities.md)。
+- 生成原型或工作台，读取 [内置 UI 规范](references/ui-design.md)，使用 assets/ui.css 的基础样式。
 - 生成或修订成果，读取 [输出合同](references/output-contract.md)，PRD 使用 [章节模板](assets/prd-template.md)。
 - 收到第二次会议、人工修改或客户反馈，对照已有基线生成差异与影响范围，再更新受影响产物。
 
@@ -23,7 +24,7 @@ description: 将客户会议录音、逐字稿与前情资料整理为带依据�
 4. 按业务需要建模角色、流程、实体、字段、关系和状态，将结果存入共享项目数据。
 5. 生成方案、PRD 草稿与内部 HTML 工作台框架，集中展示待确认问题与影响。
 6. 负责人确认方案与 PRD 的范围、规则和验收后，判断产品类型、已有样式与可参考产品，形成页面规范和原型设计依据。
-7. 按页面任务选择 UI Skill，借鉴 ParTrace Vision 工作台视觉语言生成可交互原型。
+7. 按 [内置 UI 规范](references/ui-design.md) 和 assets/ui.css，结合产品类型与已确认样式生成可交互原型。
 8. 将方案、PRD、原型以及 Archify 图示和 Schema Canvas 数据模型汇入内部工作台，检查版本与依据一致性。
 9. 负责人复核原型与工作台，选择客户可见内容和版本，按用户授权部署分享。客户反馈回写需求基线并形成下一版本。
 
