@@ -21,13 +21,12 @@ Archify 固定提交见 integrations.json。完整仓库与自有 Schema Canvas 
 
 ## 原型设计路由
 
-先判断产品类型、使用者、核心任务和设备形态，再选择当前宿主已安装且适用的 UI Skill。finesse-ui 可用于桌面产品、业务流程及移动界面，按其入口读取匹配分支。每次选择记录实际 Skill 名称、版本或 unknown、输入规范和产出。
-
+先判断产品类型、使用者、核心任务和设备形态，按 [内置 UI 规范](ui-design.md) 与 ../assets/ui.css 生成页面。页面的布局、组件与交互状态由主 Skill 内部规范定义。
 优先读取客户已有样式、设计系统和历史产品。需要外部参考时，查找与核心任务相近的实际产品，记录来源与借鉴的具体模式。外部检索遵循当前用户的数据授权，保留公开检索与客户材料的来源标识。
 
 ParTrace Vision 为用户指定的默认视觉参考。其工作台采用侧栏加预览区域、浅色纸面、深色导航、蓝色主操作与语义色状态。将这些模式适配当前客户产品的任务与设备，优化信息密度、层级和可读性。客户提供明确品牌规范时将其纳入页面规范。
 
-页面规范保存到 project.json 的 design_context，包含 product_type、target_devices、existing_style_sources、reference_products、selected_ui_skills 和 design_decisions。原型展示一条可操作主流程，并覆盖相关空态、加载和错误分支。
+页面规范保存到 project.json 的 design_context，包含 product_type、target_devices、existing_style_sources、reference_products、design_system_version 和 design_decisions。原型展示一条可操作主流程，并覆盖相关空态、加载和错误分支。
 
 ## 工作台汇总与人工复核
 
