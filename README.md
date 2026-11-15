@@ -16,7 +16,7 @@ python3 scripts/normalize_transcript.py --input /path/to/meeting.srt --project-i
 
 ## 参考与适配
 
-需求建模来自团队提供的 Skill 设计文档与方案讨论。工作台信息组织参考 ParTrace Vision。业务模型可适配用户的 schema-canvas Skill，仓库中保留环境缺少该 Skill 时的生成约定。
+需求建模来自团队提供的 Skill 设计文档与方案讨论。工作台信息组织参考 ParTrace Vision 的 workbench 工作台。业务模型可适配用户的 schema-canvas Skill，仓库中保留环境缺少该 Skill 时的生成约定。
 
 项目方案在星宫赛事目录维护。工程源码在本仓库维护。
 
