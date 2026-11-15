@@ -1,0 +1,14 @@
+{
+  "archify": {
+    "repository": "https://github.com/tt-a1i/archify",
+    "commit": "e37848822238e3a61b12739185cdadd49843a620",
+    "skill_subdirectory": "archify",
+    "license": "Apache-2.0",
+    "environment_variable": "ARCHIFY_SKILL_DIR"
+  },
+  "schema-canvas": {
+    "source": "user-owned skill",
+    "environment_variable": "SCHEMA_CANVAS_SKILL_DIR",
+    "distribution_permission": "user confirmed ownership on 2026-11-15"
+  }
+}
