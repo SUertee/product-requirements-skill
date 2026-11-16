@@ -28,3 +28,17 @@
 - 反馈能形成差异，人工锁定内容保留。
 - 异常发生时能定位失败阶段，重试结果一致。
 - 记录真实工时、核对投入、ASR／模型费用和部署费用。
+
+## 当前纯 Skill 工程约定
+
+本项目不建设独立业务后端或数据库服务。Agent 负责语义理解和人工对话，`scripts/` 仅使用 Python 标准库完成确定性处理。新增能力优先复用 `project_lib.py` 的原子写入、Schema 子集校验和关系检查，不在多个脚本中复制锁定逻辑。
+
+```bash
+python -m unittest discover -s tests -t . -v
+python scripts/run_evals.py
+python scripts/run_demo.py --output runs/demo
+```
+
+每次修改至少执行相关单元测试；影响共享 Schema、锁定、Evidence 或产物关联时执行完整测试和固定演示。真实客户文件不进入 `examples/`，固定样例必须带模拟生成及模拟确认标识。
+
+发布前执行 Skill 静态校验、清理 `__pycache__`/`.pyc`、生成 ZIP，并在目标兼容宿主补做安装和真实 Agent 调用验证。目标比赛平台的当届格式、文件数与大小限制以官网为准；当前未获得官网规范，不声称已完成特定平台认证。

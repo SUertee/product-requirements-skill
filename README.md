@@ -4,15 +4,49 @@
 
 ## 使用入口
 
-将整个仓库目录作为 Skill 包加载，入口为 [SKILL.md](SKILL.md)。当前已编写工作流、需求建模约定、输出合同与 PRD 模板，文本标准化脚本可以运行。端到端生成效果需在比赛宿主中验证，ASR 适配器、后台监听、工作台模板和原型生成待团队实现。
+将整个仓库目录作为 Skill 包加载，入口为 [SKILL.md](SKILL.md)。它面向 FDE、产品经理、售前解决方案工程师和企业项目负责人，把会议材料变成可回查证据的需求工程成果，而不是只生成会议纪要。
+
+真实使用时，兼容 Agent 按九步工作流理解材料、维护文件型 Project Data，并在需求确认、Baseline、ChangeSet 和客户发布处等待人工决定。Python 脚本只负责确定性转换、校验、差异和渲染，不替代 Agent 的语义分析。
+
+已提供可浏览的固定演示输出：
+
+- [内部工作台](examples/output/demo/artifacts/workbench/index.html)
+- [交互原型](examples/output/demo/artifacts/prototype/index.html)
+- [PRD](examples/output/demo/artifacts/prd.md)
+- [ChangeSet](examples/output/demo/changesets/changeset-v1.1.json)
+
+重新生成到新目录：
 
 ```bash
-python3 scripts/normalize_transcript.py --input /path/to/meeting.srt --project-id demo --output runs/demo/sources.jsonl
+python scripts/run_demo.py --output runs/demo
 ```
 
-## 三人协作
+该演示使用固定语义词典和**模拟确认**，不是通用 LLM，也不是真实客户审批。真实会议处理通过 Agent 调用本 Skill 完成。
 
-具体成员姓名与 GitHub 账号待确认，按 [开发分工](docs/development.md) 对应职责。先统一来源片段、需求卡与输出合同，再并行实现采集、理解和生成模块。
+## 输入、处理与成果
+
+- 文本：TXT、MD、SRT、VTT；保留 SHA-256、原文和时间/段落定位。
+- 音频视频：MP3、M4A、WAV、AAC、MP4、MOV 只通过宿主已授权的转写能力处理；没有能力时请求逐字稿。
+- 历史资料：需求、PRD、业务和技术文档；关联不明时列入待确认。
+- 输出：Source、Segment、Evidence、REQ、业务模型、方案、PRD、内部 HTML 工作台、可复制/下载的项目执行 Agent 提示词、确认后的原型、Baseline、ChangeSet 和 manifest。
+- 重跑：沿用稳定 ID，保护整条及字段级人工锁定；历史产物保存在 `artifacts/versions/`。
+
+文件结构、Schema 和关联见 [数据模型](docs/DATA_MODEL.md)，每步输入、质量检查和失败恢复见 [九步执行合同](references/execution.md)。工作台统一使用内置 `assets/workbench-template.html` 与 `assets/ui.css`，通过 `scripts/render_artifacts.py` 生成；安装包已包含完整模板，无需另行下载 UI 资源。
+
+## 质量校验
+
+```bash
+python -m unittest discover -s tests -t . -v
+python scripts/run_evals.py
+python scripts/validate_evidence.py --project examples/output/demo
+python scripts/validate_project.py --project examples/output/demo
+```
+
+评估覆盖十类会议与变更场景，区分固定样例断言和真实 Agent 执行复核。浏览器不可用时只能报告静态检查，不能声称交互验证通过。
+
+## 复用到其他项目
+
+把本目录安装到兼容的 Skills 目录，对客户项目使用独立输出目录，不要把客户数据写进 Skill 安装包。提供一份会议材料和可选历史资料，明确项目名称与输出目录即可启动；后续提供新会议或反馈时指向同一项目目录。详细操作见 [演示指南](docs/DEMO_GUIDE.md)。
 
 ## 参考与适配
 

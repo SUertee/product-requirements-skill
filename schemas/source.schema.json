@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SourceMaterial",
+  "type": "object",
+  "required": ["schema_version", "source_id", "project_id", "source_type", "file_name", "file_hash", "original_path", "processing_status", "permission_status", "created_at"],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "source_id": {"type": "string", "pattern": "^SRC-"},
+    "project_id": {"type": "string"},
+    "source_type": {"type": "string", "enum": ["transcript", "history", "prd", "business", "technical", "feedback", "manual"]},
+    "file_name": {"type": "string"},
+    "file_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "original_path": {"type": "string"},
+    "processing_status": {"type": "string", "enum": ["received", "normalized", "analyzed", "failed"]},
+    "permission_status": {"type": "string", "enum": ["authorized", "pending", "denied"]},
+    "created_at": {"type": "string"}
+  }
+}

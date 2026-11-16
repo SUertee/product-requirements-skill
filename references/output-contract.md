@@ -1,4 +1,28 @@
-# 输出合同 v0.1
+# 输出合同 v1.0
+
+## 文件型共享项目
+
+每次运行写入用户指定项目目录，而非 Skill 安装目录。标准结构如下；仅有实际内容时创建可选图示目录。
+
+```text
+project/
+├── project.json
+├── sources/{sources.jsonl,transcript.jsonl}
+├── evidence/evidence.jsonl
+├── requirements/requirements.json
+├── models/business-model.json
+├── baselines/v1.0.json
+├── artifacts/{proposal.md,prd.md,agent-prompt.md,workbench/index.html,prototype/index.html}
+├── reviews/{review.md,review.json}
+├── changesets/changeset-v1.1.json
+└── manifest.json
+```
+
+Source、TranscriptSegment、Evidence、Requirement 必须独立；稳定 ID 分别为 SRC、SEG、EVD、REQ 前缀。`requirements.json` 是对象，包含 `schema_version`、`project_id`、`requirements` 数组。`business-model.json` 至少包含 `roles`、`workflows`、`entities`、`rules`、`states`、`integrations`。`reviews/review.json` 包含 `records`，记录确认、人工修改、锁定与解锁。
+
+Schema 位于 Skill 的 `schemas/`。写入后运行 `python scripts/validate_project.py --project <项目目录>`；证据可单独运行 `validate_evidence.py`。所有 JSON/JSONL 写入必须同目录临时文件完整关闭后原子替换，不能先清空旧文件。重复运行先读当前 REQ 最大编号和锁定字段。
+
+以下为原有产物约定，继续有效。
 
 每个客户项目生成到独立目录。原始录音与客户资料存放在本地运行目录。
 

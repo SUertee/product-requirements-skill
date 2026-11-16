@@ -1,4 +1,17 @@
-# 内置 UI 规范 v0.1
+# 内置 UI 规范 v1.0
+
+## 统一生成入口
+
+新用户安装 Skill 后，内部工作台必须使用 `assets/workbench-template.html` 和 `assets/ui.css`，由 `scripts/render_artifacts.py` 从 Project Data 渲染。模板已包含商务蓝侧栏、项目 Hero、指标卡、状态图、证据卡、REQ 卡、业务模型、评审区、移动底部导航及 Agent 提示词弹层；不得只复制 CSS 后退回旧版纵向堆叠布局。
+
+```bash
+python scripts/render_artifacts.py --project <项目目录>
+# 已有人工确认 Baseline 时，才允许附加 --prototype
+```
+
+渲染器将 CSS 内联到独立 HTML，同时保留 `workbench/ui.css` 供原型和兼容使用。不得引入在线字体、CDN 或外部 UI 框架。
+
+## 设计依据
 
 本规范供主 Skill 生成客户原型和内部工作台时使用，基础样式位于 ../assets/ui.css。视觉参考 ParTrace Vision 的 workbench 工作台中的侧栏、内容区和预览结构，具体页面围绕当前客户的任务与数据组织。
 

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{PROJECT_NAME}} · 交互原型</title><link rel="stylesheet" href="ui.css">
+</head>
+<body>
+<main class="ui-main ui-stack">
+  <header>
+    <p class="ui-muted">交互原型 · {{VERSION}} · 示例数据 · 模拟接口 · 未连接真实业务系统</p>
+    <h1 class="ui-title">{{PROJECT_NAME}}</h1>
+    <p>本原型仅表达已确认需求 {{REQ_IDS}}，不代表真实功能已经开发。</p>
+  </header>
+  <section class="ui-card" id="business-flow" hidden>
+    <h2 id="flow-title">核心业务操作</h2>
+    <p class="ui-muted">以下客户与跟进记录全部为示例数据，操作不会请求真实接口。</p>
+    <div class="ui-actions">
+      <label class="ui-field">客户名称 <input id="customer-query" type="search" placeholder="输入客户名称"></label>
+      <label class="ui-field" id="owner-field">负责人 <select id="owner-query"><option value="">全部负责人</option></select></label>
+      <button class="ui-button primary" id="filter-customers">查询客户</button>
+      <button class="ui-button" id="clear-filter">清除条件</button>
+    </div>
+    <p id="flow-feedback" role="status" aria-live="polite">输入条件并查询，或直接查看全部示例客户。</p>
+    <div class="ui-table-scroll"><table><thead><tr><th>客户</th><th>负责人</th><th>操作</th></tr></thead><tbody id="customer-rows"></tbody></table></div>
+    <article id="customer-detail" class="ui-card" hidden></article>
+  </section>
+  <section class="ui-card">
+    <h2>核心业务流程</h2>
+    <div class="ui-actions" id="actions">
+      <button class="ui-button primary" id="load">加载需求任务</button>
+      <button class="ui-button" id="empty">查看空状态</button>
+      <button class="ui-button" id="error">模拟接口失败</button>
+      <button class="ui-button" id="reset">返回入口</button>
+    </div>
+    <p id="feedback" role="status" aria-live="polite">请选择“加载需求任务”开始主流程。</p>
+    <div id="content" class="ui-stack"></div>
+  </section>
+  <section class="ui-card"><h2>需求与验收对应</h2>{{REQUIREMENT_DETAILS}}</section>
+  <script id="flow-data" type="application/json">{{FLOW_JSON}}</script>
+  <script id="requirements-data" type="application/json">{{REQUIREMENTS_JSON}}</script>
+  <script>
+    const requirements = JSON.parse(document.getElementById('requirements-data').textContent);
+    const content = document.getElementById('content');
+    const feedback = document.getElementById('feedback');
+    function clear() { content.replaceChildren(); }
+    function card(req) {
+      const article = document.createElement('article'); article.className = 'ui-card';
+      const title = document.createElement('h3'); title.textContent = req.requirement_id + ' · ' + req.title;
+      const state = document.createElement('p'); state.textContent = '状态：已确认 · 证据等级：' + req.evidence_level;
+      const result = document.createElement('p'); result.textContent = req.expected_result;
+      const button = document.createElement('button'); button.className = 'ui-button primary'; button.textContent = '模拟完成此任务';
+      button.addEventListener('click', () => { feedback.textContent = req.requirement_id + ' 模拟操作成功；未调用真实接口。'; });
+      article.append(title, state, result, button); return article;
+    }
+    document.getElementById('load').addEventListener('click', () => {
+      clear(); feedback.textContent = '已加载示例数据。'; requirements.forEach(req => content.appendChild(card(req)));
+    });
+    document.getElementById('empty').addEventListener('click', () => { clear(); feedback.textContent = '暂无待处理任务。可返回入口重新加载示例数据。'; });
+    document.getElementById('error').addEventListener('click', () => { clear(); feedback.textContent = '模拟接口失败：未连接真实服务。请返回入口重试。'; });
+    document.getElementById('reset').addEventListener('click', () => { clear(); feedback.textContent = '已返回入口。'; });
+    const flow = JSON.parse(document.getElementById('flow-data').textContent);
+    if (flow) {
+      const section = document.getElementById('business-flow'); section.hidden = false;
+      document.getElementById('flow-title').textContent = flow.title + '（' + (flow.requirement_ids || []).join(' / ') + '）';
+      const query = document.getElementById('customer-query');
+      const owner = document.getElementById('owner-query');
+      const rows = document.getElementById('customer-rows');
+      const flowFeedback = document.getElementById('flow-feedback');
+      const detail = document.getElementById('customer-detail');
+      document.getElementById('owner-field').hidden = !flow.owner_filter;
+      [...new Set(flow.items.map(item => item.owner))].forEach(value => {
+        const option = document.createElement('option'); option.value = value; option.textContent = value; owner.appendChild(option);
+      });
+      function showCustomer(customer) {
+        detail.hidden = false; detail.replaceChildren();
+        const title = document.createElement('h3'); title.textContent = customer.name + ' · 跟进时间线';
+        const meta = document.createElement('p'); meta.textContent = '负责人：' + customer.owner + ' · 示例数据';
+        const list = document.createElement('ol');
+        customer.follow_ups.forEach(item => { const li = document.createElement('li'); li.textContent = item.time + ' · ' + item.text; list.appendChild(li); });
+        const back = document.createElement('button'); back.className = 'ui-button'; back.textContent = '返回客户列表';
+        back.addEventListener('click', () => { detail.hidden = true; flowFeedback.textContent = '已返回客户列表，筛选条件保持不变。'; query.focus(); });
+        detail.append(title, meta, list, back); flowFeedback.textContent = '正在查看 ' + customer.name + ' 的跟进记录。';
+      }
+      function drawCustomers() {
+        rows.replaceChildren(); detail.hidden = true;
+        const name = query.value.trim().toLowerCase(); const selectedOwner = owner.value;
+        const matches = flow.items.filter(item => (!name || item.name.toLowerCase().includes(name)) && (!flow.owner_filter || !selectedOwner || item.owner === selectedOwner));
+        if (!matches.length) { flowFeedback.textContent = '暂无匹配客户。请清除条件后重试。'; return; }
+        flowFeedback.textContent = '找到 ' + matches.length + ' 个示例客户。';
+        matches.forEach(customer => {
+          const tr = document.createElement('tr');
+          [customer.name, customer.owner].forEach(value => { const td = document.createElement('td'); td.textContent = value; tr.appendChild(td); });
+          const action = document.createElement('td'); const button = document.createElement('button'); button.className = 'ui-button'; button.textContent = '查看跟进记录';
+          button.addEventListener('click', () => showCustomer(customer)); action.appendChild(button); tr.appendChild(action); rows.appendChild(tr);
+        });
+      }
+      document.getElementById('filter-customers').addEventListener('click', drawCustomers);
+      document.getElementById('clear-filter').addEventListener('click', () => { query.value = ''; owner.value = ''; drawCustomers(); });
+      query.addEventListener('keydown', event => { if (event.key === 'Enter') drawCustomers(); });
+      drawCustomers();
+    }
+  </script>
+</main>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "demo": "examples/output/demo",
+  "expected_project_version": "v1.1",
+  "expected_requirements": {
+    "REQ-001": {"title": "客户数据权限", "status": "confirmed", "locked_by_human": true},
+    "REQ-002": {"title": "客户列表组合筛选", "status": "confirmed", "evidence_minimum": 4},
+    "REQ-003": {"title": "客户跟进时间线", "status": "confirmed"},
+    "REQ-004": {"evidence_level": "E0", "status": "parked"}
+  },
+  "required_quotes": [
+    "管理员可以查看全部客户，普通销售只能查看本人负责的客户。",
+    "系统最好更智能一点，具体什么意思我们还没想清楚。",
+    "客户列表除了按客户名称查询，还需要增加按负责人筛选；没有匹配结果时显示空状态。"
+  ],
+  "required_files": [
+    "project.json", "sources/sources.jsonl", "sources/transcript.jsonl", "evidence/evidence.jsonl",
+    "requirements/requirements.json", "models/business-model.json", "baselines/v1.0.json", "baselines/v1.1.json",
+    "changesets/changeset-v1.1.json", "artifacts/proposal.md", "artifacts/prd.md", "artifacts/agent-prompt.md",
+    "artifacts/workbench/index.html", "artifacts/prototype/index.html", "artifacts/versions/v1.0/prototype/index.html", "artifacts/versions/v1.1/prd.md", "reviews/review.md", "manifest.json"
+  ],
+  "changeset": {"modified": 1, "conflicted": 0},
+  "human_gate_representation": "simulated_confirmation=true，不得解释为真实客户审批"
+}

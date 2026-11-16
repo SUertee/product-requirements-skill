@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TranscriptSegment",
+  "type": "object",
+  "required": ["schema_version", "segment_id", "source_id", "meeting_id", "speaker_id", "start_time", "end_time", "original_text", "corrected_text", "confidence"],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "segment_id": {"type": "string", "pattern": "^SEG-"},
+    "source_id": {"type": "string", "pattern": "^SRC-"},
+    "meeting_id": {"type": "string"},
+    "speaker_id": {"type": "string"},
+    "start_time": {"type": ["number", "null"], "minimum": 0},
+    "end_time": {"type": ["number", "null"], "minimum": 0},
+    "original_text": {"type": "string", "minLength": 1},
+    "corrected_text": {"type": ["string", "null"]},
+    "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "paragraph": {"type": ["integer", "null"]},
+    "cue": {"type": ["integer", "null"]}
+  }
+}

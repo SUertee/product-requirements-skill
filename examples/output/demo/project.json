@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0",
+  "project_id": "nebula-crm",
+  "project_name": "星云贸易客户跟进系统",
+  "customer": "星云贸易（示例客户）",
+  "description": "基于固定演示会议整理客户权限、客户查询和跟进记录需求。全部内容为模拟生成，仅用于验证 Skill 工作流。",
+  "current_baseline_id": "BASE-v1.1",
+  "current_version": "v1.1",
+  "status": "baselined",
+  "context_sources": [
+    "D:\\Users\\gz4CE138CY92\\Desktop\\product-requirements-skill\\examples\\input\\history.md"
+  ],
+  "requirement_profile": {
+    "客户与角色": "星云贸易销售主管、管理员、普通销售",
+    "业务场景": "客户查询、权限范围内的客户详情与跟进记录查看",
+    "核心痛点": "客户和跟进记录分散，容易重复沟通",
+    "目标结果": "减少查找和核对时间；量化指标 TBD",
+    "需求范围": "权限、名称查询、跟进时间线；智能能力待澄清",
+    "约束条件": "沿用现有 CRM，桌面浏览器，不接短信；预算和日期 TBD",
+    "集成与依赖": "现有 CRM 用户、客户负责人和跟进记录",
+    "证据与待确认": "历史全员可见与新权限规则冲突；匹配方式、排序和智能化待确认"
+  },
+  "design_context": {
+    "product_type": "内部业务系统",
+    "target_devices": [
+      "desktop"
+    ],
+    "design_system_version": "built-in-ui-v0.1"
+  },
+  "prototype_flow": {
+    "title": "查询客户并查看跟进",
+    "requirement_ids": [
+      "REQ-001",
+      "REQ-002",
+      "REQ-003"
+    ],
+    "owner_filter": true,
+    "items": [
+      {
+        "id": "CUS-001",
+        "name": "星澜科技",
+        "owner": "销售 A",
+        "follow_ups": [
+          {
+            "time": "2026-11-01 10:00",
+            "text": "示例：确认采购需求"
+          },
+          {
+            "time": "2026-11-08 14:30",
+            "text": "示例：发送产品资料"
+          }
+        ]
+      },
+      {
+        "id": "CUS-002",
+        "name": "云川制造",
+        "owner": "销售 B",
+        "follow_ups": [
+          {
+            "time": "2026-11-03 09:20",
+            "text": "示例：约定下次演示"
+          }
+        ]
+      },
+      {
+        "id": "CUS-003",
+        "name": "星澜零售",
+        "owner": "销售 A",
+        "follow_ups": [
+          {
+            "time": "2026-11-05 16:00",
+            "text": "示例：核对联系人"
+          }
+        ]
+      }
+    ]
+  },
+  "generation_mode": "固定样例模拟生成（非真实客户分析）",
+  "created_at": "2026-11-16T07:07:51Z",
+  "updated_at": "2026-11-16T07:07:52Z"
+}

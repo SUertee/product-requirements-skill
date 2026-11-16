@@ -17,7 +17,9 @@
 
 每条需求记录 `requirement_id`、标题、角色、触发、行为、输入输出、规则、异常、验收、`source_refs`、`evidence_type`、`review_status` 与 `locked_fields`。REQ ID 在同一项目内唯一且跨版本稳定。
 
-`evidence_type` 使用 explicit、inferred、suggested 或 unknown。`review_status` 使用 draft、confirmed、disputed 或 parked。事实来源与人工确认分别保存。
+新数据统一使用 `evidence_level`：E1 会议明确表达、E2 上下文支持的推断、E3 模型或产品建议、E0 缺失或冲突。迁移旧数据时依次映射 explicit、inferred、suggested、unknown；旧 `review_status` 迁移到独立的 `status`。事实来源、证据等级与人工确认状态分别保存。
+
+REQ 使用 `evidence_ids` 关联独立 Evidence；`source_refs` 仅作为旧数据迁移入口。`locked_by_human=true` 锁定整条需求，`locked_fields` 锁定指定字段。自动合并必须先检查锁定；人工修改和解锁记录操作者、时间、字段、旧值、新值与原因。
 
 原话引用指向 sources.jsonl 的片段。人工补充也建立带补充者和时间的来源记录。TXT 的段落定位可以用于追溯，时间缺失记录 null。
 

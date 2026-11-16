@@ -1,0 +1,129 @@
+{
+  "schema_version": "1.0",
+  "changeset_id": "CHANGE-0ac01ccc36a709d1c8d9",
+  "project_id": "nebula-crm",
+  "old_baseline_id": "BASE-v1.0",
+  "new_baseline_id": "BASE-v1.1",
+  "added": [],
+  "modified": [
+    {
+      "requirement_id": "REQ-002",
+      "old": {
+        "schema_version": "1.0",
+        "requirement_id": "REQ-002",
+        "project_id": "nebula-crm",
+        "title": "客户名称查询",
+        "description": "客户列表支持输入客户名称并显示匹配客户。",
+        "customer_role": "普通销售、管理员",
+        "business_scenario": "用户在客户列表查找目标客户",
+        "pain_point": "销售需要在多个表格中查找客户。",
+        "trigger": "用户在客户列表输入客户名称并查询",
+        "expected_result": "列表显示权限范围内名称匹配的客户。",
+        "scope": [
+          "客户名称查询",
+          "匹配结果列表"
+        ],
+        "constraints": [
+          "仅查询当前用户权限范围内的客户"
+        ],
+        "dependencies": [
+          "现有 CRM 客户数据"
+        ],
+        "acceptance_criteria": [
+          "输入存在的客户名称后显示匹配客户。",
+          "查询结果不包含当前用户无权查看的客户。"
+        ],
+        "priority": "TBD",
+        "evidence_ids": [
+          "EVD-bbc744525a0d0fffe8c4",
+          "EVD-f51b0b262816d7329628",
+          "EVD-e4228d45ce443dbacf53"
+        ],
+        "evidence_level": "E1",
+        "status": "confirmed",
+        "locked_by_human": false,
+        "locked_fields": [
+          "constraints"
+        ],
+        "pending_questions": [
+          "未明确名称查询是精确匹配还是模糊匹配。"
+        ],
+        "version": "v1.0",
+        "created_at": "2026-11-16T07:07:51Z",
+        "updated_at": "2026-11-16T07:07:51Z"
+      },
+      "new": {
+        "schema_version": "1.0",
+        "requirement_id": "REQ-002",
+        "project_id": "nebula-crm",
+        "title": "客户列表组合筛选",
+        "description": "客户列表支持按客户名称查询和按负责人筛选，并展示无匹配结果空状态。",
+        "customer_role": "普通销售、管理员",
+        "business_scenario": "用户在客户列表查找目标客户",
+        "pain_point": "销售需要在多个表格中查找客户。",
+        "trigger": "用户在客户列表输入客户名称并查询",
+        "expected_result": "列表显示权限范围内名称匹配的客户。",
+        "scope": [
+          "客户名称查询",
+          "负责人筛选",
+          "匹配结果列表",
+          "无结果空状态"
+        ],
+        "constraints": [
+          "仅查询当前用户权限范围内的客户"
+        ],
+        "dependencies": [
+          "现有 CRM 客户数据"
+        ],
+        "acceptance_criteria": [
+          "输入存在的客户名称后显示匹配客户。",
+          "选择负责人后仅显示该负责人名下且当前用户有权查看的客户。",
+          "名称与负责人条件同时使用时显示同时满足条件的客户。",
+          "没有匹配结果时显示空状态。"
+        ],
+        "priority": "TBD",
+        "evidence_ids": [
+          "EVD-bbc744525a0d0fffe8c4",
+          "EVD-f51b0b262816d7329628",
+          "EVD-e4228d45ce443dbacf53",
+          "EVD-19fde0a67e166452a8f7"
+        ],
+        "evidence_level": "E1",
+        "status": "confirmed",
+        "locked_by_human": false,
+        "locked_fields": [
+          "constraints"
+        ],
+        "pending_questions": [
+          "负责人筛选是否支持多选未明确。"
+        ],
+        "version": "v1.1",
+        "created_at": "2026-11-16T07:07:51Z",
+        "updated_at": "2026-11-16T07:07:51Z"
+      },
+      "changed_fields": [
+        "acceptance_criteria",
+        "description",
+        "evidence_ids",
+        "pending_questions",
+        "scope",
+        "title"
+      ],
+      "source": "EVD-19fde0a67e166452a8f7"
+    }
+  ],
+  "cancelled": [],
+  "conflicted": [],
+  "duplicated": [],
+  "impact_analysis": [
+    "requirements/requirements.json",
+    "artifacts/proposal.md",
+    "artifacts/prd.md",
+    "artifacts/workbench/index.html",
+    "artifacts/prototype/index.html"
+  ],
+  "review_status": "approved",
+  "created_at": "2026-11-16T07:07:52Z",
+  "approved_by": "demo-reviewer（固定样例确认）",
+  "simulated_confirmation": true
+}

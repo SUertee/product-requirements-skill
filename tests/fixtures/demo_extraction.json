@@ -1,0 +1,113 @@
+{
+  "project": {
+    "project_id": "nebula-crm",
+    "project_name": "星云贸易客户跟进系统",
+    "customer": "星云贸易（示例客户）",
+    "description": "基于固定演示会议整理客户权限、客户查询和跟进记录需求。全部内容为模拟生成，仅用于验证 Skill 工作流。"
+  },
+  "evidence": [
+    {"key": "context", "quote": "我是星云贸易的销售主管，这次要整理客户跟进系统的需求。", "level": "E1"},
+    {"key": "pain", "quote": "销售现在要在多个表格里找客户和跟进记录，经常重复沟通。", "level": "E1"},
+    {"key": "permission", "quote": "管理员可以查看全部客户，普通销售只能查看本人负责的客户。", "level": "E1"},
+    {"key": "search", "quote": "客户列表需要支持按客户名称查询，输入名称后显示匹配客户。", "level": "E1"},
+    {"key": "timeline", "quote": "进入客户详情后，销售需要按时间查看这个客户的跟进记录。", "level": "E1"},
+    {"key": "goal", "quote": "目标是减少找客户和核对跟进记录的时间，具体指标还没定。", "level": "E1"},
+    {"key": "constraint", "quote": "第一版沿用现有 CRM 数据，销售在电脑浏览器使用，不接入外部短信服务。", "level": "E1"},
+    {"key": "vague", "quote": "系统最好更智能一点，具体什么意思我们还没想清楚。", "level": "E0"},
+    {"key": "history_permission", "quote": "历史草案：所有角色均可查看全部客户和跟进记录。", "level": "E0"},
+    {"key": "feedback_search", "quote": "客户列表除了按客户名称查询，还需要增加按负责人筛选；没有匹配结果时显示空状态。", "level": "E1"}
+  ],
+  "requirements": [
+    {
+      "title": "客户数据权限",
+      "description": "管理员查看全部客户，普通销售仅查看本人负责的客户。",
+      "customer_role": "管理员、普通销售",
+      "business_scenario": "销售或管理员打开客户列表",
+      "pain_point": "历史草案的全员可见权限与新会议表达冲突。",
+      "trigger": "用户进入客户列表或客户详情",
+      "expected_result": "不同角色只看到其权限范围内的客户和跟进记录。",
+      "scope": ["客户列表权限过滤", "客户详情权限过滤"],
+      "constraints": ["沿用现有 CRM 客户负责人口径"],
+      "dependencies": ["现有 CRM 用户角色与客户负责人数据"],
+      "acceptance_criteria": ["管理员打开客户列表时可查看全部客户。", "普通销售只能查看本人负责的客户，不能通过详情地址查看他人客户。"],
+      "priority": "TBD",
+      "evidence_keys": ["permission", "history_permission", "constraint"],
+      "evidence_level": "E1",
+      "initial_status": "draft",
+      "locked_by_human": true,
+      "locked_fields": [],
+      "pending_questions": ["历史草案允许所有角色查看全部客户，与新会议权限规则冲突，需确认以哪份为准。"]
+    },
+    {
+      "title": "客户名称查询",
+      "description": "客户列表支持输入客户名称并显示匹配客户。",
+      "customer_role": "普通销售、管理员",
+      "business_scenario": "用户在客户列表查找目标客户",
+      "pain_point": "销售需要在多个表格中查找客户。",
+      "trigger": "用户在客户列表输入客户名称并查询",
+      "expected_result": "列表显示权限范围内名称匹配的客户。",
+      "scope": ["客户名称查询", "匹配结果列表"],
+      "constraints": ["仅查询当前用户权限范围内的客户"],
+      "dependencies": ["现有 CRM 客户数据"],
+      "acceptance_criteria": ["输入存在的客户名称后显示匹配客户。", "查询结果不包含当前用户无权查看的客户。"],
+      "priority": "TBD",
+      "evidence_keys": ["search", "pain", "goal"],
+      "evidence_level": "E1",
+      "initial_status": "draft",
+      "locked_by_human": false,
+      "locked_fields": ["constraints"],
+      "pending_questions": ["未明确名称查询是精确匹配还是模糊匹配。"]
+    },
+    {
+      "title": "客户跟进时间线",
+      "description": "客户详情按时间展示该客户的跟进记录。",
+      "customer_role": "普通销售、管理员",
+      "business_scenario": "用户进入客户详情核对历史沟通",
+      "pain_point": "跟进记录分散，销售容易重复沟通。",
+      "trigger": "用户从客户列表打开客户详情",
+      "expected_result": "在权限范围内按时间查看该客户的跟进记录。",
+      "scope": ["客户详情", "跟进记录时间线"],
+      "constraints": ["第一版不接入外部短信服务"],
+      "dependencies": ["现有 CRM 跟进记录数据"],
+      "acceptance_criteria": ["打开客户详情后展示该客户的跟进记录。", "跟进记录按时间排列；具体升降序待确认。"],
+      "priority": "TBD",
+      "evidence_keys": ["timeline", "pain", "constraint"],
+      "evidence_level": "E1",
+      "initial_status": "draft",
+      "locked_by_human": false,
+      "locked_fields": [],
+      "pending_questions": ["跟进记录的时间排序方向未明确。"]
+    },
+    {
+      "title": "智能化能力待澄清",
+      "description": "会议提到“更智能”，但没有可建模的行为、输入或结果。",
+      "customer_role": "TBD",
+      "business_scenario": "TBD",
+      "pain_point": "TBD",
+      "trigger": "TBD",
+      "expected_result": "TBD",
+      "scope": ["TBD"],
+      "constraints": [],
+      "dependencies": [],
+      "acceptance_criteria": ["待客户明确智能能力的使用角色、触发、预期结果和验收后再建模。"],
+      "priority": "TBD",
+      "evidence_keys": ["vague"],
+      "evidence_level": "E0",
+      "initial_status": "parked",
+      "locked_by_human": false,
+      "locked_fields": [],
+      "pending_questions": ["“更智能”具体指什么业务行为？"]
+    }
+  ],
+  "feedback": {
+    "requirement_id": "REQ-002",
+    "evidence_key": "feedback_search",
+    "updates": {
+      "title": "客户列表组合筛选",
+      "description": "客户列表支持按客户名称查询和按负责人筛选，并展示无匹配结果空状态。",
+      "scope": ["客户名称查询", "负责人筛选", "匹配结果列表", "无结果空状态"],
+      "acceptance_criteria": ["输入存在的客户名称后显示匹配客户。", "选择负责人后仅显示该负责人名下且当前用户有权查看的客户。", "名称与负责人条件同时使用时显示同时满足条件的客户。", "没有匹配结果时显示空状态。"],
+      "pending_questions": ["负责人筛选是否支持多选未明确。"]
+    }
+  }
+}
