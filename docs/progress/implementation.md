@@ -15,4 +15,4 @@
 模块行为与限制统一维护在 features 和对应源码，阶段记录引用实际验证结果。失败与未验证项保持具体说明。
 
 
-后续交付顺序和分工见 [开发计划](../planning/development.md)。
+后续模块交付顺序见 [开发计划](../planning/development.md)。

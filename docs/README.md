@@ -7,7 +7,7 @@
 | PRODUCT.md | 为谁做、解决什么问题、交付什么 | [产品定义](PRODUCT.md) |
 | design/ | 工作台与原型怎样组织和交互 | [工作台设计](design/workbench.md) |
 | architecture/ | 模块、数据、任务和版本怎样协作 | [整体框架](architecture/README.md)、[模块拆分](architecture/modules.md)、[数据契约](architecture/contracts.md) |
-| planning/ | 三人如何交接、先做什么、怎样验收 | [开发计划与分工](planning/development.md) |
+| planning/ | 模块按什么顺序实现、怎样交接与验收 | [模块开发顺序](planning/development.md) |
 | progress/ | 实际完成、验证及待验证内容是什么 | [工程进度](progress/implementation.md) |
 | features/ | 当前实际可运行的功能与限制 | [实际功能](features/README.md) |
 | references/ | 参考来源、固定版本和采用范围 | [参考索引](references/README.md) |
@@ -20,4 +20,4 @@
 - 主 Skill 位于 product-requirements/，docs 中的工程文档按具体任务读取。
 - 新功能只增加有实际内容的文档，更新时修复入口与相对链接。
 
-本组织方式参考用户既有 ScreenDeck docs 的导航与事实口径、FinDesk docs 的产品／设计／架构／路线职责，老板不在家 docs 的 planning／progress 分工，以及 ParTrace Vision docs 的模块输入输出与交接表。它们提供文档组织参考，当前项目的有效规则以本仓库为准。
+本组织方式参考用户既有 ScreenDeck docs 的导航与事实口径、FinDesk docs 的产品／设计／架构／路线职责，老板不在家 docs 的 planning／progress 的用途划分，以及 ParTrace Vision docs 的模块输入输出与交接表。它们提供文档组织参考，当前项目的有效规则以本仓库为准。
