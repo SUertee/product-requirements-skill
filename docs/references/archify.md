@@ -17,3 +17,14 @@ python3 product-requirements/scripts/resolve_capability.py archify
 ```
 
 实现副本位于工程旁的 skill-dependencies/archify/，可使用 ARCHIFY_SKILL_DIR 指向其他安装位置。当前固定版本采用 Apache-2.0，分发时遵守上游 LICENSE、NOTICE 和适用第三方声明。上游文件与许可证保存在该实现副本中。
+
+
+## 在本项目中的采用位置
+
+| 参考能力 | 本项目位置 | 采用状态 |
+| --- | --- | --- |
+| 任务路由与按需参考 | 主 Skill 的任务路由及包内 references | 已写指令结构 |
+| 流程／架构 HTML 渲染和检查 | M06、capabilities.md、integrations.json | 已定位固定实现，输入适配待实现 |
+| 交付与恢复信息 | manifest 的实际结果和错误记录 | 已定义合同，自动生成待实现 |
+
+固定源文件可从上述提交的 archify/SKILL.md、archify/references/ 和 archify/bin/ 读取。修改集成前核对固定版本对应的输入格式，按上游实际检查结果登记生成状态。
