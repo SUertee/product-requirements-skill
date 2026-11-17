@@ -1,6 +1,6 @@
 # 三人开发分工
 
-职责表中的 SKILL.md、references/、assets/ 和 scripts/ 均相对 skills/product-requirements-skill/。
+职责表中的 SKILL.md、references/、assets/ 和 scripts/ 均相对 product-requirements/。
 
 以下为职责建议，成员姓名与 GitHub 账号确认后对应。三人共同评审一条端到端演示链路。
 
@@ -36,6 +36,6 @@
 
 当前工作台整理在 `dev/workbench-foundation` 开发。成员从对应基线建立自己的功能分支，通过 PR 评审合并。main 保存已确认的集成版本。
 
-参考副本位于 `docs/references/partrace-workbench/`，包括原项目页面、原型、演示视频和演示稿。设计规范在 `skills/product-requirements-skill/references/ui-design.md` 维护，通用样式在 `skills/product-requirements-skill/assets/ui.css` 维护。修改参考页面后将可复用规则同步到内置规范，功能生成脚本按实际能力验证。
+参考副本位于 `docs/references/partrace-workbench/`，包括原项目页面、原型、演示视频和演示稿。设计规范在 `product-requirements/references/ui-design.md` 维护，通用样式在 `product-requirements/assets/ui.css` 维护。修改参考页面后将可复用规则同步到内置规范，功能生成脚本按实际能力验证。
 
 发布 Skill 时根据宿主要求选取运行文件，核对包体积、文件数量、外部依赖及相应许可。开发参考素材的体积单独记录，避免误将演示素材纳入运行包。

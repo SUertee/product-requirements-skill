@@ -4,10 +4,10 @@
 
 ## 使用入口
 
-Skill 的执行入口为 [SKILL.md](skills/product-requirements-skill/SKILL.md)，执行指南、模板和工具位于该包内的 references/、assets/ 和 scripts/。当前已编写工作流、需求建模约定、输出合同与 PRD 模板，文本标准化脚本可以运行。端到端生成效果需在比赛宿主中验证，ASR 适配器、后台监听、工作台模板和原型生成待团队实现。
+Skill 的执行入口为 [SKILL.md](product-requirements/SKILL.md)，执行指南、模板和工具位于该包内的 references/、assets/ 和 scripts/。当前已编写工作流、需求建模约定、输出合同与 PRD 模板，文本标准化脚本可以运行。端到端生成效果需在比赛宿主中验证，ASR 适配器、后台监听、工作台模板和原型生成待团队实现。
 
 ```bash
-python3 skills/product-requirements-skill/scripts/normalize_transcript.py --input /path/to/meeting.srt --project-id demo --output runs/demo/sources.jsonl
+python3 product-requirements/scripts/normalize_transcript.py --input /path/to/meeting.srt --project-id demo --output runs/demo/sources.jsonl
 ```
 
 ## 三人协作
@@ -22,7 +22,7 @@ python3 skills/product-requirements-skill/scripts/normalize_transcript.py --inpu
 
 ## 能力接入
 
-主 Skill 组织录音接入、需求转化、建模、方案与 PRD、人工确认、原型、工作台汇总和最终复核。图示与 ERD 按 [能力接入与设计路由](skills/product-requirements-skill/references/capabilities.md) 调用，原型和工作台采用 [内置 UI 规范](skills/product-requirements-skill/references/ui-design.md) 与包内 assets/ui.css，固定依赖见包内 integrations.json。外部依赖通过宿主安装或工程旁 skill-dependencies 提供。
+主 Skill 组织录音接入、需求转化、建模、方案与 PRD、人工确认、原型、工作台汇总和最终复核。图示与 ERD 按 [能力接入与设计路由](product-requirements/references/capabilities.md) 调用，原型和工作台采用 [内置 UI 规范](product-requirements/references/ui-design.md) 与包内 assets/ui.css，固定依赖见包内 integrations.json。外部依赖通过宿主安装或工程旁 skill-dependencies 提供。
 
 ## 工作台样式参考副本
 
@@ -33,13 +33,12 @@ python3 skills/product-requirements-skill/scripts/normalize_transcript.py --inpu
 ```text
 product-requirements-skill/
 ├── README.md
-├── skills/
-│   └── product-requirements-skill/
-│       ├── SKILL.md
-│       ├── integrations.json
-│       ├── references/
-│       ├── assets/
-│       └── scripts/
+├── product-requirements/
+│   ├── SKILL.md
+│   ├── integrations.json
+│   ├── references/
+│   ├── assets/
+│   └── scripts/
 └── docs/
     ├── development.md
     └── references/
@@ -49,4 +48,4 @@ product-requirements-skill/
         └── partrace-workbench/
 ```
 
-安装或加载主 Skill 时选择 `skills/product-requirements-skill/`。开发分工见 docs/development.md，设计与实现参考见 [参考索引](docs/references/README.md)。本地生成结果使用仓库根目录的 runs/，录音使用 recordings/，两者按现有忽略规则管理。
+安装或加载主 Skill 时选择 `product-requirements/`。开发分工见 docs/development.md，设计与实现参考见 [参考索引](docs/references/README.md)。本地生成结果使用仓库根目录的 runs/，录音使用 recordings/，两者按现有忽略规则管理。

@@ -12,7 +12,7 @@
 ## 本地入口
 
 ```bash
-python3 skills/product-requirements-skill/scripts/resolve_capability.py schema-canvas
+python3 product-requirements/scripts/resolve_capability.py schema-canvas
 ```
 
-配置 SCHEMA_CANVAS_SKILL_DIR 可选择其他安装位置。主 Skill 的统一数据与文件约定见 [输出合同](../../skills/product-requirements-skill/references/output-contract.md)。
+配置 SCHEMA_CANVAS_SKILL_DIR 可选择其他安装位置。主 Skill 的统一数据与文件约定见 [输出合同](../../product-requirements/references/output-contract.md)。

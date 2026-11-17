@@ -2,7 +2,7 @@
 
 ## 当前可运行入口
 
-下列命令从本 Skill 包目录运行，即仓库中的 skills/product-requirements-skill/。
+下列命令从本 Skill 包目录运行，即仓库中的 product-requirements/。
 
 ```bash
 python3 scripts/normalize_transcript.py --input meeting.txt --project-id demo --output runs/demo/sources.jsonl
