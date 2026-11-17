@@ -31,10 +31,34 @@
     section.append(element('h2', title));
     return section;
   }
+  function valueNode(value, depth = 0) {
+    if (value === null || value === undefined || typeof value !== 'object' || depth > 3) return element('span', display(value));
+    if (Array.isArray(value)) {
+      if (!value.length) return element('span', '待确认');
+      const list = element('ul', null, 'value-list');
+      value.forEach(item => { const row = element('li'); row.append(valueNode(item, depth + 1)); list.append(row); });
+      return list;
+    }
+    const pairs = Object.entries(value);
+    if (!pairs.length) return element('span', '待确认');
+    const list = element('dl', null, 'value-object');
+    pairs.forEach(([key, item]) => { const definition = element('dd'); definition.append(valueNode(item, depth + 1)); list.append(element('dt', key), definition); });
+    return list;
+  }
+  function locatorLabel(locator) {
+    if (typeof locator.start_seconds === 'number') {
+      const minutes = Math.floor(locator.start_seconds / 60);
+      const seconds = Math.floor(locator.start_seconds % 60);
+      return String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+    }
+    return locator.paragraph ? '段落 ' + locator.paragraph : '定位待确认';
+  }
   function fields(parent, pairs) {
     const list = element('dl', null, 'workbench-values');
     for (const [label, value] of pairs) {
-      list.append(element('dt', label), element('dd', display(value)));
+      const definition = element('dd');
+      definition.append(valueNode(value));
+      list.append(element('dt', label), definition);
     }
     parent.append(list);
   }
@@ -84,17 +108,18 @@
     const card = panel(project.name || project.project_id);
     fields(card, [['目标', project.requirement_profile.desired_outcomes], ['范围', project.requirement_profile.scope], ['版本', project.artifact_version], ['基线', project.baseline_version]]);
     content.append(card);
-    const profile = panel('需求画像');
+    const summary = element('div', null, 'workbench-summary');
+    for (const [label, count] of [['需求', requirements.length], ['已确认', requirements.filter(req => req.review_status === 'confirmed').length], ['待确认', data.review.questions.length]]) {
+      const item = element('span', label);
+      item.append(element('strong', count));
+      summary.append(item);
+    }
+    content.append(summary);
+    const profile = element('details', null, 'panel requirement-card');
+    profile.append(element('summary', '需求画像'));
     const profileLabels = {customer_and_roles: '客户与角色', business_scenario: '业务场景', pain_points: '核心痛点', desired_outcomes: '目标结果', scope: '需求范围', constraints: '约束条件', integrations: '集成与依赖', evidence_and_questions: '证据与待确认'};
     fields(profile, Object.entries(profileLabels).map(([key, label]) => [label, project.requirement_profile[key]]));
     content.append(profile);
-    const grid = element('div', null, 'workbench-grid');
-    for (const [key, name] of Object.entries(states)) {
-      const state = panel(name);
-      state.append(element('strong', requirements.filter(req => req.review_status === key).length));
-      grid.append(state);
-    }
-    content.append(grid);
     const questions = panel('待确认问题');
     data.review.questions.slice(0, 5).forEach(question => questions.append(element('p', question.target + ' · ' + question.reason)));
     if (!data.review.questions.length) questions.append(element('p', '整体成果等待人工评审'));
@@ -122,7 +147,7 @@
       for (const source of visible) {
         const detail = element('details');
         detail.open = Boolean(selectedSource);
-        detail.append(element('summary', source.source_id + ' · ' + display(source.locator)));
+        detail.append(element('summary', source.source_id + ' · ' + locatorLabel(source.locator)));
         detail.append(element('blockquote', source.text, 'source-quote'));
         const linked = requirements.filter(req => req.source_refs.includes(source.source_id));
         linked.forEach(req => {
@@ -186,14 +211,49 @@
     remaining.forEach(req => content.append(requirementCard(req)));
     if (!content.children.length) content.append(empty('暂无匹配需求'));
   }
+  function markdownDocument(text) {
+    const body = element('div', null, 'document-body');
+    let list = null;
+    for (const line of text.split('\n')) {
+      const heading = /^(#{1,4}) (.*)$/.exec(line);
+      const bullet = /^- (.*)$/.exec(line);
+      if (heading) {
+        list = null;
+        body.append(element('h' + Math.min(4, heading[1].length + 1), heading[2].replace(/\\([\\`*_{}\[\]<>()#!|>~])/g, '$1')));
+      } else if (bullet) {
+        if (!list) { list = element('ul'); body.append(list); }
+        list.append(element('li', bullet[1].replace(/\\([\\`*_{}\[\]<>()#!|>~])/g, '$1')));
+      } else {
+        list = null;
+        if (line.trim()) body.append(element('p', line.replace(/\\([\\`*_{}\[\]<>()#!|>~])/g, '$1')));
+      }
+    }
+    return body;
+  }
+  function dataTable(rows) {
+    const wrapper = element('div', null, 'data-table-scroll');
+    const table = element('table', null, 'data-table');
+    const head = element('thead');
+    const header = element('tr');
+    header.append(element('th', '字段'), element('th', '定义'));
+    head.append(header);
+    const body = element('tbody');
+    for (const [key, value] of rows) {
+      const row = element('tr');
+      const cell = element('td');
+      cell.append(valueNode(value));
+      row.append(element('td', key), cell);
+      body.append(row);
+    }
+    table.append(head, body);
+    wrapper.append(table);
+    return wrapper;
+  }
   function documents() {
     for (const [path, title] of [['proposal.md', '项目方案'], ['prd.md', '产品需求文档']]) {
       const card = panel(title);
       card.append(fileLink(path, '打开文件'));
-      const detail = element('details');
-      detail.open = true;
-      detail.append(element('summary', '阅读正文'), element('pre', data.documents[path], 'workbench-document'));
-      card.append(detail);
+      card.append(markdownDocument(data.documents[path]));
       content.append(card);
     }
   }
@@ -212,9 +272,21 @@
     }
   }
   function database() {
-    const card = panel('业务数据模型');
-    card.append(element('pre', display(project.business_model), 'workbench-document'));
-    content.append(card);
+    const model = project.business_model;
+    if (Array.isArray(model.entities) && model.entities.length) {
+      for (const entity of model.entities) {
+        const card = panel(entity.name || entity.entity_id || '业务实体');
+        if (Array.isArray(entity.fields)) {
+          card.append(dataTable(entity.fields.map(field => [field.name || field.field_id, field.type || field.description || '待确认'])));
+        } else card.append(dataTable(Object.entries(entity)));
+        content.append(card);
+      }
+      if (Array.isArray(model.relations) && model.relations.length) {
+        const relations = panel('实体关系');
+        relations.append(dataTable(model.relations.map((relation, index) => [relation.name || '关系 ' + (index + 1), relation])));
+        content.append(relations);
+      }
+    } else content.append(empty('业务数据模型待整理'));
     artifactPreviews('data-model/', '交互式 ERD 待生成');
   }
   function api() {

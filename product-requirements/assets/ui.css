@@ -1,15 +1,15 @@
 /* Product requirements skill, built-in UI system v0.1 */
 :root {
   color-scheme: light;
-  --ui-page: #eef4fa;
+  --ui-page: #f4f6f9;
   --ui-surface: #ffffff;
   --ui-muted-surface: #e7f0f9;
-  --ui-ink: #1c2a3b;
+  --ui-ink: #202d40;
   --ui-muted: #485d76;
   --ui-border: #cbd5e1;
-  --ui-accent: #006fd6;
-  --ui-accent-hover: #005bb4;
-  --ui-nav: #111d2d;
+  --ui-accent: #2863d6;
+  --ui-accent-hover: #2459bd;
+  --ui-nav: #172438;
   --ui-nav-ink: #edf6ff;
   --ui-success: #166534;
   --ui-warning: #92400e;
