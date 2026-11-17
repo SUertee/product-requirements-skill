@@ -15,6 +15,43 @@ def safe_json(value):
     return json.dumps(value, ensure_ascii=False).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
 
 
+def archify_modules(project, root):
+    package = resolve('archify')
+    modules = project.get('modules', [])
+    if not modules:
+        raise ValueError('Define business modules before generating the module map.')
+    mapping = {item['module_id']: 'module_' + str(index) for index, item in enumerate(modules)}
+    relationships = project.get('module_relations', [])
+    for relation in relationships:
+        if relation.get('from') not in mapping or relation.get('to') not in mapping or not relation.get('label'):
+            raise ValueError('Module relationships require existing module IDs and a label.')
+    candidate = {
+        'schema_version': 1, 'diagram_type': 'architecture',
+        'meta': {'title': '业务模块', 'output': 'diagrams/modules.html', 'locale': 'zh-CN', 'quality_profile': 'standard',
+                 'legend': {'entries': {'backend': {'label': '业务模块'}}}},
+        'components': [{'id': mapping[item['module_id']], 'type': 'backend', 'label': item.get('name') or item['module_id'],
+                        'sublabel': str(len(item.get('requirement_ids', []))) + ' 条需求',
+                        'pos': [60 + (index % 3) * 300, 70 + (index // 3) * 200], 'size': [210, 90]}
+                       for index, item in enumerate(modules)],
+        'connections': [{'id': 'relation_' + str(index), 'from': mapping[item['from']], 'to': mapping[item['to']], 'label': item['label']}
+                        for index, item in enumerate(relationships)],
+    }
+    root = Path(root).resolve()
+    (root / 'diagrams').mkdir(parents=True, exist_ok=True)
+    source = root / 'modules-input.json'
+    source.write_text(json.dumps(candidate, ensure_ascii=False, indent=2), encoding='utf-8')
+    receipts = []
+    for arguments in [['validate', 'architecture', str(source), '--json'], ['render', 'architecture', str(source), 'diagrams/modules.html'], ['check', 'diagrams/modules.html', '--json']]:
+        result = subprocess.run(['node', str(package / 'bin/archify.mjs'), *arguments], cwd=root, capture_output=True, text=True, timeout=120)
+        if result.returncode:
+            raise ValueError('Module diagram ' + arguments[0] + ' failed: ' + (result.stdout or result.stderr)[-3000:])
+        receipts.append({'step': arguments[0], 'stdout': result.stdout[-5000:]})
+    (root / 'modules-checks.json').write_text(json.dumps(receipts, ensure_ascii=False, indent=2), encoding='utf-8')
+    return {'path': 'diagrams/modules.html', 'generator': 'Archify',
+            'generator_version': hashlib.sha256((package / 'SKILL.md').read_bytes()).hexdigest(),
+            'validation_results': ['Module identities and explicit relationships checked', 'Archify architecture validate, render and check passed', 'Browser review pending']}
+
+
 def archify_workflow(project, root, flow_index=0):
     package = resolve('archify')
     flows = project['business_model'].get('flows', [])
@@ -132,8 +169,8 @@ def schema_canvas(project, root):
 
 
 def generate(project, sources, root, kinds):
-    if not isinstance(kinds, list) or not kinds or any(kind not in {'workflow', 'erd', 'prototype'} for kind in kinds):
-        raise ValueError('Choose workflow, erd or prototype generation.')
+    if not isinstance(kinds, list) or not kinds or any(kind not in {'modules', 'workflow', 'erd', 'prototype'} for kind in kinds):
+        raise ValueError('Choose modules, workflow, erd or prototype generation.')
     records, results = [], []
     requests = []
     for kind in dict.fromkeys(kinds):
@@ -143,7 +180,9 @@ def generate(project, sources, root, kinds):
     for kind, flow_index in requests:
         input_details = {'flow_index': flow_index} if kind == 'workflow' else {}
         try:
-            if kind == 'workflow':
+            if kind == 'modules':
+                record = archify_modules(project, root)
+            elif kind == 'workflow':
                 record = archify_workflow(project, root, flow_index)
             elif kind == 'erd':
                 record = schema_canvas(project, root)

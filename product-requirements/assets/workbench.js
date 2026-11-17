@@ -16,6 +16,10 @@
   let technicalTab = 'diagrams';
   let selectedMaterial = null;
   let selectedModule = null;
+  let moduleView = data.module_diagram ? 'map' : 'list';
+  let selectedRequirement = null;
+  let moduleFrame = null;
+  let selectDiagramModule = null;
   let selectedDocument = 'proposal.md';
   let serverState = null;
   let intakeBusy = false;
@@ -90,7 +94,14 @@
     return JSON.stringify(value).toLowerCase().includes(queryInput.value.trim().toLowerCase());
   }
   function filteredRequirements() {
-    return requirements.filter(req => matches(req) && (!statusInput.value || req.review_status === statusInput.value) && (!evidenceInput.value || req.evidence_type === evidenceInput.value));
+    return requirements.filter(req => {
+      const context = {
+        requirement: req,
+        modules: (project.modules || []).filter(module => (module.requirement_ids || []).includes(req.requirement_id)).map(module => [module.module_id, module.name]),
+        sources: req.source_refs.map(id => sourceMap.get(id)?.text)
+      };
+      return matches(context) && (!statusInput.value || req.review_status === statusInput.value) && (!evidenceInput.value || req.evidence_type === evidenceInput.value);
+    });
   }
   function fileLink(path, label) {
     const link = element('a', label, 'button ghost small');
@@ -419,6 +430,8 @@
     try {
       const result = await action();
       workflowMessage = result.release ? '客户交付包已生成，可预览或下载' : result.task.status === 'completed' ? '新版本已生成，可从任务记录打开' : '分析请求已准备，等待宿主执行 Skill 并返回项目结果';
+      const failures = result.task?.generation_results?.filter(item => item.generation_status === 'failed') || [];
+      if (failures.length) workflowMessage = '版本已生成，成果生成失败 · ' + failures.map(item => item.error).join('；');
     } catch (error) { workflowMessage = error.message; }
     finally {
       workflowBusy = false;
@@ -592,23 +605,132 @@
     detail.append(card);
     if (selectedSource) detail.querySelector('.source-selected')?.scrollIntoView?.({block: 'nearest'});
   }
+  function moduleDetails(group, host) {
+    host.replaceChildren();
+    host.append(element('span', group.module?.module_id || '待归类', 'module-identity'), element('h2', group.title));
+    if (group.module?.goal) host.append(element('p', group.module.goal));
+    const reqIds = new Set(group.items.map(req => req.requirement_id));
+    const related = element('details', null, 'module-related');
+    const pages = project.pages.filter(page => (page.requirement_ids || []).some(id => reqIds.has(id)));
+    const entities = (project.business_model.entities || []).filter(item => (item.requirement_ids || []).some(id => reqIds.has(id)));
+    const apis = (project.apis || []).filter(item => (item.requirement_ids || []).some(id => reqIds.has(id)));
+    const relations = (project.module_relations || []).filter(item => item.from === group.module?.module_id || item.to === group.module?.module_id);
+    if (pages.length || entities.length || apis.length || relations.length) {
+      related.append(element('summary', '关联成果 · ' + (pages.length + entities.length + apis.length + relations.length)));
+      for (const [items, label, title, view] of [[pages, '页面', item => item.name || item.page_id, 'prototype'], [entities, '实体', item => item.name || item.entity_id, 'database'], [apis, '接口', item => item.name || item.api_id, 'api']]) {
+        if (items.length) {
+          related.append(element('h3', label));
+          items.forEach(item => { const button = element('button', title(item), 'source-link'); button.type = 'button'; button.addEventListener('click', () => navigate(view)); related.append(button); });
+        }
+      }
+      relations.forEach(item => {
+        const other = (project.modules || []).find(module => module.module_id === (item.from === group.module?.module_id ? item.to : item.from));
+        related.append(element('p', (item.from === group.module?.module_id ? '→ ' : '← ') + (other?.name || other?.module_id) + ' · ' + item.label, 'inline-note'));
+      });
+      host.append(related);
+    }
+    const current = group.items.find(req => req.requirement_id === selectedRequirement) || group.items[0];
+    if (!current) { host.append(empty('该模块尚无匹配需求')); return; }
+    selectedRequirement = current.requirement_id;
+    const choices = element('div', null, 'requirement-picker');
+    choices.setAttribute('role', 'group'); choices.setAttribute('aria-label', '选择需求');
+    group.items.forEach(req => {
+      const button = element('button', req.requirement_id + ' · ' + req.title, 'requirement-choice'); button.type = 'button';
+      button.setAttribute('aria-pressed', String(req === current));
+      button.addEventListener('click', () => { selectedRequirement = req.requirement_id; moduleDetails(group, host); host.querySelector('.requirement-choice[aria-pressed="true"]')?.focus(); });
+      choices.append(button);
+    });
+    host.append(choices, requirementCard(current));
+  }
   function modules() {
     const visible = filteredRequirements();
     const groups = (project.modules || []).map(module => ({
-      key: 'module:' + module.module_id, title: module.name || module.module_id,
+      key: 'module:' + module.module_id, module, title: module.name || module.module_id,
       items: visible.filter(req => (module.requirement_ids || []).includes(req.requirement_id))
     }));
     const assigned = new Set((project.modules || []).flatMap(module => module.requirement_ids || []));
     const remaining = visible.filter(req => !assigned.has(req.requirement_id));
     if (remaining.length) groups.push({key: 'unassigned', title: '待归类', items: remaining});
-    const choices = groups.filter(group => group.items.length).map(group => ({...group, meta: group.items.length + ' 条需求 · ' + group.items.filter(req => req.review_status === 'confirmed').length + ' 条已确认'}));
-    const selected = choices.find(group => group.key === selectedModule) || choices[0];
+    const filtering = queryInput.value || statusInput.value || evidenceInput.value;
+    const choices = groups.filter(group => group.items.length || !filtering);
+    let selected = choices.find(group => group.key === selectedModule) || choices[0];
+    const tools = element('div', null, 'module-toolbar');
+    const switcher = element('div', null, 'view-switcher'); switcher.setAttribute('role', 'group'); switcher.setAttribute('aria-label', '需求视图');
+    for (const [view, label] of [['map', '模块图'], ['list', '需求列表']]) {
+      const button = element('button', label); button.type = 'button'; button.setAttribute('aria-pressed', String(moduleView === view));
+      button.addEventListener('click', () => { moduleView = view; render(); content.querySelector('.view-switcher [aria-pressed="true"]')?.focus(); }); switcher.append(button);
+    }
+    tools.append(switcher, element('span', visible.length + ' / ' + requirements.length + ' 条需求', 'module-count'));
+    const generated = (serverState?.tasks || []).filter(task => task.status === 'completed' && task.generation_results?.some(item => item.capability === 'modules' && item.generation_status === 'success')).at(-1);
+    if (generated && generated.version !== project.artifact_version) {
+      const link = element('a', '打开模块图版本 ' + generated.version, 'button small');
+      link.href = '/versions/' + generated.id + '/workbench/index.html#modules';
+      tools.append(link);
+    }
+    if (serverState && project.modules?.length) {
+      const generate = element('details', null, 'module-generate'); generate.append(element('summary', '生成模块图'));
+      const form = element('form', null, 'generation-form intake-form');
+      const label = element('label', '新版本'); label.htmlFor = 'module-version';
+      const version = element('input'); version.id = 'module-version'; version.value = nextVersion(); version.required = true;
+      const submit = element('button', '生成', 'button primary small'); submit.type = 'submit'; submit.disabled = workflowBusy;
+      form.append(label, version, submit); form.addEventListener('submit', event => { event.preventDefault(); const value = version.value; workflowAction(() => localRequest('/api/generate', {method: 'POST', body: JSON.stringify({version: value, kinds: ['modules']})})); });
+      generate.append(form); tools.append(generate);
+    }
+    content.append(tools);
+    if (workflowMessage) content.append(element('p', workflowMessage, 'inline-note'));
     if (!selected) { content.append(empty('暂无匹配需求，可调整搜索词或筛选条件')); return; }
     selectedModule = selected.key;
-    const detail = selectionLayout(choices, selected.key, '业务模块列表', key => { selectedModule = key; });
-    const card = panel(selected.title);
-    selected.items.forEach(req => card.append(requirementCard(req)));
-    detail.append(card);
+    const filters = element('nav', null, 'module-filters'); filters.setAttribute('aria-label', '业务模块列表');
+    const workspace = element('div', null, 'module-workspace');
+    const surface = element('section', null, 'module-surface'); surface.setAttribute('aria-label', moduleView === 'map' ? '模块关系图' : '需求列表');
+    const detail = element('aside', null, 'module-detail panel requirement-card'); detail.setAttribute('aria-label', '模块详情');
+    function select(key) {
+      const next = choices.find(group => group.key === key);
+      if (!next) return;
+      selected = next; selectedModule = key;
+      for (const button of filters.querySelectorAll('button')) button.setAttribute('aria-current', String(button.dataset.moduleKey === key));
+      moduleDetails(selected, detail);
+      moduleFrame?.contentWindow?.postMessage({type: 'product-requirements:module-state', selected: (project.modules || []).findIndex(module => module.module_id === selected.module?.module_id), visible: choices.map(group => (project.modules || []).findIndex(module => module.module_id === group.module?.module_id))}, '*');
+      surface.querySelectorAll('[data-req-row]').forEach(row => row.setAttribute('aria-selected', String(selectedRequirement === row.dataset.reqRow)));
+    }
+    choices.forEach(group => {
+      const button = element('button', null, 'module-filter'); button.type = 'button'; button.dataset.moduleKey = group.key;
+      button.setAttribute('aria-current', String(group === selected)); button.append(element('span', group.title), element('span', group.items.length, 'module-filter-count'));
+      button.addEventListener('click', () => select(group.key)); filters.append(button);
+    });
+    content.append(filters, workspace); workspace.append(surface, detail);
+    if (moduleView === 'map' && data.module_diagram) {
+      const head = element('div', null, 'module-surface-head'); head.append(element('h2', '业务模块'));
+      head.append(fileLink('diagrams/modules.html', '独立打开')); surface.append(head);
+      const frame = element('iframe', null, 'module-map'); frame.title = 'Archify 业务模块图'; frame.setAttribute('sandbox', 'allow-scripts');
+      frame.style.height = Math.max(300, Math.ceil(project.modules.length / 3) * 160 + 120) + 'px';
+      const bridge = `(() => {
+        const style = document.createElement('style'); style.textContent = 'body {background:#fdfefe} body > .toolbar, .container > .header, #focus-chip {display:none !important} .container {padding:0;max-width:none} .diagram-container {border:0;box-shadow:none;margin:0} .diagram-container > svg {min-width:0 !important} @media(max-width:480px){.diagram-container > svg {min-width:620px !important}} svg [data-node-id] text.t-primary {font-size:17px} svg [data-node-id] text.t-muted {font-size:13px} [data-node-id][data-workbench-selected] {filter:drop-shadow(0 0 3px #2863d6)} [data-node-id][data-workbench-filtered] {opacity:.22}'; document.head.append(style);
+        function notify(event) { const node = event.target.closest('[data-node-id]'); if (node) parent.postMessage({type:'product-requirements:module-select', id:node.getAttribute('data-node-id')}, '*'); }
+        document.addEventListener('click', notify, true); document.addEventListener('keydown', event => {if (event.key === 'Enter' || event.key === ' ') notify(event);}, true);
+        window.addEventListener('message', event => { if (event.source !== parent || event.data?.type !== 'product-requirements:module-state') return; document.querySelectorAll('[data-node-id]').forEach(node => { const index = Number(node.getAttribute('data-node-id').replace('module_', '')); node.toggleAttribute('data-workbench-selected', index === event.data.selected); node.toggleAttribute('data-workbench-filtered', Array.isArray(event.data.visible) && !event.data.visible.includes(index)); }); });
+      })();`;
+      frame.srcdoc = data.module_diagram.replace('</body>', '<scr' + 'ipt>' + bridge + '</scr' + 'ipt></body>');
+      moduleFrame = frame; selectDiagramModule = index => select('module:' + project.modules[index]?.module_id);
+      frame.addEventListener('load', () => select(selectedModule));
+      surface.append(frame);
+      if (!(project.module_relations || []).length) surface.append(element('p', '模块间关系待补充', 'module-map-note'));
+    } else if (moduleView === 'map') {
+      surface.append(empty('模块图待生成'));
+    } else {
+      const scroll = element('div', null, 'data-table-scroll'); const table = element('table', null, 'data-table requirement-table');
+      const head = element('thead'); const headings = element('tr'); ['需求', '状态', '模块'].forEach(label => headings.append(element('th', label))); head.append(headings); table.append(head);
+      const body = element('tbody');
+      visible.forEach(req => {
+        const group = choices.find(item => item.items.includes(req));
+        const row = element('tr'); row.dataset.reqRow = req.requirement_id;
+        const cell = element('td'); const button = element('button', null, 'requirement-row-button'); button.type = 'button'; button.append(element('span', req.requirement_id, 'module-identity'), element('strong', req.title));
+        button.addEventListener('click', () => { selectedRequirement = req.requirement_id; select(group.key); }); cell.append(button);
+        row.append(cell, element('td', states[req.review_status]), element('td', group.title)); body.append(row);
+      });
+      table.append(body); scroll.append(table); surface.append(scroll);
+    }
+    select(selectedModule);
   }
   function markdownDocument(text) {
     const body = element('div', null, 'document-body');
@@ -700,7 +822,7 @@
   function generationPanel(kinds) {
     if (!serverState) return;
     const card = panel('生成成果');
-    const labels = {workflow: '流程架构', erd: '交互式 ERD', prototype: '交互原型'};
+    const labels = {modules: '模块图', workflow: '流程架构', erd: '交互式 ERD', prototype: '交互原型'};
     const form = element('form', null, 'intake-form generation-form');
     const choices = [];
     for (const kind of kinds) {
@@ -954,6 +1076,7 @@
   }
 
   function render() {
+    moduleFrame = null; selectDiagramModule = null;
     content.replaceChildren();
     document.getElementById('page-title').textContent = views[active];
     document.getElementById('view-label').textContent = views[active];
@@ -1001,6 +1124,11 @@
   }
   document.getElementById('export-project').addEventListener('click', () => downloadJson(project, 'project.json'));
   [queryInput, statusInput, evidenceInput].forEach(input => input.addEventListener('input', () => { selectedSource = null; render(); }));
+  window.addEventListener('message', event => {
+    if (active !== 'modules' || !moduleFrame || event.source !== moduleFrame.contentWindow || event.data?.type !== 'product-requirements:module-select') return;
+    const match = /^module_(\d+)$/.exec(event.data.id || '');
+    if (match && Number(match[1]) < (project.modules || []).length) selectDiagramModule?.(Number(match[1]));
+  });
   window.addEventListener('hashchange', () => navigate(location.hash.slice(1)));
   navigate(location.hash.slice(1));
   if (location.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(location.hostname)) {

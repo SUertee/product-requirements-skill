@@ -50,7 +50,7 @@ python3 product-requirements/scripts/build_documents.py \
 
 ## 工作台输入
 
-可选 modules 数组按 module_id、name、requirement_ids 组织客户业务模块。meetings 按 meeting_id、title、date、material_ids 组织会议；materials 按 material_id、name、kind、source_ids 和 path 组织素材；apis 按 api_id、name、method、path、requirement_ids、request、response、errors、review_status 组织接口草案。各关联引用会核对是否存在。
+可选 modules 数组按 module_id、name、requirement_ids 组织客户业务模块，可用 goal 补充该模块的实际业务目标。module_relations 数组以 from、to 引用 module_id，label 表达交接含义，source_refs 保存关系依据。缺省为空数组，生成时保留尚无关系的模块。meetings 按 meeting_id、title、date、material_ids 组织会议；materials 按 material_id、name、kind、source_ids 和 path 组织素材；apis 按 api_id、name、method、path、requirement_ids、request、response、errors、review_status 组织接口草案。各关联引用会核对是否存在。
 
 素材 path 为实际素材根目录内的相对路径，通过 `--materials-root` 显式选择根目录后复制到输出的 materials/。生成 HTML 自包含样式和脚本，素材文件随输出目录携带。接收器生成的 material 可包含 job_id 和 provenance.related_job_id，后者将逐字稿关联到同项目录音。workflow.py 将已关联录音一并携带到新版本，原话的 start_seconds 用于定位播放器。旧版本缺少 job_id 时按既有 JOB-ID/文件名路径识别关联，连接本地服务时也可读取接收箱内已关联的录音。
 

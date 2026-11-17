@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'product-requirements/scripts'))
 import build_documents as build
-from generate_artifacts import generate, schema_canvas
+from generate_artifacts import archify_modules, generate, schema_canvas
 from prototype import generate_prototype
 from workflow import Workflow
 
@@ -39,6 +39,29 @@ class ArtifactTests(unittest.TestCase):
         self.assertEqual(artifact['audience'], 'internal')
         self.assertTrue((run / artifact['path']).is_file())
         self.assertIn('prototype/index.html', (run / 'workbench/index.html').read_text())
+
+    def test_module_diagram_is_generated_and_embedded_in_workbench(self):
+        self.project['modules'] = [{'module_id': 'support', 'name': '客服', 'requirement_ids': ['REQ-001']}]
+        try:
+            record = archify_modules(self.project, self.root)
+        except ValueError as error:
+            if 'Missing Skill entrypoint' in str(error):
+                self.skipTest(str(error))
+            raise
+        record.update(artifact_version='v1', source_ids=['SRC-1'])
+        build.publish(self.project, self.sources, self.root / 'with-map', artifact_root=self.root, artifact_records=[record])
+        text = (self.root / 'with-map/workbench/index.html').read_text()
+        self.assertIn('module_0', text)
+        self.assertIn('module_diagram', text)
+
+    def test_module_relations_reject_unknown_module_ids(self):
+        self.project['module_relations'] = [{'from': 'missing', 'to': 'another', 'label': '客户资料'}]
+        path = self.root / 'project.json'
+        path.write_text(json.dumps(self.project))
+        sources = self.root / 'sources.jsonl'
+        sources.write_text(json.dumps(self.sources['SRC-1']))
+        with self.assertRaisesRegex(ValueError, 'known module IDs'):
+            build.read_inputs(path, sources)
 
     def test_artifact_cannot_escape_root_or_use_other_version(self):
         root = self.root / 'artifacts'
@@ -94,6 +117,24 @@ class ArtifactTests(unittest.TestCase):
         generation = json.loads((output / 'generation.json').read_text())
         self.assertEqual(generation['results'][0]['generation_status'], 'success')
         self.assertFalse((run / 'prototype/index.html').exists())
+
+    def test_adding_module_map_regenerates_existing_prototype_at_same_version(self):
+        run = self.root / 'v1'
+        build.publish(self.project, self.sources, run)
+        workflow = Workflow(self.root / 'workspace')
+        v2 = Path(workflow.generate(run, 'v2', ['prototype'])['result_dir'])
+        def module_map(project, root):
+            output = Path(root) / 'diagrams/modules.html'
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text('<!doctype html><title>Fixture modules</title>')
+            return {'path': 'diagrams/modules.html', 'generator': 'fixture', 'validation_results': []}
+        with patch('generate_artifacts.archify_modules', side_effect=module_map):
+            task = workflow.generate(v2, 'v3', ['modules'])
+        v3 = Path(task['result_dir'])
+        self.assertTrue((v3 / 'diagrams/modules.html').is_file())
+        self.assertTrue((v3 / 'prototype/index.html').is_file())
+        self.assertIn('v3', (v3 / 'prototype/index.html').read_text())
+        self.assertEqual({item['capability'] for item in task['generation_results']}, {'modules', 'prototype'})
 
     def test_generation_failure_keeps_documents_and_reason(self):
         self.project['requirements'][0]['review_status'] = 'draft'

@@ -117,6 +117,11 @@ def read_inputs(project_path, sources_path):
                 refs = record.get('source_ids', [])
                 require(isinstance(refs, list) and all(nonempty(ref) and ref in sources for ref in refs), f'{key} has invalid source_ids')
     material_ids = {item['material_id'] for item in project.get('materials', [])}
+    module_ids = {item['module_id'] for item in project.get('modules', [])}
+    relations = project.get('module_relations', [])
+    require(isinstance(relations, list), 'module_relations must be an array')
+    for relation in relations:
+        require(isinstance(relation, dict) and relation.get('from') in module_ids and relation.get('to') in module_ids and nonempty(relation.get('label')), 'Module relations require known module IDs and a label')
     material_ids.update(item['material_id'] for item in sources.values() if nonempty(item.get('material_id')))
     for meeting in project.get('meetings', []):
         refs = meeting.get('material_ids', [])
@@ -254,9 +259,9 @@ def copy_artifacts(project, sources, artifact_root, records, stage):
     return metadata
 
 
-def render_workbench(project, sources, review, documents, artifacts, extra=None):
+def render_workbench(project, sources, review, documents, artifacts, extra=None, module_diagram=None):
     attachments = [{'material_id': item['material_id'], 'path': item['path']} for item in artifacts if item.get('material_id')]
-    payload = json.dumps({'project': project, 'sources': list(sources.values()), 'review': review, 'documents': documents, 'artifacts': artifacts, 'attachments': attachments, 'diff': (extra or {}).get('diff.json'), 'generation': (extra or {}).get('generation.json')}, ensure_ascii=False)
+    payload = json.dumps({'project': project, 'sources': list(sources.values()), 'review': review, 'documents': documents, 'artifacts': artifacts, 'attachments': attachments, 'module_diagram': module_diagram, 'diff': (extra or {}).get('diff.json'), 'generation': (extra or {}).get('generation.json')}, ensure_ascii=False)
     payload = payload.replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
     values = {
         '__WORKBENCH_STYLE__': (PACKAGE / 'assets/workbench.css').read_text(),
@@ -308,7 +313,9 @@ def publish(project, sources, destination, materials_root=None, *, review_data=N
                 artifacts[-1]['material_id'] = material_ids[file.relative_to(stage).as_posix()]
         workbench = stage / 'workbench/index.html'
         workbench.parent.mkdir()
-        workbench.write_text(render_workbench(project, sources, review, {'proposal.md': proposal, 'prd.md': prd}, artifacts, extra), encoding='utf-8')
+        module_record = artifact_metadata.get('diagrams/modules.html')
+        module_diagram = (stage / 'diagrams/modules.html').read_text(encoding='utf-8') if module_record and module_record.get('generator') == 'Archify' else None
+        workbench.write_text(render_workbench(project, sources, review, {'proposal.md': proposal, 'prd.md': prd}, artifacts, extra, module_diagram), encoding='utf-8')
         artifacts.append({'path': 'workbench/index.html', 'generation_status': 'success', 'review_status': 'draft', 'artifact_version': project['artifact_version'], 'depends_on': [item['path'] for item in artifacts], 'source_ids': list(sources), 'audience': 'internal', 'sha256': hashlib.sha256(workbench.read_bytes()).hexdigest(), 'generator': 'build_documents/0.1', 'validation_results': ['Embedded data encoded for inert JSON script']})
         manifest = {'schema_version': '0.1', 'project_id': project['project_id'], 'artifact_version': project['artifact_version'], 'generated_at': generated_at, 'artifacts': artifacts}
         (stage / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')

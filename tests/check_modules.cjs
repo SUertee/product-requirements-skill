@@ -1,0 +1,40 @@
+/* Module selection is accepted only from the active sandboxed diagram frame. */
+const fs = require('node:fs');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const {JSDOM} = require('jsdom');
+const run = path.resolve(process.argv[2]);
+const dom = new JSDOM(fs.readFileSync(path.join(run, 'workbench/index.html'), 'utf8'), {url:'http://127.0.0.1:8765/workbench/index.html#modules',runScripts:'outside-only'});
+const w = dom.window;
+const d = w.document;
+const data = JSON.parse(d.getElementById('workbench-data').textContent);
+w.eval(fs.readFileSync(path.join(__dirname,'../product-requirements/assets/workbench.js'),'utf8'));
+function button(text) { const result = [...d.querySelectorAll('button')].find(item => item.textContent === text); assert(result,text); return result; }
+function detail() { return d.querySelector('.module-detail').textContent; }
+function event(id, source) { w.dispatchEvent(new w.MessageEvent('message',{data:{type:'product-requirements:module-select',id},source})); }
+const frame = d.querySelector('.module-map');
+assert(frame);
+assert.match(detail(), /客户查询/);
+event('module_1', w);
+assert.match(detail(), /客户查询/);
+event('module_999', frame.contentWindow);
+assert.match(detail(), /客户查询/);
+event('module_1', frame.contentWindow);
+assert.match(detail(), /创建工单/);
+button('需求列表').click();
+assert.match(detail(), /创建工单/);
+button('REQ-004处理记录').click();
+assert.match(detail(), /状态流转待客户确认/);
+assert.equal(d.querySelector('tr[aria-selected="true"]').dataset.reqRow,'REQ-004');
+const search = d.getElementById('search');
+search.value = '工单处理'; search.dispatchEvent(new w.Event('input'));
+assert.match(d.getElementById('page-content').textContent,/2 \/ 6 条需求/);
+button('模块图').click();
+assert.equal(search.value,'工单处理');
+event('module_0',d.querySelector('.module-map').contentWindow);
+assert.match(detail(), /状态流转待客户确认/);
+search.value = 'no such requirement'; search.dispatchEvent(new w.Event('input'));
+assert.match(d.getElementById('page-content').textContent,/暂无匹配需求/);
+assert.equal(data.module_diagram.includes('module_0'),true);
+dom.window.close();
+console.log('Module checks passed: frame isolation, unknown IDs, node/list selection, module search, view/filter continuity and empty state.');

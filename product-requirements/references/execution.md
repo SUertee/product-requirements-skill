@@ -41,13 +41,14 @@ python3 product-requirements/scripts/workflow.py --workspace runs/demo/inbox \
 
 python3 product-requirements/scripts/workflow.py --workspace runs/demo/inbox \
   generate --run-dir /path/to/v2 --version v3 \
-  --kind workflow --kind erd --kind prototype
+  --kind modules --kind workflow --kind erd --kind prototype
 ```
 
+- modules 根据 modules 与 module_relations 生成 Archify 业务模块图，输出 diagrams/modules.html，汇入功能需求页并联动详情。
 - workflow 将每条已明确的业务流程分别适配到 Archify，执行 validate、render、check。浏览器复核单独记录。
 - erd 使用 Schema Canvas 模板展示实体与关系。数据库事实依据不足时保留业务模型状态。
 - prototype 根据 pages 中的 fields、actions、columns、records_from 生成表单和列表交互。动作支持 submit、navigate、reset，字段支持 text、textarea、select、email、number、date、checkbox。模拟数据保存在页面内存，刷新后重置。
-- 首条流程输出 diagrams/workflow.html，后续流程按序输出 workflow-2.html 等。每项生成结果独立记录到 generation.json，检查各项 generation_status 和 error。旧版本产物保持原位置。
+- 首条流程输出 diagrams/workflow.html，后续流程按序输出 workflow-2.html 等。新增成果时同时重新生成当前基线中已成功的已知成果，保持同一目标版本。每项生成结果独立记录到 generation.json，检查各项 generation_status 和 error。旧版本产物保持原位置。
 
 ## 客户包
 

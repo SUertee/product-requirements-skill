@@ -326,9 +326,14 @@ class Workflow:
             raise
 
     def generate(self, run_dir, version, kinds):
-        if not isinstance(kinds, list) or not kinds or any(kind not in {'workflow', 'erd', 'prototype'} for kind in kinds):
-            raise ValueError('Choose workflow, erd or prototype generation.')
+        if not isinstance(kinds, list) or not kinds or any(kind not in {'modules', 'workflow', 'erd', 'prototype'} for kind in kinds):
+            raise ValueError('Choose modules, workflow, erd or prototype generation.')
         baseline = read_json(Path(run_dir) / 'project.json')
+        previous_generation = Path(run_dir) / 'generation.json'
+        if previous_generation.is_file():
+            previous = read_json(previous_generation).get('results', [])
+            retained = [item['capability'] for item in previous if item.get('generation_status') == 'success' and item.get('capability') in {'modules', 'workflow', 'erd', 'prototype'}]
+            kinds = list(dict.fromkeys([*kinds, *retained]))
         project = copy.deepcopy(baseline)
         project.update(artifact_version=version, baseline_version=baseline['artifact_version'])
         task = self.prepare(run_dir, [], version, generation=kinds)
@@ -378,7 +383,7 @@ def main():
     generation = commands.add_parser('generate')
     generation.add_argument('--run-dir', type=Path, required=True)
     generation.add_argument('--version', required=True)
-    generation.add_argument('--kind', choices=['workflow', 'erd', 'prototype'], action='append', required=True)
+    generation.add_argument('--kind', choices=['modules', 'workflow', 'erd', 'prototype'], action='append', required=True)
     execute = commands.add_parser('execute')
     execute.add_argument('--request-id', required=True)
     execute.add_argument('--command-config', type=Path, required=True)
