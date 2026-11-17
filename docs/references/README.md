@@ -4,7 +4,6 @@
 | --- | --- | --- |
 | Archify | Skill 的组织、流程与架构图生成、检查和交付约定 | [参考说明](archify.md) |
 | Schema Canvas | 业务实体关系展示、字段探索与数据模型交互 | [参考说明](schema-canvas.md) |
-| 组员需求工作台 | 会议原话、需求、疑问、筛选和数据导出的组织方式 | [参考说明](team-workbench.md) |
 | ParTrace Vision workbench | 工作台布局、侧栏、预览和卡片内容组织 | [可编辑副本](partrace-workbench/workbench.html) |
 
 参考材料用于开发研究和设计迭代。主 Skill 使用的有效规范维护在 [包内 references](../../product-requirements/references/ui-design.md)，模板和样式维护在 [包内 assets](../../product-requirements/assets/ui.css)。

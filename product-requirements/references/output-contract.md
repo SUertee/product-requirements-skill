@@ -15,7 +15,7 @@
 | review.json | 疑问、冲突、变更差异、影响范围与人工确认 |
 | manifest.json | 文件状态、版本、依赖、生成信息、受众、检查和发布结果 |
 
-`project.json` 最少包含 project_id、schema_version、artifact_version、baseline_version、context_sources、requirement_profile、requirements、business_model、pages、design_context。客户项目的功能模块、会议、素材与 API 可通过 modules、meetings、materials、apis 扩展，字段见 project-data.md。requirements 使用 workflow.md 的需求卡字段。模型中区分 logical 与 foreign_key 关系，外键依据真实数据库定义。
+`project.json` 最少包含 project_id、schema_version、artifact_version、baseline_version、context_sources、requirement_profile、requirements、business_model、pages、design_context。requirements 使用 workflow.md 的需求卡字段。模型中区分 logical 与 foreign_key 关系，外键依据真实数据库定义。
 
 manifest 各项记录 path、generation_status（success／partial／failed）、review_status（draft／reviewed）、artifact_version、depends_on、source_ids、generator 和 validation_results。仅在实际生成时登记 success。模型版本无法取得时使用 unknown。
 
@@ -40,4 +40,4 @@ manifest 记录实际调用的 Skill、固定版本或提交、输入数据版�
 
 ## 当前文档生成入口
 
-结构化项目输入与实际命令见 [项目输入规范](project-data.md)。build_documents.py 已实现输入结构和引用检查、PRD／方案生成、初始评审问题、内部工作台及产物清单。整体文档以 draft 输出，原型、工作台、图示和部署由后续生成阶段登记真实结果。
+结构化项目输入与实际命令见 [项目输入规范](project-data.md)。build_documents.py 已实现输入结构和引用检查、PRD／方案生成、初始评审问题及产物清单。整体文档以 draft 输出，原型、工作台、图示和部署由后续生成阶段登记真实结果。
