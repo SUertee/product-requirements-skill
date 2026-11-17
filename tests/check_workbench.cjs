@@ -17,6 +17,14 @@ const dom = new JSDOM(fs.readFileSync(path.join(run, 'workbench/index.html'), 'u
 const window = dom.window;
 const document = window.document;
 const payload = JSON.parse(document.getElementById('workbench-data').textContent);
+const timedSource = payload.sources.find(source => source.source_type === 'transcript');
+const transcriptMaterial = payload.project.materials.find(item => item.material_id === timedSource.material_id);
+const recordingId = 'JOB-' + 'c'.repeat(24);
+timedSource.locator = {start_seconds: 1, end_seconds: 2};
+transcriptMaterial.provenance.related_job_id = recordingId;
+payload.project.materials.push({material_id: 'synthetic-audio', job_id: recordingId, name: '合成录音.wav', kind: 'recording', path: 'synthetic-audio.wav', source_ids: []});
+payload.attachments.push({material_id: 'synthetic-audio', path: 'materials/synthetic-audio.wav'});
+document.getElementById('workbench-data').textContent = JSON.stringify(payload);
 const jobId = 'JOB-' + 'a'.repeat(24);
 const requests = [];
 const state = {
@@ -67,6 +75,21 @@ async function settle() {
   }
   navigate('materials');
   assert.match(document.getElementById('page-content').textContent, /已生成分析版本/);
+  const audio = document.querySelector('.selection-detail audio');
+  assert(audio, 'Linked recording should be available beside its transcript');
+  assert.match(audio.src, /materials\/synthetic-audio.wav$/);
+  Object.defineProperty(audio, 'readyState', {value: 0, configurable: true});
+  Object.defineProperty(audio, 'duration', {value: 3, configurable: true});
+  audio.load = () => {};
+  button('定位录音 00:01').click();
+  assert.match(document.getElementById('page-content').textContent, /正在加载录音时间信息/);
+  Object.defineProperty(audio, 'readyState', {value: 1, configurable: true});
+  audio.dispatchEvent(new window.Event('loadedmetadata'));
+  assert.equal(audio.currentTime, 1);
+  assert.equal(audio.paused, true);
+  Object.defineProperty(audio, 'duration', {value: 0.5, configurable: true});
+  button('定位录音 00:01').click();
+  assert.match(document.getElementById('page-content').textContent, /原话时间超出录音长度/);
   navigate('modules');
   const selector = document.getElementById('edit-field-REQ-001');
   change(selector, 'acceptance_criteria');
@@ -121,7 +144,7 @@ async function settle() {
   assert.match(page.getElementById('screen').textContent, /暂无匹配记录/);
   prototype.window.close();
   assert.deepEqual(errors, []);
-  console.log('DOM checks passed: seven views, analysis state, human unlock, review payload, generation failure, keyboard tabs, prototype validation/create/search and malformed shared fragment.');
+  console.log('DOM checks passed: seven views, linked media seeking and bounds, analysis state, human unlock, review payload, generation failure, keyboard tabs, prototype validation/create/search and malformed shared fragment.');
   function submitPrototype(target) {
     target.dispatchEvent(new prototype.window.Event('submit', {cancelable: true}));
   }

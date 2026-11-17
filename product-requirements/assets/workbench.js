@@ -527,19 +527,63 @@
     const attached = data.attachments.find(item => item.material_id === selected.material?.material_id);
     if (attached) {
       card.append(fileLink(attached.path, '打开素材'));
-      if (/\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(attached.path)) {
-        const audio = element('audio');
-        audio.controls = true;
-        audio.preload = 'none';
-        audio.src = '../' + attached.path.split('/').map(encodeURIComponent).join('/');
-        card.append(audio);
-      }
     } else if (selected.material) card.append(element('p', '原始文件尚未随当前版本附带', 'inline-note'));
+    const relatedId = selected.material?.provenance?.related_job_id;
+    const recording = relatedId ? (project.materials || []).find(item => item.job_id === relatedId || item.path?.startsWith(relatedId + '/')) : null;
+    const recordingAttachment = data.attachments.find(item => item.material_id === recording?.material_id);
+    const mediaAttachment = recordingAttachment || attached;
+    const mediaPattern = /\.(mp3|wav|m4a|aac|ogg|flac|mp4|mov|webm|mkv)$/i;
+    let mediaPath = mediaPattern.test(mediaAttachment?.path || '') ? '../' + mediaAttachment.path.split('/').map(encodeURIComponent).join('/') : null;
+    if (!mediaPath && relatedId && serverState) {
+      const job = serverState.jobs.find(item => item.job_id === relatedId && item.kind === 'recording' && item.status !== 'failed');
+      if (job?.files.original) mediaPath = '/api/jobs/' + job.job_id + '/original';
+    }
+    const mediaName = recordingAttachment?.path || attached?.path || serverState?.jobs.find(item => item.job_id === relatedId)?.files.original || '';
+    const player = mediaPath ? element(/\.(mp4|mov|webm|mkv)$/i.test(mediaName) ? 'video' : 'audio') : null;
+    const seekMessage = element('p', '', 'inline-note');
+    seekMessage.setAttribute('role', 'status');
+    let seekTarget = null;
+    function applySeek() {
+      if (seekTarget === null) return;
+      const target = seekTarget;
+      seekTarget = null;
+      if (Number.isFinite(player.duration) && target > player.duration) {
+        seekMessage.textContent = '原话时间超出录音长度，请核对逐字稿与录音是否匹配';
+        return;
+      }
+      try {
+        player.currentTime = target;
+        seekMessage.textContent = '已定位到 ' + locatorLabel({start_seconds: target});
+        player.focus();
+      } catch { seekMessage.textContent = '录音定位失败，请核对文件是否可播放'; }
+    }
+    if (player) {
+      player.controls = true;
+      player.preload = 'metadata';
+      player.src = mediaPath;
+      player.setAttribute('aria-label', '来源录音');
+      player.addEventListener('loadedmetadata', applySeek);
+      player.addEventListener('error', () => { seekMessage.textContent = '录音无法加载，请核对文件与浏览器支持的格式'; });
+      card.append(player, seekMessage);
+    } else if (selected.sources.some(source => Number.isFinite(source.locator.start_seconds))) {
+      card.append(element('p', '关联录音后可按原话时间定位', 'inline-note'));
+    }
     selected.sources.forEach(source => {
       const excerpt = element('section', null, 'source-excerpt');
       if (source.source_id === selectedSource) excerpt.classList.add('source-selected');
       badges(excerpt, [locatorLabel(source.locator), source.speaker || '说话人待确认', source.source_id]);
       excerpt.append(element('blockquote', source.text, 'source-quote'));
+      if (player && Number.isFinite(source.locator.start_seconds)) {
+        const seek = element('button', '定位录音 ' + locatorLabel(source.locator), 'button small');
+        seek.type = 'button';
+        seek.dataset.sourceId = source.source_id;
+        seek.addEventListener('click', () => {
+          seekTarget = source.locator.start_seconds;
+          if (player.readyState >= 1) applySeek();
+          else { seekMessage.textContent = '正在加载录音时间信息…'; player.load(); }
+        });
+        excerpt.append(seek);
+      }
       const linked = requirements.filter(req => req.source_refs.includes(source.source_id));
       linked.forEach(req => excerpt.append(requirementLink(req)));
       card.append(excerpt);

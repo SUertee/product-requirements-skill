@@ -7,6 +7,8 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
+import wave
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'product-requirements/scripts'))
 import build_documents as build
@@ -36,6 +38,50 @@ class WorkflowTests(unittest.TestCase):
         candidate = copy.deepcopy(self.project)
         candidate.update(artifact_version=version, baseline_version='v1')
         return candidate
+
+    def recording(self, project_id='demo'):
+        file = self.root / (project_id + '.wav')
+        with wave.open(str(file), 'wb') as audio:
+            audio.setnchannels(1)
+            audio.setsampwidth(2)
+            audio.setframerate(16000)
+            audio.writeframes(b'\0\0' * 48000)
+        with patch('ingest_material.shutil.which', return_value=None):
+            return ingest(file, self.workspace, project_id)
+
+    def test_linked_recording_is_preserved_with_transcript_and_next_version(self):
+        recording = self.recording()
+        linked = ingest(self.input, self.workspace, 'demo', related_job_id=recording['job_id'])
+        task = self.workflow.prepare(self.run, [linked['job_id']], 'v2')
+        result = self.workflow.complete(task['id'], self.candidate())
+        output = Path(result['result_dir'])
+        project = json.loads((output / 'project.json').read_text())
+        self.assertEqual(len(project['materials']), 2)
+        audio = next(item for item in project['materials'] if item['kind'] == 'recording')
+        self.assertEqual(audio['job_id'], recording['job_id'])
+        self.assertEqual((output / 'materials' / audio['path']).read_bytes(), (self.root / 'demo.wav').read_bytes())
+        following = self.workflow.prepare(output, [], 'v3')
+        candidate = copy.deepcopy(project)
+        candidate.update(artifact_version='v3', baseline_version='v2')
+        next_output = Path(self.workflow.complete(following['id'], candidate)['result_dir'])
+        self.assertEqual((next_output / 'materials' / audio['path']).read_bytes(), (self.root / 'demo.wav').read_bytes())
+
+    def test_changed_linked_original_is_rejected_before_analysis(self):
+        recording = self.recording()
+        linked = ingest(self.input, self.workspace, 'demo', related_job_id=recording['job_id'])
+        (self.workspace / 'jobs' / recording['job_id'] / recording['files']['original']).write_bytes(b'changed')
+        with self.assertRaisesRegex(ValueError, 'changed after import'):
+            self.workflow.prepare(self.run, [linked['job_id']], 'v2')
+        self.assertEqual(self.workflow.tasks('demo'), [])
+
+    def test_stored_link_cannot_copy_recording_from_another_project(self):
+        recording = self.recording('another')
+        job_file = self.workspace / 'jobs' / self.job['job_id'] / 'job.json'
+        job = json.loads(job_file.read_text())
+        job['provenance']['related_job_id'] = recording['job_id']
+        job_file.write_text(json.dumps(job))
+        with self.assertRaisesRegex(ValueError, 'belong to this project'):
+            self.workflow.prepare(self.run, [self.job['job_id']], 'v2')
 
     def notes(self, outcome='confirmed'):
         return {'project_id': 'demo', 'artifact_version': 'v1', 'review_stage': 'definition',

@@ -22,7 +22,7 @@ python3 product-requirements/scripts/workflow.py --workspace runs/demo/inbox \
   complete --request-id AN-实际编号 --project /path/to/project.json
 ```
 
-结果位于返回的 result_dir，包含新版本文档、工作台、manifest 和 diff。重复完成同一结果返回既有版本，不同结果需要新任务。失败记录保留，可修正输入后重试。
+结果位于返回的 result_dir，包含新版本文档、工作台、manifest 和 diff。已通过 --related-job 关联的原始录音一并携带，会议素材页可按原话时间定位播放器。接收原件摘要不一致时需要重新导入。重复完成同一结果返回既有版本，不同结果需要新任务。失败记录保留，可修正输入后重试。
 
 已有宿主命令适配器可使用 execute。配置 JSON 的 argv 为参数数组，命令从 stdin 接收包含 request、baseline、sources 的 JSON，在 stdout 返回完整项目 JSON。配置可含 provider、model、timeout_seconds。stderr 用于诊断。凭据由本机环境提供。
 

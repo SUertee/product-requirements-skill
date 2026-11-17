@@ -14,7 +14,7 @@ import tempfile
 import uuid
 
 from build_documents import publish, read_inputs
-from ingest_material import read_job
+from ingest_material import file_sha256, read_job
 from project_revision import apply_review, differences, digest, reconcile
 
 
@@ -102,6 +102,17 @@ class Workflow:
                 else:
                     sources[source['source_id']] = source
             jobs.append(job)
+        material_jobs = list(jobs)
+        for job in jobs:
+            related_id = job.get('provenance', {}).get('related_job_id')
+            if related_id:
+                if not isinstance(related_id, str) or not re.fullmatch(r'JOB-[a-f0-9]{24}', related_id):
+                    raise ValueError('Invalid linked recording identifier.')
+                recording = read_job(self.workspace / 'jobs' / related_id)
+                if recording['project_id'] != baseline['project_id'] or recording['kind'] != 'recording' or recording['status'] == 'failed':
+                    raise ValueError('Linked recording must be usable and belong to this project.')
+                if all(item['job_id'] != related_id for item in material_jobs):
+                    material_jobs.append(recording)
         manual_refs = {}
         effective_manual_refs = {}
         if review_notes is not None:
@@ -151,7 +162,7 @@ class Workflow:
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copyfile(source, destination)
             context = copy.deepcopy(baseline['context_sources'])
-            for job in jobs:
+            for job in material_jobs:
                 directory = self.workspace / 'jobs' / job['job_id']
                 refs = [key for key, source in sources.items() if source.get('material_id') == job['material_id']]
                 if job['material_id'] not in material_ids:
@@ -159,7 +170,9 @@ class Workflow:
                     destination = material_root / relative
                     destination.parent.mkdir(exist_ok=True)
                     shutil.copyfile(directory / job['files']['original'], destination)
-                    materials.append({'material_id': job['material_id'], 'name': job['name'], 'kind': job['kind'], 'source_ids': refs, 'path': relative, 'provenance': job['provenance']})
+                    if file_sha256(destination) != job['material_id']:
+                        raise ValueError('Intake original changed after import. Reimport the material before analysis.')
+                    materials.append({'material_id': job['material_id'], 'job_id': job['job_id'], 'name': job['name'], 'kind': job['kind'], 'source_ids': refs, 'path': relative, 'provenance': job['provenance']})
                     material_ids.add(job['material_id'])
                 if job['job_id'] in context_ids:
                     context.append({'material_id': job['material_id'], 'name': job['name'], 'source_refs': refs, 'association_status': 'selected_by_user'})
