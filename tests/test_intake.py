@@ -87,11 +87,13 @@ class IntakeTests(unittest.TestCase):
 
     def test_connector_imports_only_selected_transcript(self):
         token = 'obcn00000000000000000000'
-        def fake_call(arguments):
-            output = Path(arguments[arguments.index('--output-dir') + 1]) / 'transcript.txt'
-            output.write_text('客户需要查询工单。')
-            self.assertEqual(arguments[1], '+detail')
-            return {'minutes': [{'minute_token': token, 'artifacts': {'transcript_file': str(output)}}]}
+        def fake_call(arguments, cwd=None):
+            output = Path(cwd) / arguments[arguments.index('--output') + 1]
+            self.assertFalse(Path(arguments[arguments.index('--output') + 1]).is_absolute())
+            output.write_text('1\n00:00:00,000 --> 00:00:02,000\n客户需要查询工单。\n')
+            self.assertEqual(arguments[:2], ['api', 'GET'])
+            self.assertTrue(arguments[2].endswith('/transcript'))
+            return {'saved_path': str(output)}
         with patch.object(connector, 'call_cli', side_effect=fake_call):
             job = connector.import_minutes('https://sample.feishu.cn/minutes/' + token, self.workspace, 'demo')
         self.assertEqual(job['provenance']['minute_token'], token)
@@ -99,12 +101,12 @@ class IntakeTests(unittest.TestCase):
 
     def test_connector_rejects_returned_file_outside_download(self):
         token = 'obcn00000000000000000000'
-        with patch.object(connector, 'call_cli', return_value={'minutes': [{'minute_token': token, 'artifacts': {'transcript_file': str(self.file)}}]}):
+        with patch.object(connector, 'call_cli', return_value={'minute_token': token, 'saved_path': str(self.file)}):
             with self.assertRaisesRegex(connector.ConnectorError, 'outside'):
-                connector.import_minutes(token, self.workspace, 'demo')
+                connector.import_minutes(token, self.workspace, 'demo', media=True)
 
     def test_connector_error_contains_scope_and_omits_private_response(self):
-        result = subprocess.CompletedProcess([], 3, json.dumps({'ok': False, 'error': {'missing_scopes': ['minutes:minutes.media:export'], 'hint': 'private URL'}}), '')
+        result = subprocess.CompletedProcess([], 3, '', json.dumps({'ok': False, 'error': {'missing_scopes': ['minutes:minutes.media:export'], 'hint': 'private URL'}}))
         with patch.object(connector.subprocess, 'run', return_value=result):
             with self.assertRaisesRegex(connector.ConnectorError, 'minutes:minutes.media:export') as error:
                 connector.call_cli([])

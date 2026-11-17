@@ -30,13 +30,13 @@ def minute_token(value):
     return value
 
 
-def call_cli(arguments):
+def call_cli(arguments, cwd=None):
     try:
-        result = subprocess.run(['lark-cli', *arguments, '--as', 'user', '--format', 'json'], capture_output=True, text=True, timeout=600)
+        result = subprocess.run(['lark-cli', *arguments, '--as', 'user', '--format', 'json'], capture_output=True, text=True, timeout=600, cwd=cwd)
     except FileNotFoundError as error:
         raise ConnectorError('lark-cli is unavailable. Install it and authorize your Feishu user account.') from error
     try:
-        payload = json.loads(result.stdout)
+        payload = json.loads(result.stdout if result.returncode == 0 else result.stderr or result.stdout)
     except ValueError as error:
         raise ConnectorError('lark-cli returned an unreadable response.') from error
     if not isinstance(payload, dict):
@@ -63,15 +63,18 @@ def import_minutes(value, workspace, project_id, media=False):
     with tempfile.TemporaryDirectory(prefix='.feishu-', dir=workspace) as temporary:
         root = Path(temporary).resolve()
         if media:
-            payload = call_cli(['minutes', '+download', '--minute-tokens', token, '--output-dir', str(root)])
+            payload = call_cli(['minutes', '+download', '--minute-tokens', token, '--output-dir', 'downloads'], cwd=root)
             records = payload.get('downloads', [payload])
             paths = [record.get('saved_path') for record in records if record.get('minute_token') == token and record.get('saved_path')]
         else:
-            payload = call_cli(['minutes', '+detail', '--minute-tokens', token, '--transcript', '--output-dir', str(root)])
-            paths = [item.get('artifacts', {}).get('transcript_file') for item in payload.get('minutes', []) if item.get('minute_token') == token]
+            call_cli(['api', 'GET', '/open-apis/minutes/v1/minutes/' + token + '/transcript',
+                      '--params', json.dumps({'file_format': 'srt', 'need_speaker': True, 'need_timestamp': True}),
+                      '--output', 'transcript.srt'], cwd=root)
+            paths = ['transcript.srt']
         if len(paths) != 1 or not paths[0]:
             raise ConnectorError('No requested artifact was returned. Check recording/transcript readiness and access.')
-        file = Path(paths[0]).resolve()
+        file = Path(paths[0])
+        file = (file if file.is_absolute() else root / file).resolve()
         if not file.is_relative_to(root) or not file.is_file():
             raise ConnectorError('The downloaded artifact is outside the import directory or is missing.')
         return ingest(file, workspace, project_id, {'provider': 'feishu', 'minute_token': token, 'identity': 'user', 'artifact': 'media' if media else 'transcript'})
