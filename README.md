@@ -12,7 +12,7 @@ python3 product-requirements/scripts/normalize_transcript.py --input /path/to/me
 
 ## 三人协作
 
-具体成员姓名与 GitHub 账号待确认，按 [开发文档与分工](docs/development.md) 对应职责。先统一来源片段、需求卡与输出合同，再并行实现采集、理解和生成模块。
+具体成员姓名与 GitHub 账号待确认，按 [开发分工](docs/planning/development.md) 对应职责。先统一来源片段、需求卡与输出合同，再并行实现采集、理解和生成模块。
 
 ## 参考与适配
 
@@ -54,7 +54,7 @@ product-requirements-skill/
         └── partrace-workbench/
 ```
 
-安装或加载主 Skill 时选择 `product-requirements/`。开发入口见 [开发文档](docs/development.md)，设计与实现参考见 [参考索引](docs/references/README.md)。本地生成结果使用仓库根目录的 runs/，录音使用 recordings/，两者按现有忽略规则管理。
+安装或加载主 Skill 时选择 `product-requirements/`。开发分工见 docs/planning/development.md，设计与实现参考见 [参考索引](docs/references/README.md)。本地生成结果使用仓库根目录的 runs/，录音使用 recordings/，两者按现有忽略规则管理。
 
 
 整体框架、模块交接与实施路线见 [项目文档导航](docs/README.md)。
