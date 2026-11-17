@@ -11,7 +11,8 @@ args = parser.parse_args()
 root = Path(__file__).resolve().parent.parent
 configuration = json.loads((root / 'integrations.json').read_text())
 entry = configuration[args.capability]
-default = root.parent / 'skill-dependencies' / args.capability
+repository = root.parents[1] if root.parent.name == 'skills' else root
+default = repository.parent / 'skill-dependencies' / args.capability
 if args.capability == 'archify':
     default = default / 'archify'
 package = Path(os.environ.get(entry['environment_variable'], str(default))).expanduser().resolve()

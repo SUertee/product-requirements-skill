@@ -2,7 +2,7 @@
 
 ## 定位依赖
 
-运行 `python3 scripts/resolve_capability.py archify` 或 `python3 scripts/resolve_capability.py schema-canvas` 获取对应 Skill 的入口，随后读取该 SKILL.md。Archify 可以通过 ARCHIFY_SKILL_DIR 指向其 archify/ 包目录，Schema Canvas 使用 SCHEMA_CANVAS_SKILL_DIR。默认读取工程旁的 skill-dependencies/，宿主安装也可通过环境变量指定。
+从本 Skill 包目录运行 `python3 scripts/resolve_capability.py archify` 或 `python3 scripts/resolve_capability.py schema-canvas` 获取对应 Skill 的入口，随后读取该 SKILL.md。Archify 可以通过 ARCHIFY_SKILL_DIR 指向其 archify/ 包目录，Schema Canvas 使用 SCHEMA_CANVAS_SKILL_DIR。默认读取工程旁的 skill-dependencies/，宿主安装也可通过环境变量指定。
 
 Archify 固定提交见 integrations.json。完整仓库与自有 Schema Canvas 的开发副本保存在工程旁。分发包需单独处理宿主依赖和比赛文件数量、体积限制。
 
