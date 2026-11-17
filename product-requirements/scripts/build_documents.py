@@ -53,6 +53,28 @@ def literal(value):
     return re.sub(r'([\\`*_{}\[\]<>()#!|>~])', r'\\\1', text)
 
 
+def document_value(value):
+    """Readable Markdown for structured fields, preserving supplied labels and values."""
+    if isinstance(value, list) and value:
+        return '\n'.join('- ' + document_value(item).replace('\n', '\n  ') for item in value)
+    if isinstance(value, dict) and value:
+        labels = {
+            **PROFILE,
+            'module_id': '模块标识', 'name': '名称', 'goal': '目标', 'requirement_ids': '关联需求',
+            'entity_id': '实体标识', 'fields': '字段', 'type': '类型', 'relations': '关系',
+            'entities': '实体', 'page_id': '页面标识', 'task': '页面任务', 'actions': '操作',
+            'label': '标签', 'id': '标识', 'required': '必填', 'primary_key': '主键',
+            'nullable': '可空', 'description': '说明', 'method': '方法', 'path': '路径',
+            'api_id': '接口标识', 'source_refs': '来源', 'from': '起点', 'to': '终点',
+        }
+        lines = []
+        for key, item in value.items():
+            formatted = document_value(item).replace('\n', '\n  ')
+            lines.append('- ' + labels.get(key, literal(key)) + ' — ' + formatted)
+        return '\n'.join(lines)
+    return literal(value)
+
+
 def read_inputs(project_path, sources_path):
     project = json.loads(project_path.read_text(encoding='utf-8-sig'))
     require(isinstance(project, dict), 'project.json must be an object')
@@ -168,28 +190,28 @@ def collect_questions(project):
 
 def render(project, sources, questions, generated_at):
     title = literal(project.get('name', project['project_id']))
-    metadata = f"项目 {literal(project['project_id'])} · 版本 {literal(project['artifact_version'])} · 文档状态 draft\n\n生成时间 {generated_at}，工具 build_documents/0.1，基线 {literal(project['baseline_version'])}。"
-    profile = '\n\n'.join(f'### {label}\n\n{literal(project["requirement_profile"].get(key))}' for key, label in PROFILE.items())
+    metadata = f"项目 {literal(project['project_id'])} · 版本 {literal(project['artifact_version'])} · 文档状态 草稿\n\n生成时间 {generated_at}，工具 build_documents/0.1，基线 {literal(project['baseline_version'])}。"
+    profile = '\n\n'.join(f'### {label}\n\n{document_value(project["requirement_profile"].get(key))}' for key, label in PROFILE.items() if key in ['customer_and_roles', 'business_scenario', 'pain_points'])
     cards = []
     for req in project['requirements']:
         lines = [f"### {literal(req['requirement_id'])} · {literal(req['title'])}",
-                 f"依据类型 {EVIDENCE[req['evidence_type']]} · 需求状态 {req['review_status']}"]
-        lines += [f"- {label} — {literal(req.get(key))}" for key, label in DETAILS.items()]
-        lines.append('- 来源 — ' + literal(req['source_refs']))
-        lines.append('- 人工锁定 — ' + literal(req.get('locked_fields', [])))
-        cards.append('\n\n'.join(lines))
+                 f"依据类型 {EVIDENCE[req['evidence_type']]} · 需求状态 {dict(draft='草稿', confirmed='已确认', disputed='冲突', parked='暂缓')[req['review_status']]}"]
+        lines += [f"- {label} — {document_value(req.get(key)).replace(chr(10), chr(10) + '  ')}" for key, label in DETAILS.items()]
+        lines.append('- 来源 — ' + '、'.join(literal(ref) for ref in req['source_refs']))
+        lines.append('- 人工锁定 — ' + ('、'.join(DETAILS.get(key, literal(key)) for key in req.get('locked_fields', [])) or '无'))
+        cards.append(lines[0] + '\n\n' + lines[1] + '\n\n' + '\n'.join(lines[2:]))
     citations = '\n\n'.join(f"### {literal(key)}\n\n定位 {literal(value['locator'])}\n\n{literal(value['text'])}" for key, value in sources.items())
     question_text = '\n'.join(f"- {literal(item['target'])} — {literal(item['reason'])}" for item in questions) or '本轮结构检查未发现待补全字段，整体文档等待人工评审。'
     sections = {
         '文档信息': metadata,
         '背景与问题': profile,
-        '目标与范围': literal({key: project['requirement_profile'].get(key) for key in ['desired_outcomes', 'scope', 'constraints']}),
-        '角色与权限': literal(project['requirement_profile'].get('customer_and_roles')),
-        '业务流程与数据模型': literal({'功能模块': project.get('modules', []), '业务模型': project['business_model']}),
+        '目标与范围': document_value({key: project['requirement_profile'].get(key) for key in ['desired_outcomes', 'scope', 'constraints']}),
+        '角色与权限': document_value(project['requirement_profile'].get('customer_and_roles')),
+        '业务流程与数据模型': document_value({'功能模块': project.get('modules', []), '业务模型': project['business_model']}),
         '功能需求': '\n\n'.join(cards) or '待确认',
-        '页面与交互': literal(project['pages']),
-        '质量约束与集成': literal({key: project['requirement_profile'].get(key) for key in ['constraints', 'integrations']}) + '\n\n' + literal({'接口草案': project.get('apis', [])}),
-        '验收与待确认': question_text,
+        '页面与交互': document_value(project['pages']),
+        '质量约束与集成': document_value({key: project['requirement_profile'].get(key) for key in ['constraints', 'integrations']}) + '\n\n' + document_value({'接口草案': project.get('apis', [])}),
+        '验收与待确认': question_text + '\n\n' + document_value(project['requirement_profile'].get('evidence_and_questions')),
     }
     template = (PACKAGE / 'assets/prd-template.md').read_text()
     chunks = re.split(r'(?m)^## ', template)
@@ -201,9 +223,36 @@ def render(project, sources, questions, generated_at):
     if meeting_extras:
         document.append('## 会议补充\n\n' + literal(meeting_extras))
     document.append('## 原始依据\n\n' + citations)
-    proposal = f'# {title} 项目方案草稿\n\n{metadata}\n\n## 客户需求与项目范围\n\n{profile}\n\n## 业务模型与实现依据\n\n{literal(project["business_model"])}\n\n## 待确认\n\n{question_text}\n\n详细需求和原话引用见 [PRD](prd.md)。\n'
+    profile_data = project['requirement_profile']
+    proposal_sections = [
+        ('项目摘要', document_value(profile_data.get('desired_outcomes'))),
+        ('客户背景与问题', '\n\n'.join(
+            '### ' + PROFILE[key] + '\n\n' + document_value(profile_data.get(key))
+            for key in ['customer_and_roles', 'business_scenario', 'pain_points']
+        )),
+        ('目标与交付范围', document_value({
+            '目标结果': profile_data.get('desired_outcomes'),
+            '交付范围': profile_data.get('scope'),
+            '成功指标': profile_data.get('success_metrics'),
+        })),
+        ('解决方案', document_value(project.get('modules', []))
+         + '\n\n### 业务数据模型\n\n' + document_value(project['business_model'])),
+        ('实施与资源', document_value({
+            '实施路线': project.get('implementation_plan'),
+            '里程碑': project.get('milestones'),
+            '预算与资源': project.get('resources'),
+            '约束': profile_data.get('constraints'),
+            '外部依赖': profile_data.get('integrations'),
+        })),
+        ('验收与风险', question_text + '\n\n逐条行为和验收标准见 [PRD](prd.md)。'),
+        ('文档信息', metadata),
+        ('模板参考', '- [Asana 项目方案指南](https://asana.com/resources/project-proposal)'),
+    ]
+    proposal = f'# {title} 项目方案草稿\n\n' + '\n\n'.join(
+        '## ' + heading + '\n\n' + body for heading, body in proposal_sections
+    ) + '\n'
     if meeting_extras:
-        proposal += '\n## 会议行动与陈述\n\n' + literal(meeting_extras) + '\n'
+        proposal += '\n## 会议行动与陈述\n\n' + document_value(meeting_extras) + '\n'
     return '\n\n'.join(document) + '\n', proposal
 
 

@@ -147,7 +147,7 @@ def schema_canvas(project, root):
         height = 90 + ((count + 3) // 4) * 92
         positions[domain] = [20, y, 930, height]
         y += height + 25
-    height = max(450, y)
+    height = max(280, y)
     payload = {'tables': tables, 'domains': domains, 'relations': relations,
                'source': 'project.json · ' + project['artifact_version'] + ' · 候选业务数据模型',
                'generatedAt': datetime.now(timezone.utc).isoformat(), 'activeTableCount': len(tables)}
@@ -162,6 +162,13 @@ def schema_canvas(project, root):
     template = re.sub(r'<p class="lead">.*?</p>', '<p class="lead">候选业务模型 · ' + html.escape(project['artifact_version']) + '</p>', template, count=1, flags=re.S)
     template = template.replace('Schema 覆盖', '实体覆盖').replace('当前结构，不包含数据库记录或个人财务数据', '候选模型，字段与关系依据当前项目需求')
     template = template.replace('width:1500px', 'width:1000px').replace('height:1130px', f'height:{height}px').replace('width="1500" height="1130" viewBox="0 0 1500 1130"', f'width="1000" height="{height}" viewBox="0 0 1000 {height}"')
+    embedded_style = """
+:root{--bg:#f3f5f8;--paper:#fdfefe;--ink:#202d40;--muted:#58677b;--line:#dfe5ed;--blue:#2863d6;--blueSoft:#edf3ff}
+.tableNode b{font-size:14px}.tableNode span{font-size:12px}.columns,.columns code{font-size:13px}.domainBox strong{font-size:14px}.domainBox small{font-size:12px}.canvasWrap{min-height:280px}.panelHead p{font-size:13px}.rel b,.rel span{font-size:12px}
+html[data-embedded] .top,html[data-embedded] footer{display:none}html[data-embedded] .shell{padding:16px}html[data-embedded] .toolbar{margin-top:0}
+"""
+    template = template.replace('</style>', embedded_style + '</style>', 1)
+    template = template.replace('</head>', '<script>if(new URLSearchParams(location.search).has("embed"))document.documentElement.dataset.embedded="true";</script></head>', 1)
     output = Path(root) / 'data-model/index.html'
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(template, encoding='utf-8')

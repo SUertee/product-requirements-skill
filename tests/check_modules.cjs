@@ -12,8 +12,16 @@ w.eval(fs.readFileSync(path.join(__dirname,'../product-requirements/assets/workb
 function button(text) { const result = [...d.querySelectorAll('button')].find(item => item.textContent === text); assert(result,text); return result; }
 function detail() { return d.querySelector('.module-detail').textContent; }
 function event(id, source) { w.dispatchEvent(new w.MessageEvent('message',{data:{type:'product-requirements:module-select',id},source})); }
-const frame = d.querySelector('.module-map');
+let frame = d.querySelector('.module-map');
 assert(frame);
+assert.equal(d.querySelectorAll('details').length, 0);
+assert.equal(d.getElementById('status').hidden, true);
+button('筛选').click();
+button('已确认').click();
+assert.match(d.getElementById('page-content').textContent, /2 \/ 6 条需求/);
+button('全部状态').click();
+button('收起筛选').click();
+frame = d.querySelector('.module-map');
 assert.match(detail(), /客户查询/);
 event('module_1', w);
 assert.match(detail(), /客户查询/);

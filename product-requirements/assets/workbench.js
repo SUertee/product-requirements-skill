@@ -18,9 +18,16 @@
   let selectedModule = null;
   let moduleView = data.module_diagram ? 'map' : 'list';
   let selectedRequirement = null;
+  let requirementTab = 'detail';
   let moduleFrame = null;
   let selectDiagramModule = null;
   let selectedDocument = 'proposal.md';
+  let documentChapter = 0;
+  let documentEntry = 0;
+  let materialTab = 'library';
+  let prototypeTab = 'preview';
+  let technicalMode = 'design';
+  let showFilters = false;
   let serverState = null;
   let intakeBusy = false;
   let intakeMessage = '';
@@ -36,6 +43,23 @@
     if (text !== undefined && text !== null) result.textContent = String(text);
     if (className) result.className = className;
     return result;
+  }
+  function sectionTabs(items, selected, label, onSelect) {
+    const navigation = element('div', null, 'section-tabs');
+    navigation.setAttribute('role', 'group');
+    navigation.setAttribute('aria-label', label);
+    for (const [key, title] of items) {
+      const button = element('button', title);
+      button.type = 'button';
+      button.setAttribute('aria-pressed', String(key === selected));
+      button.addEventListener('click', () => {
+        onSelect(key);
+        const current = Array.from(document.querySelectorAll('.section-tabs')).find(node => node.getAttribute('aria-label') === label);
+        Array.from(current?.querySelectorAll('button') || []).find(node => node.textContent === title)?.focus();
+      });
+      navigation.append(button);
+    }
+    return navigation;
   }
   function display(value) {
     if (value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length) || (typeof value === 'object' && !Object.keys(value).length)) return '待确认';
@@ -151,12 +175,13 @@
     button.addEventListener('click', () => {
       selectedSource = sourceId;
       queryInput.value = '';
+      materialTab = 'library';
       navigate('materials');
     });
     return button;
   }
   function requirementEditor(req) {
-    const detail = element('details'); detail.append(element('summary', '修订字段'));
+    const detail = element('section');
     const form = element('form', null, 'intake-form');
     const select = element('select'); select.id = 'edit-field-' + req.requirement_id;
     const labels = {title: '标题', role: '角色', trigger: '触发', behavior: '行为', inputs: '输入', outputs: '输出', rules: '规则', exceptions: '异常', acceptance_criteria: '验收', lifecycle_status: '生命周期'};
@@ -199,20 +224,34 @@
     const card = panel(req.requirement_id + ' · ' + req.title);
     badges(card, [states[req.review_status], evidenceNames[req.evidence_type]]);
     fields(card, [['角色', req.role], ['行为', req.behavior], ['验收', req.acceptance_criteria]]);
-    const detail = element('details');
-    detail.append(element('summary', '查看规则和依据'));
-    fields(detail, [['触发', req.trigger], ['输入', req.inputs], ['输出', req.outputs], ['规则', req.rules], ['异常', req.exceptions]]);
-    if (req.open_questions?.length) fields(detail, [['待确认问题', req.open_questions]]);
-    for (const sourceId of req.source_refs) {
-      const source = sourceMap.get(sourceId);
-      detail.append(sourceLink(sourceId), element('blockquote', source.text, 'source-quote'));
+    const body = element('div', null, 'requirement-tab-body');
+    const summaryFields = card.querySelector('.workbench-values');
+    summaryFields.remove();
+    const tabs = [['detail', '需求'], ['sources', '依据']];
+    if (serverState) tabs.push(['edit', '修订']);
+    let selected = tabs.some(([key]) => key === requirementTab) ? requirementTab : 'detail';
+    const navigation = sectionTabs(tabs, selected, '需求详情', show);
+    function show(key) {
+      selected = key; requirementTab = key;
+      navigation.querySelectorAll('button').forEach((button, index) => button.setAttribute('aria-pressed', String(tabs[index][0] === key)));
+      body.replaceChildren();
+      if (key === 'edit') body.append(requirementEditor(req));
+      else if (key === 'sources') {
+        for (const sourceId of req.source_refs) {
+          const source = sourceMap.get(sourceId);
+          body.append(sourceLink(sourceId), element('blockquote', source?.text || '来源待补充', 'source-quote'));
+        }
+      } else {
+        body.append(summaryFields);
+        fields(body, [['触发', req.trigger], ['输入', req.inputs], ['输出', req.outputs], ['规则', req.rules], ['异常', req.exceptions]].filter(([, value]) => display(value) !== '待确认'));
+        if (req.open_questions?.length) fields(body, [['待确认', req.open_questions]]);
+      }
     }
     const reviewButton = element('button', '记录评审意见', 'button ghost small');
     reviewButton.type = 'button';
     reviewButton.addEventListener('click', () => { reviewTarget = req.requirement_id; navigate('review'); });
-    card.append(detail);
-    if (serverState) card.append(requirementEditor(req));
-    card.append(reviewButton);
+    card.append(navigation, body, reviewButton);
+    show(selected);
     return card;
   }
   function overview() {
@@ -244,11 +283,6 @@
       open.type = 'button'; open.addEventListener('click', () => navigate('materials')); intake.append(open);
       content.append(intake);
     }
-    const profile = element('details', null, 'panel requirement-card');
-    profile.append(element('summary', '需求画像'));
-    const profileLabels = {customer_and_roles: '客户与角色', business_scenario: '业务场景', pain_points: '核心痛点', desired_outcomes: '目标结果', scope: '需求范围', constraints: '约束条件', integrations: '集成与依赖', evidence_and_questions: '证据与待确认'};
-    fields(profile, Object.entries(profileLabels).map(([key, label]) => [label, project.requirement_profile[key]]));
-    content.append(profile);
     const questions = panel('待确认问题');
     data.review.questions.slice(0, 5).forEach(question => questions.append(element('p', question.target + ' · ' + question.reason)));
     if (!data.review.questions.length) questions.append(element('p', '整体成果等待人工评审'));
@@ -336,8 +370,8 @@
         }
       });
     });
-    const connector = element('details');
-    connector.append(element('summary', '从飞书妙记获取'));
+    const connector = element('section', null, 'inbox-row');
+    connector.append(element('h3', '飞书妙记'));
     const feishu = element('form', null, 'intake-form');
     const urlLabel = element('label', '妙记链接');
     urlLabel.htmlFor = 'minutes-url';
@@ -507,15 +541,16 @@
     content.append(card);
   }
   function materials() {
-    intakePanel();
-    analysisPanel();
+    content.append(sectionTabs([['library', '素材'], ['import', '导入'], ['processing', '处理记录']], materialTab, '会议素材视图', key => { materialTab = key; render(); }));
+    if (materialTab === 'import') { intakePanel(); return; }
+    if (materialTab === 'processing') { analysisPanel(); return; }
     const entries = [];
     const assigned = new Set();
     for (const material of project.materials || []) {
       const sources = data.sources.filter(source => (material.source_ids || []).includes(source.source_id) || source.material_id === material.material_id);
       sources.forEach(source => assigned.add(source.source_id));
       const meetings = (project.meetings || []).filter(meeting => (meeting.material_ids || []).includes(material.material_id));
-      entries.push({key: 'material:' + material.material_id, title: material.name || material.material_id, meta: (material.kind || '素材') + ' · ' + sources.length + ' 段原话', material, sources, meetings});
+      entries.push({key: 'material:' + material.material_id, title: material.name || material.material_id, meta: ({transcript: '逐字稿', recording: '音视频', context: '前情资料'}[material.kind] || material.kind || '素材') + ' · ' + sources.length + ' 段原话', material, sources, meetings});
     }
     const groups = new Map();
     data.sources.filter(source => !assigned.has(source.source_id)).forEach(source => {
@@ -610,17 +645,16 @@
     host.append(element('span', group.module?.module_id || '待归类', 'module-identity'), element('h2', group.title));
     if (group.module?.goal) host.append(element('p', group.module.goal));
     const reqIds = new Set(group.items.map(req => req.requirement_id));
-    const related = element('details', null, 'module-related');
+    const related = element('div', null, 'module-related');
+    related.setAttribute('aria-label', '关联成果');
     const pages = project.pages.filter(page => (page.requirement_ids || []).some(id => reqIds.has(id)));
     const entities = (project.business_model.entities || []).filter(item => (item.requirement_ids || []).some(id => reqIds.has(id)));
     const apis = (project.apis || []).filter(item => (item.requirement_ids || []).some(id => reqIds.has(id)));
     const relations = (project.module_relations || []).filter(item => item.from === group.module?.module_id || item.to === group.module?.module_id);
     if (pages.length || entities.length || apis.length || relations.length) {
-      related.append(element('summary', '关联成果 · ' + (pages.length + entities.length + apis.length + relations.length)));
       for (const [items, label, title, view] of [[pages, '页面', item => item.name || item.page_id, 'prototype'], [entities, '实体', item => item.name || item.entity_id, 'database'], [apis, '接口', item => item.name || item.api_id, 'api']]) {
         if (items.length) {
-          related.append(element('h3', label));
-          items.forEach(item => { const button = element('button', title(item), 'source-link'); button.type = 'button'; button.addEventListener('click', () => navigate(view)); related.append(button); });
+          items.forEach(item => { const button = element('button', label + ' · ' + title(item), 'related-chip'); button.type = 'button'; button.addEventListener('click', () => navigate(view)); related.append(button); });
         }
       }
       relations.forEach(item => {
@@ -668,13 +702,10 @@
       tools.append(link);
     }
     if (serverState && project.modules?.length) {
-      const generate = element('details', null, 'module-generate'); generate.append(element('summary', '生成模块图'));
-      const form = element('form', null, 'generation-form intake-form');
-      const label = element('label', '新版本'); label.htmlFor = 'module-version';
-      const version = element('input'); version.id = 'module-version'; version.value = nextVersion(); version.required = true;
-      const submit = element('button', '生成', 'button primary small'); submit.type = 'submit'; submit.disabled = workflowBusy;
-      form.append(label, version, submit); form.addEventListener('submit', event => { event.preventDefault(); const value = version.value; workflowAction(() => localRequest('/api/generate', {method: 'POST', body: JSON.stringify({version: value, kinds: ['modules']})})); });
-      generate.append(form); tools.append(generate);
+      const generate = element('button', '生成模块图', 'button small module-generate');
+      generate.type = 'button'; generate.disabled = workflowBusy;
+      generate.addEventListener('click', () => workflowAction(() => localRequest('/api/generate', {method: 'POST', body: JSON.stringify({version: nextVersion(), kinds: ['modules']})})));
+      tools.append(generate);
     }
     content.append(tools);
     if (workflowMessage) content.append(element('p', workflowMessage, 'inline-note'));
@@ -705,7 +736,7 @@
       const frame = element('iframe', null, 'module-map'); frame.title = 'Archify 业务模块图'; frame.setAttribute('sandbox', 'allow-scripts');
       frame.style.height = Math.max(300, Math.ceil(project.modules.length / 3) * 160 + 120) + 'px';
       const bridge = `(() => {
-        const style = document.createElement('style'); style.textContent = 'body {background:#fdfefe} body > .toolbar, .container > .header, #focus-chip {display:none !important} .container {padding:0;max-width:none} .diagram-container {border:0;box-shadow:none;margin:0} .diagram-container > svg {min-width:0 !important} @media(max-width:480px){.diagram-container > svg {min-width:620px !important}} svg [data-node-id] text.t-primary {font-size:17px} svg [data-node-id] text.t-muted {font-size:13px} [data-node-id][data-workbench-selected] {filter:drop-shadow(0 0 3px #2863d6)} [data-node-id][data-workbench-filtered] {opacity:.22}'; document.head.append(style);
+        const style = document.createElement('style'); style.textContent = 'body {background:#fdfefe} body > .toolbar, .container > .header, .diagram-nav, .reader-rail, .rail-reveal, #focus-chip {display:none !important} .container {padding:0;max-width:none} .diagram-container {border:0;box-shadow:none;margin:0} .diagram-container > svg {min-width:0 !important} @media(max-width:480px){.diagram-container > svg {min-width:620px !important}} svg [data-node-id] text.t-primary {font-size:22px} svg [data-node-id] text.t-muted {font-size:16px} [data-node-id][data-workbench-selected] {filter:drop-shadow(0 0 3px #2863d6)} [data-node-id][data-workbench-filtered] {opacity:.22}'; document.head.append(style);
         function notify(event) { const node = event.target.closest('[data-node-id]'); if (node) parent.postMessage({type:'product-requirements:module-select', id:node.getAttribute('data-node-id')}, '*'); }
         document.addEventListener('click', notify, true); document.addEventListener('keydown', event => {if (event.key === 'Enter' || event.key === ' ') notify(event);}, true);
         window.addEventListener('message', event => { if (event.source !== parent || event.data?.type !== 'product-requirements:module-state') return; document.querySelectorAll('[data-node-id]').forEach(node => { const index = Number(node.getAttribute('data-node-id').replace('module_', '')); node.toggleAttribute('data-workbench-selected', index === event.data.selected); node.toggleAttribute('data-workbench-filtered', Array.isArray(event.data.visible) && !event.data.visible.includes(index)); }); });
@@ -735,6 +766,19 @@
   function markdownDocument(text) {
     const body = element('div', null, 'document-body');
     let list = null;
+    function paragraph(tag, text) {
+      const node = element(tag);
+      let offset = 0;
+      for (const match of text.matchAll(/(?<!\\)\[([^\]]+)\]\((https:\/\/[^\s)]+|(?:prd|proposal)\.md)\)/g)) {
+        node.append(document.createTextNode(unescape(text.slice(offset, match.index))));
+        const link = element('a', match[1]);
+        link.href = match[2].startsWith('https://') ? match[2] : '../' + match[2];
+        link.target = '_blank'; link.rel = 'noopener'; node.append(link);
+        offset = match.index + match[0].length;
+      }
+      node.append(document.createTextNode(unescape(text.slice(offset))));
+      return node;
+    }
     const unescape = value => value.replace(/\\([\\`*_{}\[\]<>()#!|>~])/g, '$1');
     for (const block of text.split(/\n\s*\n/)) {
       const decoded = unescape(block.trim());
@@ -743,16 +787,18 @@
       }
       for (const line of block.split('\n')) {
         const heading = /^(#{1,4}) (.*)$/.exec(line);
-        const bullet = /^- (.*)$/.exec(line);
+        const bullet = /^(\s*)- (.*)$/.exec(line);
         if (heading) {
           list = null;
           body.append(element('h' + Math.min(4, heading[1].length + 1), unescape(heading[2])));
         } else if (bullet) {
           if (!list) { list = element('ul'); body.append(list); }
-          list.append(element('li', unescape(bullet[1])));
+          const item = paragraph('li', bullet[2]);
+          item.style.marginLeft = Math.min(bullet[1].length, 12) * 8 + 'px';
+          list.append(item);
         } else {
           list = null;
-          if (line.trim()) body.append(element('p', unescape(line)));
+          if (line.trim()) body.append(paragraph('p', line));
         }
       }
       list = null;
@@ -779,24 +825,40 @@
     return wrapper;
   }
   function documents() {
-    const items = [{key: 'proposal.md', title: '项目方案', meta: '目标、范围、实现思路'}, {key: 'prd.md', title: 'PRD', meta: '功能、规则、异常、验收'}];
-    const selected = items.find(item => item.key === selectedDocument) || items[0];
-    const detail = selectionLayout(items, selected.key, '方案文档列表', key => { selectedDocument = key; });
-    const card = panel(selected.title);
-    card.append(fileLink(selected.key, '打开文件'));
-    card.append(markdownDocument(data.documents[selected.key]));
+    const items = [['proposal.md', '项目方案'], ['prd.md', 'PRD']];
+    content.append(sectionTabs(items, selectedDocument, '文档类型', key => { selectedDocument = key; documentChapter = 0; documentEntry = 0; render(); }));
+    const text = data.documents[selectedDocument] || '';
+    const chunks = text.split(/(?=^## )/m);
+    const intro = chunks.shift() || '';
+    const chapters = chunks.map((chunk, index) => ({key: String(index), title: chunk.split('\n')[0].replace(/^## /, ''), meta: '', text: chunk}));
+    if (!chapters.length) { const card = panel('文档'); card.append(markdownDocument(intro)); content.append(card); return; }
+    documentChapter = Math.min(documentChapter, chapters.length - 1);
+    const detail = selectionLayout(chapters, String(documentChapter), '文档章节', key => { documentChapter = Number(key); documentEntry = 0; });
+    const card = panel(chapters[documentChapter].title);
+    const actions = element('div', null, 'document-actions');
+    actions.append(fileLink(selectedDocument, '打开完整文档'));
+    card.append(actions);
+    const chapterText = chapters[documentChapter].text.split('\n').slice(1).join('\n');
+    const entries = chapterText.split(/(?=^### )/m);
+    const introduction = entries.shift() || '';
+    if (entries.length > 1) {
+      documentEntry = Math.min(documentEntry, entries.length - 1);
+      const picker = element('div', null, 'document-entry-picker');
+      picker.append(sectionTabs(entries.map((entry, index) => [String(index), entry.split('\n')[0].replace(/^### /, '')]), String(documentEntry), '章节条目', key => { documentEntry = Number(key); render(); }));
+      card.append(picker, markdownDocument(introduction + entries[documentEntry]));
+    } else card.append(markdownDocument(chapterText));
     detail.append(card);
   }
   function artifactPreviews(prefix, emptyMessage) {
     const files = data.artifacts.filter(item => item.path.startsWith(prefix) && item.path.endsWith('.html'));
     if (!files.length) { content.append(empty(emptyMessage)); return; }
     for (const artifact of files) {
-      const card = panel(artifact.path);
+      const card = panel(prefix === 'data-model/' ? '业务数据模型' : prefix === 'prototype/' ? '交互原型' : '流程架构');
       card.append(fileLink(artifact.path, '打开完整页面'));
       const frame = element('iframe', null, 'workbench-preview');
       frame.title = artifact.path;
       frame.setAttribute('sandbox', 'allow-scripts allow-forms');
-      frame.src = '../' + artifact.path.split('/').map(encodeURIComponent).join('/');
+      frame.src = '../' + artifact.path.split('/').map(encodeURIComponent).join('/') + (prefix === 'data-model/' ? '?embed=1' : '');
       if (prefix === 'prototype/') {
         const controls = element('div', null, 'document-actions');
         controls.setAttribute('role', 'group');
@@ -813,7 +875,18 @@
           controls.append(button);
         }
         frame.style.width = {desktop: '100%', tablet: '768px', mobile: '390px'}[previewDevice];
-        card.append(controls);
+        const pages = element('div', null, 'preview-pages');
+        pages.setAttribute('role', 'group'); pages.setAttribute('aria-label', '原型页面');
+        project.pages.forEach((page, index) => {
+          const button = element('button', page.name || page.page_id, 'button small'); button.type = 'button';
+          button.setAttribute('aria-pressed', String(index === 0));
+          button.addEventListener('click', () => {
+            frame.src = '../' + artifact.path.split('/').map(encodeURIComponent).join('/') + '#' + encodeURIComponent(page.page_id);
+            pages.querySelectorAll('button').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+          });
+          pages.append(button);
+        });
+        card.append(pages, controls);
       }
       card.append(frame);
       content.append(card);
@@ -845,9 +918,7 @@
   function generationResults(kinds) {
     const results = (data.generation?.results || []).filter(item => kinds.includes(item.capability));
     if (!results.length) return;
-    const card = element('details', null, 'panel requirement-card generation-results');
-    card.open = results.some(result => result.generation_status !== 'success');
-    card.append(element('summary', results.filter(result => result.generation_status === 'success').length + ' 项已生成 · 查看检查记录'));
+    const card = panel('生成检查');
     for (const result of results) {
       const row = element('section', null, 'inbox-row');
       row.append(element('h3', result.capability + ' · ' + (result.generation_status === 'success' ? '已生成' : '生成失败')));
@@ -858,9 +929,9 @@
     content.append(card);
   }
   function prototype() {
-    generationPanel(['prototype']);
-    generationResults(['prototype']);
-    artifactPreviews('prototype/', '原型等待定义确认与实际生成');
+    content.append(sectionTabs([['preview', '预览'], ['pages', '页面定义'], ['generate', '生成']], prototypeTab, '原型视图', key => { prototypeTab = key; render(); }));
+    if (prototypeTab === 'generate') { generationPanel(['prototype']); generationResults(['prototype']); return; }
+    if (prototypeTab === 'preview') { artifactPreviews('prototype/', '原型等待定义确认与实际生成'); return; }
     const pages = panel('页面定义');
     for (const page of project.pages) {
       const section = element('section', null, 'inbox-row');
@@ -874,6 +945,10 @@
     content.append(pages);
   }
   function database() {
+    if (data.artifacts.some(item => item.path.startsWith('data-model/') && item.path.endsWith('.html'))) {
+      artifactPreviews('data-model/', '交互式 ERD 待生成');
+      return;
+    }
     const model = project.business_model;
     if (Array.isArray(model.entities) && model.entities.length) {
       for (const entity of model.entities) {
@@ -1014,8 +1089,8 @@
     if (data.diff) {
       const diff = panel('版本差异');
       fields(diff, [['来源版本', data.diff.baseline_version], ['当前版本', data.diff.artifact_version]]);
-      for (const conflict of data.diff.conflicts || []) { const row = element('details'); row.open = true; row.append(element('summary', conflict.target + ' · 锁定冲突')); fields(row, [['字段', conflict.field], ['保留值', conflict.retained], ['建议值', conflict.proposed]]); diff.append(row); }
-      const changes = element('details'); changes.append(element('summary', (data.diff.changes || []).length + ' 项变更')); changes.append(valueNode(data.diff.changes)); diff.append(changes); content.append(diff);
+      for (const conflict of data.diff.conflicts || []) { const row = element('section', null, 'inbox-row'); row.append(element('h3', conflict.target + ' · 锁定冲突')); fields(row, [['字段', conflict.field], ['保留值', conflict.retained], ['建议值', conflict.proposed]]); diff.append(row); }
+      const changes = element('section', null, 'inbox-row'); changes.append(element('h3', (data.diff.changes || []).length + ' 项变更')); changes.append(valueNode(data.diff.changes)); diff.append(changes); content.append(diff);
     }
     const card = panel('评审记录');
     fields(card, [['当前版本', project.artifact_version], ['基线', project.baseline_version], ['文档评审', data.review.review_status]]);
@@ -1032,8 +1107,8 @@
     content.append(decisions);
   }
   function technical() {
-    generationPanel(['workflow', 'erd']);
-    generationResults(['workflow', 'erd']);
+    content.append(sectionTabs([['design', '设计'], ['generate', '生成']], technicalMode, '技术设计视图', key => { technicalMode = key; render(); }));
+    if (technicalMode === 'generate') { generationPanel(['workflow', 'erd']); generationResults(['workflow', 'erd']); return; }
     const tabs = {diagrams: '流程架构', database: '数据库', api: 'API'};
     const navigation = element('div', null, 'technical-tabs');
     navigation.setAttribute('role', 'tablist');
@@ -1088,14 +1163,28 @@
     const searchLabels = {materials: '搜索素材或会议原话', modules: '搜索需求、规则或依据', review: '搜索评审问题', technical: '搜索接口草案'};
     queryInput.placeholder = searchLabels[active] || '搜索';
     queryInput.setAttribute('aria-label', queryInput.placeholder);
-    statusInput.hidden = active !== 'modules';
-    evidenceInput.hidden = active !== 'modules';
+    statusInput.hidden = true;
+    evidenceInput.hidden = true;
+    document.getElementById('requirement-filters')?.remove();
+    if (active === 'modules') {
+      const filters = element('button', (showFilters ? '收起筛选' : '筛选') + ((statusInput.value || evidenceInput.value) ? ' · 已启用' : ''), 'button small');
+      filters.id = 'requirement-filters'; filters.type = 'button'; filters.setAttribute('aria-expanded', String(showFilters));
+      filters.addEventListener('click', () => { showFilters = !showFilters; render(); document.getElementById('requirement-filters').focus(); });
+      document.querySelector('.workbench-toolbar').append(filters);
+      if (showFilters) {
+        const filterPanel = element('div', null, 'filter-panel');
+        for (const [input, title] of [[statusInput, '需求状态'], [evidenceInput, '证据类型']]) {
+          filterPanel.append(sectionTabs(Array.from(input.options).map(option => [option.value, option.textContent.replace('全部需求状态', '全部状态').replace('全部证据类型', '全部依据')]), input.value, title, key => { input.value = key; render(); }));
+        }
+        content.append(filterPanel);
+      }
+    }
     document.querySelector('.workbench-toolbar').hidden = !['materials', 'modules', 'review'].includes(active) && !(active === 'technical' && technicalTab === 'api');
     const renderers = {overview, materials, modules, documents, prototype, technical, review};
     renderers[active]();
   }
   function navigate(view) {
-    if (['database', 'api', 'diagrams'].includes(view)) { technicalTab = view; view = 'technical'; }
+    if (['database', 'api', 'diagrams'].includes(view)) { technicalMode = 'design'; technicalTab = view; view = 'technical'; }
     active = Object.hasOwn(views, view) ? view : 'overview';
     history.replaceState(null, '', '#' + active);
     render();

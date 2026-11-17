@@ -74,7 +74,11 @@ async function settle() {
     assert(document.getElementById('page-content').children.length > 0);
   }
   navigate('materials');
+  assert.equal(document.querySelectorAll('details').length, 0);
+  assert.equal(document.getElementById('material-file'), null);
+  button('导入').click();
   assert.match(document.getElementById('page-content').textContent, /已生成分析版本/);
+  button('素材').click();
   const audio = document.querySelector('.selection-detail audio');
   assert(audio, 'Linked recording should be available beside its transcript');
   assert.match(audio.src, /materials\/synthetic-audio.wav$/);
@@ -91,6 +95,7 @@ async function settle() {
   button('定位录音 00:01').click();
   assert.match(document.getElementById('page-content').textContent, /原话时间超出录音长度/);
   navigate('modules');
+  button('修订').click();
   const selector = document.getElementById('edit-field-REQ-001');
   change(selector, 'acceptance_criteria');
   const text = document.getElementById('edit-value-REQ-001');
@@ -110,12 +115,21 @@ async function settle() {
     {target: 'REQ-001', field: 'acceptance_criteria', value: '主题必填，提交后显示唯一编号'},
     {target: 'REQ-001', field: 'locked_fields', value: []}
   ]);
+  navigate('documents');
+  assert(document.querySelectorAll('.selection-list button').length >= 3);
+  button('PRD').click();
+  [...document.querySelectorAll('.selection-list button')].find(item => item.textContent === '功能需求').click();
+  assert.match(document.querySelector('.selection-detail').textContent, /REQ-001/);
+  assert.equal(document.querySelectorAll('.document-body h4').length, 1);
+  assert.equal(document.querySelector('.document-entry-picker [aria-pressed="true"]').textContent, 'REQ-001 · 创建工单');
+  assert.equal(document.querySelectorAll('details').length, 0);
   navigate('prototype');
-  assert.equal(document.querySelector('.generation-results').open, false);
+  assert.equal(document.querySelector('.generation-results'), null);
   button('手机').click();
   assert.equal(document.querySelector('iframe').style.width, '390px');
   button('桌面').click();
   assert.equal(document.querySelector('iframe').style.width, '100%');
+  button('生成').click();
   submit(document.getElementById('generation-version').closest('form'));
   await settle();
   assert.match(document.getElementById('page-content').textContent, /Fixture dependency unavailable/);
