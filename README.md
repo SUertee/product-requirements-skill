@@ -1,79 +1,118 @@
 # 产品需求落地 Skill
 
-从客户会议到 PRD、工作台与交互原型。服务 PM／FDE，结合录音、逐字稿和前情资料，保留需求依据并支持评审后的增量修订。
+面向 PM／FDE，将客户会议录音、逐字稿和前情资料整理为带原话依据的需求，生成项目方案、PRD 和内部工作台，经人工确认后继续生成客户交互原型。
+
+减少会后信息遗漏和转述偏差，让团队围绕同一份需求、来源和模型讨论，加快从客户沟通到产品落地的过程。
 
 ## 工作流程
 
-目标链路为 **会议录制／上传音视频 → 妙记处理完成 → Connector 获取素材 → Skill 分析与建模 → 内部工作台 → 人工确认 → 交互原型 → 复核与客户分享**。
+**会议录制／上传音视频 → 妙记处理完成 → Connector 获取素材 → 需求分析与建模 → 方案、PRD 和工作台 → 人工确认 → 交互原型 → 复核与客户分享。**
 
 1. **获取素材**。飞书会议开启云录制，或将已有录音、录屏及录音豆导出文件上传妙记。本地文件也可直接导入工作台。
-2. **接入与预处理**。妙记产物就绪后，通过 Connector 获取带时间定位的逐字稿及所需原件，保存来源并去重。本地音视频可提取音轨，交由已授权的 ASR 服务转写。
-3. **分析与建模**。结合客户背景、历史项目和已有需求基线，整理八要素、业务模块、带原话依据的需求、疑问与数据模型。
+2. **接入与预处理**。妙记产物就绪后，获取带时间定位的逐字稿及所需原件，保存来源并去重。本地音视频可提取音轨，再由已授权的 ASR 服务转写。
+3. **分析与建模**。结合客户背景、历史项目和已有需求基线，整理八要素、业务模块、需求卡、原话依据、疑问与数据模型。
 4. **内部评审**。生成项目方案、PRD 和工作台，供团队核对范围、规则及验收标准，集中记录评审意见。
-5. **原型交付**。人工确认后生成可交互原型，复核核心流程与客户可见内容，再按授权部署分享。
+5. **原型交付**。人工确认后生成交互原型，复核核心流程和客户可见内容，再按授权部署分享。
 6. **持续修订**。后续会议和客户反馈关联原需求，记录差异与影响，形成下一版本。
 
-当前已实现指定妙记链接获取、本地接收与预处理、结构化文档和工作台生成，以及评审意见保存。自动监听妙记、ASR、后台自动分析、自动原型生成与部署仍待接入。详细设计与完成条件见 [开发流程](docs/planning/development.md)。
+详细实施顺序、每页功能和完成条件见 [开发流程](docs/planning/development.md)。
 
-## 使用入口
+## 组合的 Skill
 
-Skill 的执行入口为 [SKILL.md](product-requirements/SKILL.md)，执行指南、模板和工具位于该包内的 references/、assets/ 和 scripts/。当前已编写工作流、需求建模约定、输出合同与 PRD 模板，文本标准化脚本可以运行。端到端生成效果需在比赛宿主中验证，结构化需求可生成方案与 PRD 草稿。已增加七页内部工作台、本地文件接收、录屏音轨提取、飞书妙记指定链接 Connector 与评审意见存储。ASR、后台自动分析和原型生成待接入。
+主 Skill 负责需求到交付的流程编排，结合 Archify 和 Schema Canvas 生成专业图示与数据模型页面。
+
+| Skill | 职责 | 调用阶段与产物 |
+| --- | --- | --- |
+| 产品需求落地 Skill | 素材接入、需求理解、业务建模、文档生成、工作台汇总和评审修订 | 从来源片段整理需求，组织方案、PRD、工作台与原型交付 |
+| Archify | 生成业务流程图、技术架构图等可独立打开的 HTML 图示 | 业务流程与架构关系明确后调用，产物进入工作台“技术设计 → 流程架构” |
+| Schema Canvas（schema-canvas） | 展示实体、字段、关系与约束，提供搜索、关系聚焦和详情探索 | 业务模型整理后调用，交互式 ERD 进入工作台“技术设计 → 数据库” |
+
+两种图示能力使用同一项目版本和需求依据。当前已配置依赖定位和调用约定，项目数据到生成器的自动输入适配仍待联调。已有工作台可展示实际生成并登记的成果。
+
+Archify 的上游为 tt-a1i/archify，当前固定提交为 `e37848822238e3a61b12739185cdadd49843a620`，采用 Apache-2.0，具体文件和第三方组件的声明随上游保留。Schema Canvas 为团队自有 Skill。来源、版本及接入范围分别见 [Archify 说明](docs/references/archify.md)、[Schema Canvas 说明](docs/references/schema-canvas.md)，配置入口为 [integrations.json](product-requirements/integrations.json)。
+
+### 依赖位置
+
+实际 Skill 包位于 `product-requirements/`，入口为 [SKILL.md](product-requirements/SKILL.md)。Archify 和 Schema Canvas 通过宿主安装或工程旁的 `skill-dependencies/` 提供，也可指定包目录。
 
 ```bash
-python3 product-requirements/scripts/normalize_transcript.py --input /path/to/meeting.srt --project-id demo --output runs/demo/sources.jsonl
+export ARCHIFY_SKILL_DIR="/path/to/archify/archify"
+export SCHEMA_CANVAS_SKILL_DIR="/path/to/schema-canvas"
+python3 product-requirements/scripts/resolve_capability.py archify
+python3 product-requirements/scripts/resolve_capability.py schema-canvas
 ```
 
-## 开发文档
+定位成功表示入口可读。执行生成时还需读取对应 Skill 的入口、准备实际输入并完成其检查。完整调用规则见 [能力接入](product-requirements/references/capabilities.md)。
 
-整体框架、模块职责、数据契约和实际能力见 [docs 导航](docs/README.md)。
+## 工作台内容
 
-文档生成命令与字段见 [项目输入规范](product-requirements/references/project-data.md)。
+| 页面 | 内容 |
+| --- | --- |
+| 总览 | 项目目标、范围、版本、成果入口与关键疑问 |
+| 会议素材 | 会议原话、前情资料、录音／录屏、接收箱及需求回查 |
+| 功能需求 | 业务模块、需求卡、规则、验收、证据与确认状态 |
+| 方案文档 | 项目方案和 PRD 的阅读及文件入口 |
+| 原型预览 | 已生成交互页面、页面定义与关联需求 |
+| 技术设计 | 流程架构、数据库和 API 三类内容 |
+| 评审记录 | 待确认问题、版本绑定的意见、结论和导出 |
 
-## 本地工作台
+默认视觉参考用户已有的 ParTrace Vision workbench。工作台和原型使用包内 UI 规范及模板，卡片通过实际内容、状态和操作表达用途。有效规范见 [页面设计](product-requirements/references/workbench.md) 和 [UI 规范](product-requirements/references/ui-design.md)，原始样式参考见 [可编辑副本](docs/references/partrace-workbench/workbench.html)。
 
-已生成文档版本后，通过 `product-requirements/scripts/serve_workbench.py --run-dir <版本目录> --workspace <接收箱目录>` 启动。支持导入录音、录屏与逐字稿、获取指定妙记，以及保存版本绑定的评审意见。具体命令与限制见 [本地运行说明](docs/features/intake.md)，整体顺序见 [开发流程](docs/planning/development.md)。
+## 当前能力
 
-## 参考与适配
+- **已实现**。本地素材接收、文本／字幕标准化、录屏音轨提取、指定妙记链接 Connector、结构化方案／PRD 与七页工作台生成、评审意见保存和导出。
+- **已定义执行规则**。需求画像八要素、带原话依据的需求卡、业务建模、人工确认、字段锁定与增量修订。语义分析由主 Skill 所在宿主执行。
+- **待接入或验证**。妙记自动监听、ASR、后台自动调用主 Skill、Archify／Schema Canvas 自动输入适配、交互原型自动生成、评审意见应用和客户部署。真实妙记下载及比赛宿主端到端运行仍待验证。
 
-需求建模来自团队提供的 Skill 设计文档与方案讨论。工作台信息组织参考 ParTrace Vision 的 workbench 工作台。业务模型可适配用户的 schema-canvas Skill，仓库中保留环境缺少该 Skill 时的生成约定。
+录屏当前处理音轨，画面理解待开发。多人在线编辑暂缓。当前行为与检查记录见 [实际功能](docs/features/README.md) 和 [工程进度](docs/progress/implementation.md)。
 
-项目方案在星宫赛事目录维护。工程源码在本仓库维护。
+## 本地使用
 
-## 能力接入
+本地工具使用 Python 标准库，已在 Python 3.11 环境验证。音轨提取使用 ffmpeg，飞书接入使用已授权的 lark-cli 用户身份。依赖、权限与命令见 [本地运行说明](docs/features/intake.md)。
 
-主 Skill 组织录音接入、需求转化、建模、方案与 PRD、人工确认、原型、工作台汇总和最终复核。图示与 ERD 按 [能力接入与设计路由](product-requirements/references/capabilities.md) 调用，原型采用 [内置 UI 规范](product-requirements/references/ui-design.md) 与 assets/ui.css，工作台采用 [页面规范](product-requirements/references/workbench.md) 与包内 assets/workbench-template.html、workbench.css、workbench.js，固定依赖见包内 integrations.json。外部依赖通过宿主安装或工程旁 skill-dependencies 提供。
+### 导入材料
 
-## 工作台样式参考副本
+```bash
+python3 product-requirements/scripts/ingest_material.py \
+  --input /path/to/meeting.mp4 \
+  --project-id demo \
+  --workspace runs/demo/inbox
+```
 
-[打开可编辑的 workbench](docs/references/partrace-workbench/workbench.html)。该副本保留 ParTrace Vision 的示例内容，用于继续优化工作台布局和样式，所需本地资源随目录保存。
+接收器保存原件和任务记录。逐字稿生成来源片段后进入待分析状态，音视频等待可用转写。主 Skill 结合前情和基线整理结构化项目，字段约定见 [项目输入规范](product-requirements/references/project-data.md)。
+
+### 生成与运行工作台
+
+准备好 `project.json` 和 `sources.jsonl` 后，从仓库根目录执行。每次生成使用新的输出目录。
+
+```bash
+python3 product-requirements/scripts/build_documents.py \
+  --project runs/input/project.json \
+  --sources runs/input/sources.jsonl \
+  --output runs/demo/v0.1
+
+python3 product-requirements/scripts/serve_workbench.py \
+  --run-dir runs/demo/v0.1 \
+  --workspace runs/demo/inbox \
+  --port 8765
+```
+
+打开命令返回的地址，即可浏览工作台、导入新材料和记录评审意见。静态工作台也可独立浏览，录音和其他附件随版本输出目录携带。新材料经 Skill 分析和修订后进入下一版本。
 
 ## 文件组织
 
 ```text
 product-requirements-skill/
 ├── README.md
-├── product-requirements/
+├── AGENTS.md                   开发与协作约定
+├── product-requirements/       实际 Skill 包
 │   ├── SKILL.md
-│   ├── integrations.json
-│   ├── references/
-│   ├── assets/
-│   └── scripts/
-└── docs/
-    ├── README.md
-    ├── PRODUCT.md
-    ├── architecture/
-    ├── design/
-    ├── planning/
-    ├── progress/
-    ├── features/
-    └── references/
-        ├── README.md
-        ├── archify.md
-        ├── schema-canvas.md
-        └── partrace-workbench/
+│   ├── integrations.json       外部 Skill 来源和定位配置
+│   ├── references/             执行、数据和页面规范
+│   ├── assets/                 参与生成的模板与样式
+│   └── scripts/                接收、生成及本地运行工具
+├── docs/                       产品、设计、架构和开发文档
+└── tests/                      数据、接入与本地接口回归测试
 ```
 
-安装或加载主 Skill 时选择 `product-requirements/`。开发计划见 docs/planning/development.md，设计与实现参考见 [参考索引](docs/references/README.md)。本地生成结果使用仓库根目录的 runs/，录音使用 recordings/，两者按现有忽略规则管理。
-
-
-整体框架、模块交接与实施路线见 [项目文档导航](docs/README.md)。
+完整文档入口见 [docs 导航](docs/README.md)，开发约定见 [AGENTS.md](AGENTS.md)。`runs/` 保存本地运行结果，`recordings/` 保存本地录音，两者已加入 Git 忽略规则。项目方案在星宫赛事目录维护，工程源码和开发文档在本仓库维护。
