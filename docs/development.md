@@ -1,3 +1,5 @@
-# 开发分工与进度
+# 开发文档入口
 
-开发文档已整理至 [开发计划、进度与三人分工](progress/development.md)。整体框架及模块交接见 [文档导航](README.md)。
+- [开发计划与三人分工](planning/development.md)
+- [工程进度与验证情况](progress/implementation.md)
+- [项目文档导航](README.md)

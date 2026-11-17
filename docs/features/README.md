@@ -17,4 +17,4 @@ python3 product-requirements/scripts/resolve_capability.py archify
 python3 product-requirements/scripts/resolve_capability.py schema-canvas
 ```
 
-Archify 开发副本的 doctor 检查已通过，当前项目输入适配、图示生成与工作台集成待联调。设计与实施顺序分别见 [整体架构](../architecture/README.md)和[开发进度](../progress/development.md)。
+Archify 开发副本的 doctor 检查已通过，当前项目输入适配、图示生成与工作台集成待联调。设计与实施顺序分别见 [整体架构](../architecture/README.md)和[开发计划](../planning/development.md)。
