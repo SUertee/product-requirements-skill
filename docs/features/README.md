@@ -1,33 +1,42 @@
 # 当前实际功能
 
-2026-11-17 按源码和本地检查记录的能力。端到端会议理解与成果生成仍需开发联调。
+2026-11-17，按源码、自动回归、合成演练和真实素材分别记录。功能验收条件见 [开发 Spec](../planning/functional-spec.md)，操作命令见 [运行流程](../../product-requirements/references/execution.md)。
 
-| 功能 | 实际行为 | 限制与验证 |
+| 范围 | 已实现行为 | 实际验证与限制 |
 | --- | --- | --- |
-| 文本与字幕标准化 | UTF-8 TXT、Markdown、SRT、VTT 转来源 JSONL，保留段落或时间定位 | 已检查字幕时间、重复运行 ID 稳定、普通文本和失败保留旧输出。音频转写适配器待实现 |
-| 外部 Skill 定位 | 环境变量或默认开发依赖位置定位 Archify／Schema Canvas 入口 | 已验证本机两个入口，定位成功仅代表文件可读 |
-| 结构化需求到文档 | 校验项目与来源，按模板生成方案／PRD、疑问及 manifest，保存原输入与锁定字段 | 已通过 31 项数据、导入与 HTTP 回归检查，覆盖引用、ID、项目归属、输出保护、写入失败与锁。会议自动理解待实现 |
-| 内置 UI 规则 | 页面组织、语义色、组件状态、响应式及辅助文案规则，附基础 CSS | 尚需实际生成的客户项目页面验证 |
-| 参考 workbench | 原示例可编辑 HTML 及相关页面、脚本、视频和演示稿 | 27 处本地 HTML 引用已检查，参考副本的业务内容属于 ParTrace Vision |
+| F01 素材与前情 | 本地文件与指定妙记接收、字幕标准化、音轨提取、原件保留、去重、项目归属、前情选择 | 文件和 HTTP 回归通过，真实妙记取得 198 条带时间来源。媒体下载被 CLI 地址校验拒绝 |
+| F02 分析任务 | 来源／前情／基线快照、宿主请求与结果校验、并发防重、失败恢复、新版本发布 | 合成宿主协议与版本回归通过，当前助手完成真实会议分析。码道自动调用待实测 |
+| F03 需求与模型 | 稳定 REQ、来源、未知项、模块、业务模型、差异与取消历史 | 引用、跨项目和锁定保护回归通过。模型质量依据输入与人工评审 |
+| F04 文档与工作台 | 方案、PRD、七页工作台、来源回查、模型／API、任务与产物登记 | 数据／HTTP／DOM 检查通过，浏览器已核对原型、技术页与需求修订 |
+| F05 评审 | 版本绑定意见、revision 冲突、字段修订、人工解锁、锁定冲突、新版本与人工来源 | 浏览器实际完成解锁修改并生成 v5，修改项返回草稿，旧版本保留 |
+| F06 原型 | 已确认页面的表单、列表、必填校验、创建结果、查询和返回，明确模拟数据 | 浏览器演练创建和筛选通过。当前模板支持表单／列表，其他交互需按页面规格扩展 |
+| F07 图示 | 业务流程适配 Archify validate／render／check，实体模型适配 Schema Canvas | 本机固定依赖生成实际 HTML，浏览器可加载、ERD 详情可读。数据库事实需独立来源 |
+| F08 客户包 | 选定原型、最终发布评审、资源依赖检查、自包含 ZIP、反馈新版本 | 包范围、校验和和版本回归通过。公网部署与客户验收待完成 |
+| F09 后台 | 目录稳定检测、显式妙记查询轮询、ASR／分析命令适配、持久状态和重试 | 契约与恢复回归通过，真实 ASR 质量及录音豆自动传输待设备／服务实测 |
+| F10 外部验证 | 已选真实会议、记录真实结果与失败位置，已核对官方宿主入口 | 码道安装与加载、真实媒体比对、ASR 和公网部署待完成 |
 
-从仓库根目录运行文本标准化与定位工具。
+## 验证方式
+
+- Python 回归覆盖输入、版本、引用、并发、锁定、评审、生成、发布包和后台接入。
+- [DOM 回归](../../tests/check_workbench.cjs) 覆盖七页、分析状态、人工解锁、评审请求、生成错误、键盘标签，以及原型校验／创建／搜索。
+- 合成端到端使用 [固定会议输入](../../tests/fixtures/customer-meeting.txt) 与明确的宿主响应夹具，覆盖生成到反馈。该夹具验证流程协议，语义分析质量另以真实素材核对。
+- 浏览器与真实样本的环境、操作和缺口见 [工程进度](../progress/implementation.md)。真实客户素材保留在已忽略的本地 runs 目录。
+
+## 运行入口
+
+从仓库根目录运行。
 
 ```bash
-python3 product-requirements/scripts/normalize_transcript.py --input meeting.txt --project-id demo --output runs/demo/sources.jsonl
-python3 product-requirements/scripts/resolve_capability.py archify
-python3 product-requirements/scripts/resolve_capability.py schema-canvas
+python3 -m unittest discover -s tests -q
+node --check product-requirements/assets/workbench.js
+python3 product-requirements/scripts/workflow.py --help
+python3 product-requirements/scripts/intake_runner.py --help
 ```
 
-Archify 开发副本的 doctor 检查已通过，当前项目输入适配、图示生成与工作台集成待联调。设计与实施顺序分别见 [整体架构](../architecture/README.md)和[开发计划](../planning/development.md)。
+DOM 回归需可解析的 jsdom 模块，使用外部环境安装的 jsdom 或 NODE_PATH 指向已有依赖，传入含 workbench 与 prototype 的合成版本目录。
 
+```bash
+node tests/check_workbench.cjs /path/to/synthetic/version
+```
 
-文档生成命令与字段见 [结构化项目输入](../../product-requirements/references/project-data.md)。
-
-
-## 项目工作台
-
-build_documents.py 已增加七页工作台生成，支持会议与附件、需求来源关联、模块归集、文档阅读、技术标签和评审清单，并提供搜索筛选及项目 JSON 导出。16 项自动检查和生成脚本语法检查通过，浏览器交互与视觉待实际核对。原型、图示和交互 ERD 的真实生成适配继续开发。
-
-## 素材导入与本地运行
-
-已实现文件上传、录屏音轨提取、妙记指定链接 Connector、接收箱、失败重试与版本绑定的评审保存／导出。入口与状态见 [输入与本地工作台](intake.md)。真实妙记受当前账号 scope 限制尚未获取，ASR 与后台自动分析待接入。
+素材导入、Connector 和本地服务的详细参数见 [输入与本地工作台](intake.md)。Skill 入口、外部依赖位置和许可证见工程 README。

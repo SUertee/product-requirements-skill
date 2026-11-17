@@ -7,7 +7,7 @@
 | PRODUCT.md | 为谁做、解决什么问题、交付什么 | [产品定义](PRODUCT.md) |
 | design/ | 工作台与原型怎样组织和交互 | [工作台设计](design/workbench.md) |
 | architecture/ | 模块、数据、任务和版本怎样协作 | [整体框架](architecture/README.md)、[模块拆分](architecture/modules.md)、[数据契约](architecture/contracts.md) |
-| planning/ | 模块按什么顺序实现、怎样交接与验收 | [模块开发顺序](planning/development.md) |
+| planning/ | 模块按什么顺序实现、怎样交接与验收 | [开发流程](planning/development.md)、[功能 Spec](planning/functional-spec.md) |
 | progress/ | 实际完成、验证及待验证内容是什么 | [工程进度](progress/implementation.md) |
 | features/ | 当前实际可运行的功能与限制 | [实际功能](features/README.md) |
 | references/ | 参考来源、固定版本和采用范围 | [参考索引](references/README.md) |

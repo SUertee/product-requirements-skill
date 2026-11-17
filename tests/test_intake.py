@@ -105,6 +105,12 @@ class IntakeTests(unittest.TestCase):
             with self.assertRaisesRegex(connector.ConnectorError, 'outside'):
                 connector.import_minutes(token, self.workspace, 'demo', media=True)
 
+    def test_connector_reads_safety_error_after_download_progress(self):
+        result = subprocess.CompletedProcess([], 2, '', 'Downloading media: sample\n' + json.dumps({'ok': False, 'error': {'message': 'blocked download URL: local/internal host is not allowed'}}))
+        with patch.object(connector.subprocess, 'run', return_value=result):
+            with self.assertRaisesRegex(connector.ConnectorError, 'URL safety checks'):
+                connector.call_cli([])
+
     def test_connector_error_contains_scope_and_omits_private_response(self):
         result = subprocess.CompletedProcess([], 3, '', json.dumps({'ok': False, 'error': {'missing_scopes': ['minutes:minutes.media:export'], 'hint': 'private URL'}}))
         with patch.object(connector.subprocess, 'run', return_value=result):
@@ -169,6 +175,38 @@ class LocalServiceTests(unittest.TestCase):
         self.assertEqual(self.request('POST', '/api/review', json.dumps(payload), {'X-Workbench-Request': '1'})[0], 409)
         self.assertEqual(json.loads((self.run / 'project.json').read_text()), self.project)
         self.assertEqual(len(self.server.review()['decisions']), 1)
+
+    def test_analysis_api_and_new_version_scoped_review(self):
+        headers = {'X-Workbench-Request': '1'}
+        status, raw = self.request('POST', '/api/analysis', json.dumps({'version': 'v2', 'job_ids': []}), headers)
+        self.assertEqual(status, 201)
+        task = json.loads(raw)['task']
+        self.assertEqual(self.request('GET', '/api/tasks/' + task['id'] + '/request')[0], 200)
+        candidate = json.loads(json.dumps(self.project))
+        candidate.update(artifact_version='v2', baseline_version='v1')
+        status, raw = self.request('POST', '/api/analysis/complete', json.dumps({'request_id': task['id'], 'project': candidate}), headers)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(raw)['task']['status'], 'completed')
+        self.assertEqual(self.request('GET', '/versions/' + task['id'] + '/workbench/index.html')[0], 200)
+        status, raw = self.request('GET', '/api/status', headers={'X-Workbench-Run': task['id']})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(raw)['artifact_version'], 'v2')
+        review = {'revision': 0, 'target': 'REQ-001', 'outcome': 'confirmed'}
+        status, _ = self.request('POST', '/api/review', json.dumps(review), {**headers, 'X-Workbench-Run': task['id']})
+        self.assertEqual(status, 200)
+        self.assertEqual(len(self.server.review(candidate)['decisions']), 1)
+        self.assertEqual(self.server.review()['decisions'], [])
+
+    def test_review_api_application_requires_current_revision(self):
+        headers = {'X-Workbench-Request': '1'}
+        review = {'revision': 0, 'target': 'REQ-001', 'outcome': 'confirmed'}
+        self.request('POST', '/api/review', json.dumps(review), headers)
+        self.assertEqual(self.request('POST', '/api/review/apply', json.dumps({'revision': 0, 'version': 'v2'}), headers)[0], 409)
+        status, raw = self.request('POST', '/api/review/apply', json.dumps({'revision': 1, 'version': 'v2'}), headers)
+        self.assertEqual(status, 201)
+        result = json.loads(raw)['task']
+        project = json.loads((Path(result['result_dir']) / 'project.json').read_text())
+        self.assertEqual(project['requirements'][0]['review_status'], 'confirmed')
 
     def test_static_files_allow_only_manifest_entries_and_byte_ranges(self):
         self.assertEqual(self.request('GET', '/workbench/index.html')[0], 200)

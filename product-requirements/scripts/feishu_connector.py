@@ -12,7 +12,9 @@ from ingest_material import ingest
 
 
 class ConnectorError(ValueError):
-    pass
+    def __init__(self, message, code=None):
+        super().__init__(message)
+        self.code = code
 
 
 def minute_token(value):
@@ -35,21 +37,34 @@ def call_cli(arguments, cwd=None):
         result = subprocess.run(['lark-cli', *arguments, '--as', 'user', '--format', 'json'], capture_output=True, text=True, timeout=600, cwd=cwd)
     except FileNotFoundError as error:
         raise ConnectorError('lark-cli is unavailable. Install it and authorize your Feishu user account.') from error
-    try:
-        payload = json.loads(result.stdout if result.returncode == 0 else result.stderr or result.stdout)
-    except ValueError as error:
-        raise ConnectorError('lark-cli returned an unreadable response.') from error
+    raw = result.stdout if result.returncode == 0 else result.stderr or result.stdout
+    payload = None
+    # lark-cli may prepend download progress before its JSON envelope.
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r'(?m)^\s*\{', raw):
+        position = match.end() - 1
+        try:
+            value, end = decoder.raw_decode(raw[position:])
+            if not raw[position + end:].strip():
+                payload = value
+                break
+        except ValueError:
+            continue
+    if payload is None:
+        raise ConnectorError('lark-cli returned an unreadable response.')
     if not isinstance(payload, dict):
         raise ConnectorError('lark-cli returned an unexpected response shape.')
     if result.returncode or payload.get('ok') is False:
         error = payload.get('error', {})
         scopes = error.get('missing_scopes', [])
         message = 'Feishu access failed'
+        if 'blocked download URL' in error.get('message', ''):
+            raise ConnectorError('Media download blocked by lark-cli URL safety checks for a local/internal host.')
         if scopes:
             message += '. Missing scopes: ' + ', '.join(scopes)
         else:
             message += '. Check resource access and whether the recording is ready.'
-        raise ConnectorError(message)
+        raise ConnectorError(message, code=error.get('code'))
     data = payload.get('data', payload)
     if not isinstance(data, dict):
         raise ConnectorError('lark-cli returned unexpected artifact data.')

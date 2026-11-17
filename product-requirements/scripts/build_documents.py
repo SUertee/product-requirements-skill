@@ -121,6 +121,22 @@ def read_inputs(project_path, sources_path):
     for meeting in project.get('meetings', []):
         refs = meeting.get('material_ids', [])
         require(isinstance(refs, list) and all(nonempty(ref) and ref in material_ids for ref in refs), f"{meeting['meeting_id']} has invalid material_ids")
+    def check_references(value):
+        if isinstance(value, dict):
+            if 'source_refs' in value:
+                refs = value['source_refs']
+                require(isinstance(refs, list) and all(isinstance(key, str) and key in sources for key in refs), 'Nested data references an unknown source')
+            if 'requirement_ids' in value:
+                refs = value['requirement_ids']
+                require(isinstance(refs, list) and all(isinstance(key, str) and key in requirement_ids for key in refs), 'Nested data references an unknown requirement')
+            for item in value.values():
+                check_references(item)
+        elif isinstance(value, list):
+            for item in value:
+                check_references(item)
+    check_references(project)
+    for field in ['action_items', 'reported_facts']:
+        require(isinstance(project.get(field, []), list), field + ' must be an array')
     return project, sources
 
 
@@ -133,6 +149,8 @@ def collect_questions(project):
         for key, label in DETAILS.items():
             if readable(req.get(key)) == '待确认':
                 questions.append({'target': req['requirement_id'], 'field': key, 'reason': f'{label}待补全'})
+        for question in req.get('open_questions', []):
+            questions.append({'target': req['requirement_id'], 'reason': str(question)})
         if req['review_status'] != 'confirmed' or req['evidence_type'] != 'explicit':
             questions.append({'target': req['requirement_id'], 'reason': '核对依据、范围与确认状态'})
     for key in ['business_model', 'pages']:
@@ -174,8 +192,13 @@ def render(project, sources, questions, generated_at):
     for chunk in chunks[1:]:
         heading, _, body = chunk.partition('\n')
         document.append(f'## {heading}\n\n' + sections.get(heading, body.strip()))
+    meeting_extras = {key: project[key] for key in ['meeting_type', 'action_items', 'reported_facts'] if project.get(key)}
+    if meeting_extras:
+        document.append('## 会议补充\n\n' + literal(meeting_extras))
     document.append('## 原始依据\n\n' + citations)
     proposal = f'# {title} 项目方案草稿\n\n{metadata}\n\n## 客户需求与项目范围\n\n{profile}\n\n## 业务模型与实现依据\n\n{literal(project["business_model"])}\n\n## 待确认\n\n{question_text}\n\n详细需求和原话引用见 [PRD](prd.md)。\n'
+    if meeting_extras:
+        proposal += '\n## 会议行动与陈述\n\n' + literal(meeting_extras) + '\n'
     return '\n\n'.join(document) + '\n', proposal
 
 
@@ -192,7 +215,7 @@ def copy_materials(project, materials_root, stage):
         root = materials_root.resolve()
         source = (root / relative).resolve()
         require(source.is_relative_to(root) and source.is_file(), f'Material is unavailable within materials root: {relative}')
-        require(source.suffix.lower() in {'.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.txt', '.md', '.pdf', '.docx', '.pptx', '.png', '.jpg', '.jpeg', '.webp'}, f'Unsupported material file type: {relative}')
+        require(source.suffix.lower() in {'.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.mp4', '.mov', '.webm', '.mkv', '.srt', '.vtt', '.txt', '.md', '.pdf', '.docx', '.pptx', '.png', '.jpg', '.jpeg', '.webp'}, f'Unsupported material file type: {relative}')
         output = stage / 'materials' / relative
         require(not output.exists(), f'Duplicate material destination: {relative}')
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -201,9 +224,39 @@ def copy_materials(project, materials_root, stage):
     return attachments
 
 
-def render_workbench(project, sources, review, documents, artifacts):
+def copy_artifacts(project, sources, artifact_root, records, stage):
+    metadata = {}
+    if not records:
+        return metadata
+    require(artifact_root is not None, 'Artifact records require an explicit root')
+    root = Path(artifact_root).resolve(strict=True)
+    for record in records:
+        relative = record.get('path')
+        require(nonempty(relative) and not any(char in relative for char in ['\\', ':']), 'Invalid artifact path')
+        path = PurePosixPath(relative)
+        require(not path.is_absolute() and '..' not in path.parts and path.parts[0] in {'prototype', 'diagrams', 'data-model'}, 'Artifact path must stay in a deliverable directory')
+        require(relative not in metadata, 'Duplicate artifact path')
+        require(record.get('artifact_version') == project['artifact_version'], 'Artifact version mismatch')
+        require(nonempty(record.get('generator')), 'Artifact generator is required')
+        refs = record.get('source_ids', [])
+        require(isinstance(refs, list) and all(ref in sources for ref in refs), 'Artifact references an unknown source')
+        source = (root / relative).resolve()
+        require(source.is_relative_to(root) and source.is_file(), 'Artifact is unavailable inside its root')
+        require(source.suffix.lower() in {'.html', '.css', '.js', '.json', '.svg', '.png', '.jpg', '.jpeg', '.webp', '.woff2'}, 'Unsupported artifact type')
+        output = stage / relative
+        require(not output.exists(), 'Artifact destination already exists')
+        output.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, output)
+        metadata[relative] = record
+    available = {file.relative_to(stage).as_posix() for file in stage.rglob('*') if file.is_file()}
+    for record in records:
+        require(isinstance(record.get('depends_on', []), list) and all(path in available for path in record.get('depends_on', [])), 'Artifact has an unavailable dependency')
+    return metadata
+
+
+def render_workbench(project, sources, review, documents, artifacts, extra=None):
     attachments = [{'material_id': item['material_id'], 'path': item['path']} for item in artifacts if item.get('material_id')]
-    payload = json.dumps({'project': project, 'sources': list(sources.values()), 'review': review, 'documents': documents, 'artifacts': artifacts, 'attachments': attachments}, ensure_ascii=False)
+    payload = json.dumps({'project': project, 'sources': list(sources.values()), 'review': review, 'documents': documents, 'artifacts': artifacts, 'attachments': attachments, 'diff': (extra or {}).get('diff.json'), 'generation': (extra or {}).get('generation.json')}, ensure_ascii=False)
     payload = payload.replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
     values = {
         '__WORKBENCH_STYLE__': (PACKAGE / 'assets/workbench.css').read_text(),
@@ -214,7 +267,7 @@ def render_workbench(project, sources, review, documents, artifacts):
     return re.sub('|'.join(re.escape(key) for key in values), lambda match: values[match.group()], template)
 
 
-def publish(project, sources, destination, materials_root=None):
+def publish(project, sources, destination, materials_root=None, *, review_data=None, supplementary=None, artifact_root=None, artifact_records=None):
     require(not destination.exists(), 'Output already exists. Choose a new version directory.')
     destination.parent.mkdir(parents=True, exist_ok=True)
     lock = destination.parent / f'.{destination.name}.build.lock'
@@ -230,21 +283,32 @@ def publish(project, sources, destination, materials_root=None):
         (stage / 'prd.md').write_text(prd, encoding='utf-8')
         (stage / 'proposal.md').write_text(proposal, encoding='utf-8')
         review = {'project_id': project['project_id'], 'artifact_version': project['artifact_version'], 'review_status': 'draft', 'questions': questions, 'decisions': []}
-        for name, value in [('project.json', project), ('review.json', review)]:
+        if review_data is not None:
+            require(review_data.get('project_id') == project['project_id'] and review_data.get('artifact_version') == project['artifact_version'], 'Review project/version mismatch')
+            review.update(review_data)
+            review['questions'] = questions
+        extra = supplementary or {}
+        require(set(extra).issubset({'diff.json', 'generation.json', 'definition.json', 'release.json'}), 'Invalid supplementary output filename')
+        for name, value in [('project.json', project), ('review.json', review), *extra.items()]:
             (stage / name).write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         (stage / 'sources.jsonl').write_text(''.join(json.dumps(value, ensure_ascii=False) + '\n' for value in sources.values()), encoding='utf-8')
         attachments = copy_materials(project, materials_root, stage)
         material_ids = {item['path']: item['material_id'] for item in attachments}
+        artifact_metadata = copy_artifacts(project, sources, artifact_root, artifact_records, stage)
         artifacts = []
         for file in sorted(stage.rglob('*')):
             if not file.is_file():
                 continue
             artifacts.append({'path': file.relative_to(stage).as_posix(), 'generation_status': 'success', 'review_status': 'draft', 'artifact_version': project['artifact_version'], 'depends_on': ['project.json', 'sources.jsonl'] if file.suffix == '.md' else [], 'source_ids': list(sources), 'audience': 'internal', 'sha256': hashlib.sha256(file.read_bytes()).hexdigest(), 'generator': 'build_documents/0.1', 'validation_results': ['Input identities and source references checked']})
+            record = artifact_metadata.get(file.relative_to(stage).as_posix())
+            if record:
+                artifacts[-1].update({key: value for key, value in record.items() if key not in {'sha256', 'generation_status', 'review_status', 'audience'}})
+                artifacts[-1]['audience'] = 'internal'
             if file.relative_to(stage).as_posix() in material_ids:
                 artifacts[-1]['material_id'] = material_ids[file.relative_to(stage).as_posix()]
         workbench = stage / 'workbench/index.html'
         workbench.parent.mkdir()
-        workbench.write_text(render_workbench(project, sources, review, {'proposal.md': proposal, 'prd.md': prd}, artifacts), encoding='utf-8')
+        workbench.write_text(render_workbench(project, sources, review, {'proposal.md': proposal, 'prd.md': prd}, artifacts, extra), encoding='utf-8')
         artifacts.append({'path': 'workbench/index.html', 'generation_status': 'success', 'review_status': 'draft', 'artifact_version': project['artifact_version'], 'depends_on': [item['path'] for item in artifacts], 'source_ids': list(sources), 'audience': 'internal', 'sha256': hashlib.sha256(workbench.read_bytes()).hexdigest(), 'generator': 'build_documents/0.1', 'validation_results': ['Embedded data encoded for inert JSON script']})
         manifest = {'schema_version': '0.1', 'project_id': project['project_id'], 'artifact_version': project['artifact_version'], 'generated_at': generated_at, 'artifacts': artifacts}
         (stage / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')

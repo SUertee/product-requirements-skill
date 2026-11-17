@@ -15,7 +15,7 @@
 5. **原型交付**。人工确认后生成交互原型，复核核心流程和客户可见内容，再按授权部署分享。
 6. **持续修订**。后续会议和客户反馈关联原需求，记录差异与影响，形成下一版本。
 
-详细实施顺序、每页功能和完成条件见 [开发流程](docs/planning/development.md)。
+详细实施顺序、每页功能和完成条件见 [开发流程](docs/planning/development.md) 和 [功能 spec](docs/planning/functional-spec.md)。分析、评审、生成与客户包的命令见 [运行流程](product-requirements/references/execution.md)。
 
 ## 组合的 Skill
 
@@ -27,7 +27,7 @@
 | Archify | 生成业务流程图、技术架构图等可独立打开的 HTML 图示 | 业务流程与架构关系明确后调用，产物进入工作台“技术设计 → 流程架构” |
 | Schema Canvas（schema-canvas） | 展示实体、字段、关系与约束，提供搜索、关系聚焦和详情探索 | 业务模型整理后调用，交互式 ERD 进入工作台“技术设计 → 数据库” |
 
-两种图示能力使用同一项目版本和需求依据。当前已配置依赖定位和调用约定，项目数据到生成器的自动输入适配仍待联调。已有工作台可展示实际生成并登记的成果。
+两种图示能力使用同一项目版本和需求依据。已实现业务流程和实体模型的输入适配，并用本机固定依赖执行合成生成。工作台展示实际登记的成果，各项生成与浏览器复核状态分别记录。
 
 Archify 的上游为 tt-a1i/archify，当前固定提交为 `e37848822238e3a61b12739185cdadd49843a620`，采用 Apache-2.0，具体文件和第三方组件的声明随上游保留。Schema Canvas 为团队自有 Skill。来源、版本及接入范围分别见 [Archify 说明](docs/references/archify.md)、[Schema Canvas 说明](docs/references/schema-canvas.md)，配置入口为 [integrations.json](product-requirements/integrations.json)。
 
@@ -60,15 +60,20 @@ python3 product-requirements/scripts/resolve_capability.py schema-canvas
 
 ## 当前能力
 
-- **已实现**。本地素材接收、文本／字幕标准化、录屏音轨提取、指定妙记链接 Connector、结构化方案／PRD 与七页工作台生成、评审意见保存和导出。
-- **已定义执行规则**。需求画像八要素、带原话依据的需求卡、业务建模、人工确认、字段锁定与增量修订。语义分析由主 Skill 所在宿主执行。
-- **待接入或验证**。妙记自动监听、ASR、后台自动调用主 Skill、Archify／Schema Canvas 自动输入适配、交互原型自动生成、评审意见应用和客户部署。真实妙记下载及比赛宿主端到端运行仍待验证。
+- **已实现并做本地回归**。素材接收、妙记指定链接导入、来源标准化、分析任务、版本差异与锁定保护、评审应用、方案／PRD／七页工作台、Archify 流程图、Schema Canvas ERD、表单／列表原型和客户包。
+- **已实现适配协议**。目录接收、显式妙记查询轮询、ASR 与分析宿主命令适配，提供去重、失败记录和重试。语义分析由配置的宿主执行，转写由配置的 ASR 执行。
+- **实际验证**。76 项 Python 回归通过。合成端到端样例覆盖导入、评审、三个生成器、客户包和反馈版本。已导入 10 月 25 日天猫小组会议的 198 条来源片段并由当前助手分析。
+- **待验证**。实际 ASR 质量、浏览器视觉、码道宿主加载与后台调用、公网部署。真实录制媒体下载被 lark-cli 的本地／内部地址校验拒绝，原录音比对待补充。
 
 录屏当前处理音轨，画面理解待开发。多人在线编辑暂缓。当前行为与检查记录见 [实际功能](docs/features/README.md) 和 [工程进度](docs/progress/implementation.md)。
 
 ## 本地使用
 
 本地工具使用 Python 标准库，已在 Python 3.11 环境验证。音轨提取使用 ffmpeg，飞书接入使用已授权的 lark-cli 用户身份。依赖、权限与命令见 [本地运行说明](docs/features/intake.md)。
+
+### 比赛宿主
+
+优先使用码道 IDE 联调本地脚本与工作台。官方活动指南同时提供码道 IDE 和 CodeArts 网页端创作、市场上传入口。当前实际 Skill 包名为 product-requirements，目录与 SKILL.md 的 name 已对齐。宿主加载和自动调用仍需实测。[官方活动指南](https://support.huaweicloud.com/offers-codeartsagent/codeartsagent_offers_0008.html)、[技能导入规范](https://support.huaweicloud.com/usermanual-codeartsagent/codeartsagent_ug_0024.html)
 
 ### 导入材料
 

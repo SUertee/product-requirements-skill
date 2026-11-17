@@ -18,6 +18,14 @@ MEDIA = {'.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.mp4', '.mov', '.webm
 PROCESSOR = 'intake/0.1'
 
 
+def file_sha256(path):
+    checksum = hashlib.sha256()
+    with Path(path).open('rb') as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b''):
+            checksum.update(block)
+    return checksum.hexdigest()
+
+
 def read_job(directory):
     return json.loads((directory / 'job.json').read_text(encoding='utf-8'))
 
@@ -30,11 +38,7 @@ def ingest(input_path, workspace, project_id, provenance=None, retry=False, rela
     suffix = input_path.suffix.lower()
     if suffix not in TEXT | MEDIA or not input_path.is_file():
         raise ValueError('Unsupported material. Use TXT, MD, SRT, VTT, audio or video.')
-    digest = hashlib.sha256()
-    with input_path.open('rb') as source:
-        for block in iter(lambda: source.read(1024 * 1024), b''):
-            digest.update(block)
-    material_id = digest.hexdigest()
+    material_id = file_sha256(input_path)
     origin = dict(provenance or {'provider': 'local'})
     if related_job_id:
         if suffix not in TEXT or not re.fullmatch(r'JOB-[a-f0-9]{24}', related_job_id):
@@ -67,6 +71,10 @@ def ingest(input_path, workspace, project_id, provenance=None, retry=False, rela
         saved = stage / ('original' + suffix)
         shutil.copyfile(input_path, saved)
         job['files']['original'] = saved.name
+        received = file_sha256(saved)
+        if received != material_id:
+            job['received_sha256'] = received
+            raise ValueError('Input changed during import. Wait for transfer completion and retry the stable file.')
         if suffix in TEXT:
             result = subprocess.run([sys.executable, str(Path(__file__).with_name('normalize_transcript.py')),
                                      '--input', str(saved), '--project-id', project_id,

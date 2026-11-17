@@ -2,7 +2,7 @@
 
 ## 定位依赖
 
-从本 Skill 包目录运行 `python3 scripts/resolve_capability.py archify` 或 `python3 scripts/resolve_capability.py schema-canvas` 获取对应 Skill 的入口，随后读取该 SKILL.md。Archify 可以通过 ARCHIFY_SKILL_DIR 指向其 archify/ 包目录，Schema Canvas 使用 SCHEMA_CANVAS_SKILL_DIR。默认读取工程旁的 skill-dependencies/，宿主安装也可通过环境变量指定。
+从本 Skill 包目录运行 `python3 scripts/resolve_capability.py archify` 或 `python3 scripts/resolve_capability.py schema-canvas` 获取对应 Skill 的入口，随后读取该 SKILL.md。Archify 可以通过 ARCHIFY_SKILL_DIR 指向其 archify/ 包目录，Schema Canvas 使用 SCHEMA_CANVAS_SKILL_DIR。未指定环境变量时，依次查找当前 Skill 的同级包、工程旁 skill-dependencies/ 和个人级 ~/.codeartsdoer/skills/。显式配置的路径缺失时报告错误。
 
 Archify 固定提交见 integrations.json。完整仓库与自有 Schema Canvas 的开发副本保存在工程旁。分发包需单独处理宿主依赖和比赛文件数量、体积限制。
 
@@ -18,6 +18,8 @@ Archify 固定提交见 integrations.json。完整仓库与自有 Schema Canvas 
 | Schema Canvas | 业务实体、字段、关系、约束与来源版本 | 交互式 ERD，嵌入工作台，区分候选模型、逻辑关联和已验证数据库定义 |
 
 两种能力共同引用 project.json 的版本、REQ ID 和来源。生成器缺少信息时记录未知，导入图示的输入材料保持数据语义。
+
+当前 generate_artifacts.py 提供业务流程与实体模型的确定性适配，调用入口见 [运行流程](execution.md)。业务流程以有序 steps 和显式 transitions 为输入，缺少 transitions 时按已明确的步骤顺序连线。技术架构的拓扑与类型由宿主按 Archify 原生契约整理，再登记实际产物与检查结果。
 
 ## 原型设计路由
 

@@ -1,5 +1,5 @@
 ---
-name: product-requirements-skill
+name: product-requirements
 description: 将客户会议录音、逐字稿与前情资料整理为带依据的产品需求，生成内部 PRD、HTML 工作台及经确认的交互原型，并处理后续反馈与需求变更。适用于 PM、FDE 的客户需求沟通和开发准备。
 ---
 
@@ -18,6 +18,7 @@ description: 将客户会议录音、逐字稿与前情资料整理为带依据�
 - 结构化需求已整理完成时，读取 [项目输入规范](references/project-data.md)，运行 scripts/build_documents.py 生成方案、PRD、内部工作台和评审包草稿。
 - 生成或修订成果，读取 [输出合同](references/output-contract.md)，PRD 使用 [章节模板](assets/prd-template.md)。
 - 收到第二次会议、人工修改或客户反馈，对照已有基线生成差异与影响范围，再更新受影响产物。
+- 执行分析任务、应用评审、生成图示／原型或客户包，读取 [运行流程](references/execution.md)，使用 scripts/workflow.py。后台目录接收和显式妙记查询使用 scripts/intake_runner.py。
 
 ## 核心流程
 

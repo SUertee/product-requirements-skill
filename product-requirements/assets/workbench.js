@@ -22,6 +22,10 @@
   let intakeMessage = '';
   let reviewMessage = '';
   let reviewTarget = null;
+  let workflowBusy = false;
+  let workflowMessage = '';
+  let pendingChanges = [];
+  let previewDevice = 'desktop';
 
   function element(tag, text, className) {
     const result = document.createElement(tag);
@@ -34,6 +38,12 @@
     return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
   }
   function empty(text) { return element('div', text, 'workbench-empty'); }
+  function analysisFor(job) {
+    return serverState?.tasks?.filter(task => (task.job_ids || []).includes(job.job_id)).at(-1);
+  }
+  function hasTranscript(job) {
+    return serverState.jobs.some(item => item.provenance.related_job_id === job.job_id && item.status === 'ready_for_analysis');
+  }
   function panel(title) {
     const section = element('section', null, 'panel requirement-card');
     section.append(element('h2', title));
@@ -59,6 +69,7 @@
       const seconds = Math.floor(locator.start_seconds % 60);
       return String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
     }
+    if (locator.entry) return '人工记录 ' + locator.entry;
     return locator.paragraph ? '段落 ' + locator.paragraph : '定位待确认';
   }
   function fields(parent, pairs) {
@@ -133,6 +144,46 @@
     });
     return button;
   }
+  function requirementEditor(req) {
+    const detail = element('details'); detail.append(element('summary', '修订字段'));
+    const form = element('form', null, 'intake-form');
+    const select = element('select'); select.id = 'edit-field-' + req.requirement_id;
+    const labels = {title: '标题', role: '角色', trigger: '触发', behavior: '行为', inputs: '输入', outputs: '输出', rules: '规则', exceptions: '异常', acceptance_criteria: '验收', lifecycle_status: '生命周期'};
+    for (const [key, label] of Object.entries(labels)) { const option = element('option', label); option.value = key; select.append(option); }
+    const fieldLabel = element('label', '字段'); fieldLabel.htmlFor = select.id;
+    const text = element('textarea'); text.id = 'edit-value-' + req.requirement_id; text.rows = 4;
+    const textLabel = element('label', '新内容'); textLabel.htmlFor = text.id;
+    const lockLabel = element('label', null, 'workflow-check'); const lock = element('input'); lock.type = 'checkbox'; lockLabel.append(lock, element('span', '锁定此字段'));
+    const message = element('p', '', 'inline-note'); message.setAttribute('role', 'status');
+    function loadField() {
+      const pending = pendingChanges.find(item => item.target === req.requirement_id && item.field === select.value);
+      const value = pending ? pending.value : req[select.value];
+      text.value = value === null || value === undefined ? '' : typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+      const locks = pendingChanges.find(item => item.target === req.requirement_id && item.field === 'locked_fields')?.value || req.locked_fields || [];
+      lock.checked = locks.includes(select.value); text.readOnly = lock.checked;
+    }
+    select.addEventListener('change', loadField); lock.addEventListener('change', () => { text.readOnly = lock.checked; }); loadField();
+    const submit = element('button', '加入修订草稿', 'button'); submit.type = 'submit';
+    form.append(fieldLabel, select, textLabel, text, lockLabel, submit, message);
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      try {
+        const raw = text.value.trim();
+        let value = raw.startsWith('[') || raw.startsWith('{') ? JSON.parse(raw) : raw || null;
+        if (select.value === 'lifecycle_status' && value !== null && !['active', 'cancelled'].includes(value)) throw new Error('生命周期使用 active 或 cancelled');
+        const key = select.value;
+        pendingChanges = pendingChanges.filter(item => !(item.target === req.requirement_id && item.field === key));
+        if (JSON.stringify(req[key] ?? null) !== JSON.stringify(value)) pendingChanges.push({target: req.requirement_id, field: key, value});
+        const original = req.locked_fields || [];
+        const current = new Set(pendingChanges.find(item => item.target === req.requirement_id && item.field === 'locked_fields')?.value || original);
+        if (lock.checked) current.add(key); else current.delete(key);
+        pendingChanges = pendingChanges.filter(item => !(item.target === req.requirement_id && item.field === 'locked_fields'));
+        if (JSON.stringify([...current].sort()) !== JSON.stringify([...original].sort())) pendingChanges.push({target: req.requirement_id, field: 'locked_fields', value: [...current].sort()});
+        message.textContent = '已暂存，前往评审记录应用修订并生成新版本';
+      } catch (error) { message.textContent = error.message; }
+    });
+    detail.append(form); return detail;
+  }
   function requirementCard(req) {
     const card = panel(req.requirement_id + ' · ' + req.title);
     badges(card, [states[req.review_status], evidenceNames[req.evidence_type]]);
@@ -140,6 +191,7 @@
     const detail = element('details');
     detail.append(element('summary', '查看规则和依据'));
     fields(detail, [['触发', req.trigger], ['输入', req.inputs], ['输出', req.outputs], ['规则', req.rules], ['异常', req.exceptions]]);
+    if (req.open_questions?.length) fields(detail, [['待确认问题', req.open_questions]]);
     for (const sourceId of req.source_refs) {
       const source = sourceMap.get(sourceId);
       detail.append(sourceLink(sourceId), element('blockquote', source.text, 'source-quote'));
@@ -147,7 +199,9 @@
     const reviewButton = element('button', '记录评审意见', 'button ghost small');
     reviewButton.type = 'button';
     reviewButton.addEventListener('click', () => { reviewTarget = req.requirement_id; navigate('review'); });
-    card.append(detail, reviewButton);
+    card.append(detail);
+    if (serverState) card.append(requirementEditor(req));
+    card.append(reviewButton);
     return card;
   }
   function overview() {
@@ -174,7 +228,7 @@
     content.append(outputs);
     if (serverState && serverState.jobs.length) {
       const intake = panel('素材处理');
-      badges(intake, [serverState.jobs.filter(job => job.status === 'ready_for_analysis').length + ' 份待分析', serverState.jobs.filter(job => job.status === 'awaiting_transcript').length + ' 份待转写', serverState.jobs.filter(job => job.status === 'failed').length + ' 份处理失败']);
+      badges(intake, [serverState.jobs.filter(job => job.status === 'ready_for_analysis' && !analysisFor(job)).length + ' 份待发起分析', serverState.jobs.filter(job => analysisFor(job)?.status === 'completed').length + ' 份已有分析版本', serverState.jobs.filter(job => job.status === 'awaiting_transcript' && !hasTranscript(job)).length + ' 份待转写', serverState.jobs.filter(job => job.status === 'failed').length + ' 份预处理失败']);
       const open = element('button', '查看接收箱', 'button');
       open.type = 'button'; open.addEventListener('click', () => navigate('materials')); intake.append(open);
       content.append(intake);
@@ -188,9 +242,19 @@
     data.review.questions.slice(0, 5).forEach(question => questions.append(element('p', question.target + ' · ' + question.reason)));
     if (!data.review.questions.length) questions.append(element('p', '整体成果等待人工评审'));
     content.append(questions);
+    if (project.action_items?.length) {
+      const actions = panel('会议行动项');
+      project.action_items.forEach(item => { const row = element('section', null, 'inbox-row'); row.append(element('h3', item.title), element('p', item.details)); for (const ref of item.source_refs || []) row.append(sourceLink(ref)); actions.append(row); });
+      content.append(actions);
+    }
+    if (project.reported_facts?.length) {
+      const facts = panel('会议陈述');
+      project.reported_facts.forEach(item => { facts.append(element('p', item.text)); for (const ref of item.source_refs || []) facts.append(sourceLink(ref)); });
+      content.append(facts);
+    }
   }
   async function localRequest(path, options = {}) {
-    const response = await fetch(path, {...options, headers: {'X-Workbench-Request': '1', ...options.headers}});
+    const response = await fetch(path, {...options, headers: {'X-Workbench-Request': '1', 'X-Workbench-Run': location.pathname.match(/^\/versions\/(AN-[a-f0-9]{24})\//)?.[1] || '', ...options.headers}});
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || '请求失败，请重试');
     return result;
@@ -296,11 +360,22 @@
     for (const job of serverState.jobs) {
       const row = element('section', null, 'inbox-row');
       row.append(element('h3', job.name));
-      badges(row, [labels[job.status] || job.status, job.kind === 'recording' ? '音视频' : '逐字稿', job.source_count ? job.source_count + ' 段原话' : job.stage]);
+      const analysis = analysisFor(job);
+      const analysisLabels = {waiting_host: '等待宿主分析', running: '分析执行中', failed: '分析失败', completed: '已生成分析版本'};
+      const statusLabel = analysis ? analysisLabels[analysis.status] : job.status === 'awaiting_transcript' && hasTranscript(job) ? '已有转写' : labels[job.status] || job.status;
+      badges(row, [statusLabel, job.kind === 'recording' ? '音视频' : '逐字稿', job.source_count ? job.source_count + ' 段原话' : job.stage]);
       if (job.provenance.related_job_id) row.append(element('p', '关联录音 · ' + (serverState.jobs.find(item => item.job_id === job.provenance.related_job_id)?.name || job.provenance.related_job_id), 'inline-note'));
       if (job.error) row.append(element('p', job.error, 'inline-note'));
       const actions = element('div', null, 'document-actions');
       for (const [key, label] of [['original', '原始素材'], ['sources', '来源片段'], ['analysis_request', '分析请求']]) if (job.files[key]) actions.append(jobLink(job, key, label));
+      if (job.status === 'awaiting_transcript') {
+        const linked = serverState.jobs.find(item => item.provenance.related_job_id === job.job_id && item.status === 'ready_for_analysis');
+        if (linked) row.append(element('p', '已有关联逐字稿 · ' + linked.name, 'inline-note'));
+        else {
+          const asr = element('button', '使用已配置转写服务', 'button'); asr.type = 'button'; asr.disabled = intakeBusy || !serverState.asr_configured;
+          asr.addEventListener('click', () => importAction(() => localRequest('/api/transcribe', {method: 'POST', body: JSON.stringify({job_id: job.job_id})}))); actions.append(asr);
+        }
+      }
       if (job.status === 'failed') {
         const retry = element('button', '重试预处理', 'button');
         retry.type = 'button'; retry.disabled = intakeBusy;
@@ -330,8 +405,97 @@
     jobs.append(refresh);
     content.append(jobs);
   }
+  function nextVersion() {
+    const occupied = new Set((serverState?.tasks || []).map(task => task.version));
+    let value = project.artifact_version;
+    do {
+      const match = /^(.*?)(\d+)$/.exec(value);
+      value = match ? match[1] + String(Number(match[2]) + 1) : value + '-next';
+    } while (occupied.has(value));
+    return value;
+  }
+  async function workflowAction(action) {
+    workflowBusy = true; workflowMessage = '正在处理任务…'; render();
+    try {
+      const result = await action();
+      workflowMessage = result.release ? '客户交付包已生成，可预览或下载' : result.task.status === 'completed' ? '新版本已生成，可从任务记录打开' : '分析请求已准备，等待宿主执行 Skill 并返回项目结果';
+    } catch (error) { workflowMessage = error.message; }
+    finally {
+      workflowBusy = false;
+      try { await refreshLocal(); } catch (error) { workflowMessage += ' · ' + error.message; }
+      render();
+    }
+  }
+  function analysisPanel() {
+    if (!serverState) return;
+    const card = panel('需求分析');
+    const form = element('form', null, 'intake-form');
+    const choices = [];
+    const present = new Set((project.materials || []).map(item => item.material_id));
+    for (const job of serverState.jobs.filter(item => item.status === 'ready_for_analysis')) {
+      const label = element('label', job.name);
+      const select = element('select'); select.id = 'analysis-' + job.job_id; label.htmlFor = select.id;
+      for (const [value, text] of [['skip', '跳过'], ['meeting', '会议材料'], ['context', '前情资料']]) { const option = element('option', text); option.value = value; select.append(option); }
+      select.value = present.has(job.material_id) ? 'skip' : 'meeting';
+      select.disabled = workflowBusy;
+      choices.push([job.job_id, select]); form.append(label, select);
+    }
+    const versionLabel = element('label', '目标版本'); versionLabel.htmlFor = 'analysis-version';
+    const version = element('input'); version.id = 'analysis-version'; version.value = nextVersion(); version.required = true; version.disabled = workflowBusy;
+    const submit = element('button', '准备分析请求', 'button primary'); submit.type = 'submit'; submit.disabled = workflowBusy;
+    form.append(versionLabel, version, submit);
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      const job_ids = choices.filter(([, choice]) => choice.value !== 'skip').map(([id]) => id);
+      const context_job_ids = choices.filter(([, choice]) => choice.value === 'context').map(([id]) => id);
+      const selectedVersion = version.value;
+      workflowAction(() => localRequest('/api/analysis', {method: 'POST', body: JSON.stringify({job_ids, context_job_ids, version: selectedVersion})}));
+    });
+    card.append(form);
+    if (workflowMessage) { const message = element('p', workflowMessage, 'inline-note'); message.setAttribute('role', 'status'); card.append(message); }
+    const labels = {waiting_host: '等待宿主分析', running: '生成中', failed: '失败，可重试', completed: '已生成'};
+    for (const task of serverState.tasks || []) {
+      const row = element('section', null, 'inbox-row');
+      row.append(element('h3', task.version + ' · ' + ({review: '评审修订', generation: '成果生成', analysis: '需求分析'}[task.kind] || task.kind)));
+      badges(row, [labels[task.status] || task.status, task.id]);
+      if (task.error) row.append(element('p', task.error, 'inline-note'));
+      for (const result of task.generation_results || []) row.append(element('p', result.capability + ' · ' + (result.generation_status === 'success' ? '已生成' : result.error), 'inline-note'));
+      if (task.status === 'completed') {
+        const link = element('a', '打开新版本', 'button');
+        link.href = '/versions/' + task.id + '/workbench/index.html'; link.target = '_blank'; link.rel = 'noopener'; row.append(link);
+      } else {
+        for (const [key, label] of [['request', '分析请求'], ['baseline', '原基线'], ['sources', '完整来源']]) {
+          const link = element('a', label, 'button ghost small'); link.href = '/api/tasks/' + task.id + '/' + key; link.target = '_blank'; link.rel = 'noopener'; row.append(link);
+        }
+        if (task.request_path) row.append(element('p', task.request_path, 'inline-note'));
+        if (task.kind === 'analysis' && task.status !== 'running') {
+          if (serverState.analysis_configured) {
+            const execute = element('button', '执行已配置宿主', 'button primary'); execute.type = 'button'; execute.disabled = workflowBusy;
+            execute.addEventListener('click', () => workflowAction(() => localRequest('/api/analysis/execute', {method: 'POST', body: JSON.stringify({request_id: task.id})}))); row.append(execute);
+          }
+          const resultForm = element('form', null, 'intake-form');
+          const label = element('label', '宿主返回的 project.json'); label.htmlFor = 'result-' + task.id;
+          const file = element('input'); file.type = 'file'; file.accept = '.json'; file.required = true; file.id = label.htmlFor;
+          const complete = element('button', '校验并生成新版本', 'button'); complete.type = 'submit'; complete.disabled = workflowBusy;
+          resultForm.append(label, file, complete);
+          resultForm.addEventListener('submit', event => {
+            event.preventDefault(); const selected = file.files[0];
+            if (!selected) return;
+            workflowAction(async () => {
+              const candidate = JSON.parse(await selected.text());
+              return localRequest('/api/analysis/complete', {method: 'POST', body: JSON.stringify({request_id: task.id, project: candidate})});
+            });
+          });
+          row.append(resultForm);
+        }
+      }
+      card.append(row);
+    }
+    content.append(card);
+  }
   function materials() {
     intakePanel();
+    analysisPanel();
     const entries = [];
     const assigned = new Set();
     for (const material of project.materials || []) {
@@ -465,13 +629,71 @@
       card.append(fileLink(artifact.path, '打开完整页面'));
       const frame = element('iframe', null, 'workbench-preview');
       frame.title = artifact.path;
-      frame.setAttribute('sandbox', 'allow-scripts');
+      frame.setAttribute('sandbox', 'allow-scripts allow-forms');
       frame.src = '../' + artifact.path.split('/').map(encodeURIComponent).join('/');
+      if (prefix === 'prototype/') {
+        const controls = element('div', null, 'document-actions');
+        controls.setAttribute('role', 'group');
+        controls.setAttribute('aria-label', '原型预览尺寸');
+        for (const [key, label] of [['desktop', '桌面'], ['tablet', '平板'], ['mobile', '手机']]) {
+          const button = element('button', label, 'button small');
+          button.type = 'button';
+          button.setAttribute('aria-pressed', String(key === previewDevice));
+          button.addEventListener('click', () => {
+            previewDevice = key;
+            frame.style.width = {desktop: '100%', tablet: '768px', mobile: '390px'}[key];
+            for (const item of controls.querySelectorAll('button')) item.setAttribute('aria-pressed', String(item === button));
+          });
+          controls.append(button);
+        }
+        frame.style.width = {desktop: '100%', tablet: '768px', mobile: '390px'}[previewDevice];
+        card.append(controls);
+      }
       card.append(frame);
       content.append(card);
     }
   }
+  function generationPanel(kinds) {
+    if (!serverState) return;
+    const card = panel('生成成果');
+    const labels = {workflow: '流程架构', erd: '交互式 ERD', prototype: '交互原型'};
+    const form = element('form', null, 'intake-form generation-form');
+    const choices = [];
+    for (const kind of kinds) {
+      const wrapper = element('label', null, 'workflow-check');
+      const checkbox = element('input'); checkbox.type = 'checkbox'; checkbox.checked = true; checkbox.disabled = workflowBusy;
+      wrapper.append(checkbox, element('span', labels[kind])); form.append(wrapper); choices.push([kind, checkbox]);
+    }
+    const versionLabel = element('label', '成果版本'); versionLabel.htmlFor = 'generation-version';
+    const version = element('input'); version.id = 'generation-version'; version.value = nextVersion(); version.required = true;
+    const submit = element('button', '生成并汇入新版本', 'button primary'); submit.type = 'submit'; submit.disabled = workflowBusy;
+    form.append(versionLabel, version, submit);
+    form.addEventListener('submit', event => {
+      event.preventDefault(); const selected = choices.filter(([, checkbox]) => checkbox.checked).map(([kind]) => kind); const targetVersion = version.value;
+      workflowAction(() => localRequest('/api/generate', {method: 'POST', body: JSON.stringify({version: targetVersion, kinds: selected})}));
+    });
+    card.append(form);
+    if (workflowMessage) card.append(element('p', workflowMessage, 'inline-note'));
+    content.append(card);
+  }
+  function generationResults(kinds) {
+    const results = (data.generation?.results || []).filter(item => kinds.includes(item.capability));
+    if (!results.length) return;
+    const card = element('details', null, 'panel requirement-card generation-results');
+    card.open = results.some(result => result.generation_status !== 'success');
+    card.append(element('summary', results.filter(result => result.generation_status === 'success').length + ' 项已生成 · 查看检查记录'));
+    for (const result of results) {
+      const row = element('section', null, 'inbox-row');
+      row.append(element('h3', result.capability + ' · ' + (result.generation_status === 'success' ? '已生成' : '生成失败')));
+      if (result.error) row.append(element('p', result.error));
+      else row.append(valueNode(result.validation_results));
+      card.append(row);
+    }
+    content.append(card);
+  }
   function prototype() {
+    generationPanel(['prototype']);
+    generationResults(['prototype']);
     artifactPreviews('prototype/', '原型等待定义确认与实际生成');
     const pages = panel('页面定义');
     for (const page of project.pages) {
@@ -524,21 +746,28 @@
       return;
     }
     const form = element('form', null, 'intake-form');
+    const stage = element('select'); stage.id = 'review-stage';
+    for (const [value, title] of [['definition', '需求定义'], ['release', '客户发布']]) { const option = element('option', title); option.value = value; stage.append(option); }
     const target = element('select'); target.id = 'review-target';
-    const targets = new Set([...requirements.map(item => item.requirement_id), ...data.review.questions.map(item => item.target)]);
-    targets.forEach(value => { const option = element('option', value); option.value = value; target.append(option); });
-    if (reviewTarget && targets.has(reviewTarget)) target.value = reviewTarget;
+    let targets;
+    function fillTargets() {
+      targets = new Set(stage.value === 'release' ? data.artifacts.filter(item => item.path.startsWith('prototype/') && item.path.endsWith('.html')).map(item => item.path) : [...requirements.map(item => item.requirement_id), ...data.review.questions.map(item => item.target)]);
+      target.replaceChildren();
+      targets.forEach(value => { const option = element('option', value); option.value = value; target.append(option); });
+      if (reviewTarget && targets.has(reviewTarget)) target.value = reviewTarget;
+    }
+    fillTargets(); stage.addEventListener('change', () => { fillTargets(); save.disabled = !targets.size; });
     const outcome = element('select'); outcome.id = 'review-outcome';
     for (const [value, label] of [['needs_changes', '需要修改'], ['confirmed', '确认此项'], ['parked', '暂缓']]) { const option = element('option', label); option.value = value; outcome.append(option); }
     const reviewer = element('input'); reviewer.id = 'review-author'; reviewer.maxLength = 200;
     const comment = element('textarea'); comment.id = 'review-comment'; comment.rows = 3; comment.maxLength = 10000;
-    for (const [input, title] of [[target, '评审对象'], [outcome, '结论'], [reviewer, '记录人（选填）'], [comment, '意见']]) { const label = element('label', title); label.htmlFor = input.id; form.append(label, input); }
+    for (const [input, title] of [[stage, '评审阶段'], [target, '评审对象'], [outcome, '结论'], [reviewer, '记录人（选填）'], [comment, '意见']]) { const label = element('label', title); label.htmlFor = input.id; form.append(label, input); }
     const save = element('button', '保存意见', 'button primary'); save.type = 'submit'; save.disabled = !targets.size;
     const revision = serverState.review.revision;
     form.addEventListener('submit', async event => {
       event.preventDefault(); save.disabled = true;
       try {
-        const result = await localRequest('/api/review', {method: 'POST', body: JSON.stringify({revision, target: target.value, outcome: outcome.value, comment: comment.value, reviewer: reviewer.value})});
+        const result = await localRequest('/api/review', {method: 'POST', body: JSON.stringify({revision, review_stage: stage.value, target: target.value, outcome: outcome.value, comment: comment.value, reviewer: reviewer.value})});
         serverState.review = result.review;
         reviewMessage = '意见已保存，绑定当前版本。通过 Skill 修订后生成新的需求和成果版本。';
         render();
@@ -556,13 +785,72 @@
     if (records.length) {
       const exportButton = element('button', '导出评审记录', 'button');
       exportButton.type = 'button';
-      exportButton.addEventListener('click', () => downloadJson({project_id: project.project_id, artifact_version: project.artifact_version, review_stage: 'definition', ...serverState.review}, 'review-notes.json'));
+      exportButton.addEventListener('click', () => downloadJson({project_id: project.project_id, artifact_version: project.artifact_version, ...serverState.review, review_stage: stage.value, decisions: serverState.review.decisions.filter(item => (item.review_stage || 'definition') === stage.value)}, 'review-notes.json'));
       section.append(exportButton, valueNode(records));
     }
+    const apply = element('form', null, 'intake-form');
+    const label = element('label', '评审后的目标版本'); label.htmlFor = 'review-version';
+    const version = element('input'); version.id = 'review-version'; version.value = nextVersion(); version.required = true;
+    const submit = element('button', '应用意见与修订', 'button primary'); submit.type = 'submit'; submit.disabled = workflowBusy || (!records.some(item => (item.review_stage || 'definition') === 'definition') && !pendingChanges.length);
+    apply.append(label, version, submit);
+    for (const change of pendingChanges) {
+      const row = element('div', null, 'inbox-row');
+      const value = change.field === 'locked_fields' && !change.value.length ? '无锁定字段' : change.value;
+      fields(row, [['需求', change.target], ['修改字段', change.field], ['新内容', value]]);
+      apply.append(row);
+    }
+    apply.addEventListener('submit', event => {
+      event.preventDefault(); const targetVersion = version.value; const changes = pendingChanges.slice(); const revision = serverState.review.revision;
+      workflowAction(async () => {
+        const result = await localRequest('/api/review/apply', {method: 'POST', body: JSON.stringify({version: targetVersion, revision, changes})});
+        pendingChanges = []; return result;
+      });
+    });
+    section.append(apply);
+    if (workflowMessage) section.append(element('p', workflowMessage, 'inline-note'));
+    (serverState.tasks || []).filter(task => task.kind === 'review' && task.status === 'completed').forEach(task => {
+      const link = element('a', '打开修订版本 ' + task.version, 'button'); link.href = '/versions/' + task.id + '/workbench/index.html'; link.target = '_blank'; link.rel = 'noopener'; section.append(link);
+    });
     content.append(section);
   }
+  function releasePanel() {
+    if (!serverState) return;
+    const card = panel('客户交付');
+    const files = data.artifacts.filter(item => item.path.startsWith('prototype/') && item.path.endsWith('.html'));
+    if (files.length) {
+      const form = element('form', null, 'intake-form');
+      const choices = [];
+      for (const file of files) {
+        const label = element('label', null, 'workflow-check');
+        const checkbox = element('input'); checkbox.type = 'checkbox'; checkbox.checked = true; checkbox.disabled = workflowBusy;
+        label.append(checkbox, element('span', file.path)); form.append(label); choices.push([file.path, checkbox]);
+      }
+      const submit = element('button', '生成客户交付包', 'button primary'); submit.type = 'submit'; submit.disabled = workflowBusy;
+      form.append(submit);
+      form.addEventListener('submit', event => {
+        event.preventDefault(); const selected = choices.filter(([, checkbox]) => checkbox.checked).map(([path]) => path); const revision = serverState.review.revision;
+        workflowAction(() => localRequest('/api/release', {method: 'POST', body: JSON.stringify({files: selected, revision})}));
+      });
+      card.append(form, element('p', '先在客户发布阶段复核选定原型。交付包可用于静态部署，部署结果另行记录。', 'inline-note'));
+    } else card.append(element('p', '当前版本尚无可交付原型'));
+    if (workflowMessage) card.append(element('p', workflowMessage, 'inline-note'));
+    for (const release of serverState.releases || []) {
+      const row = element('section', null, 'inbox-row'); row.append(element('h3', release.artifact_version + ' · 客户交付包'));
+      const preview = element('a', '预览客户包', 'button'); preview.href = '/customer/' + release.release_id + '/index.html'; preview.target = '_blank'; preview.rel = 'noopener';
+      const download = element('a', '下载 ZIP', 'button'); download.href = '/api/releases/' + release.release_id + '/package'; download.download = project.project_id + '-' + release.artifact_version + '.zip';
+      row.append(preview, download); card.append(row);
+    }
+    content.append(card);
+  }
   function review() {
+    releasePanel();
     reviewForm();
+    if (data.diff) {
+      const diff = panel('版本差异');
+      fields(diff, [['来源版本', data.diff.baseline_version], ['当前版本', data.diff.artifact_version]]);
+      for (const conflict of data.diff.conflicts || []) { const row = element('details'); row.open = true; row.append(element('summary', conflict.target + ' · 锁定冲突')); fields(row, [['字段', conflict.field], ['保留值', conflict.retained], ['建议值', conflict.proposed]]); diff.append(row); }
+      const changes = element('details'); changes.append(element('summary', (data.diff.changes || []).length + ' 项变更')); changes.append(valueNode(data.diff.changes)); diff.append(changes); content.append(diff);
+    }
     const card = panel('评审记录');
     fields(card, [['当前版本', project.artifact_version], ['基线', project.baseline_version], ['文档评审', data.review.review_status]]);
     content.append(card);
@@ -578,6 +866,8 @@
     content.append(decisions);
   }
   function technical() {
+    generationPanel(['workflow', 'erd']);
+    generationResults(['workflow', 'erd']);
     const tabs = {diagrams: '流程架构', database: '数据库', api: 'API'};
     const navigation = element('div', null, 'technical-tabs');
     navigation.setAttribute('role', 'tablist');
