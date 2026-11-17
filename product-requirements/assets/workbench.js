@@ -14,6 +14,9 @@
   let active = 'overview';
   let selectedSource = null;
   let technicalTab = 'diagrams';
+  let selectedMaterial = null;
+  let selectedModule = null;
+  let selectedDocument = 'proposal.md';
 
   function element(tag, text, className) {
     const result = document.createElement(tag);
@@ -80,6 +83,41 @@
     link.rel = 'noopener';
     return link;
   }
+  function selectionLayout(items, selectedKey, label, onSelect) {
+    const layout = element('div', null, 'selection-layout');
+    const list = element('nav', null, 'selection-list');
+    list.setAttribute('aria-label', label);
+    const detail = element('div', null, 'selection-detail');
+    items.forEach(item => {
+      const button = element('button', null, 'selection-button');
+      button.type = 'button';
+      button.dataset.selectionKey = item.key;
+      button.append(element('strong', item.title), element('span', item.meta));
+      if (item.key === selectedKey) button.setAttribute('aria-current', 'true');
+      button.addEventListener('click', () => {
+        onSelect(item.key);
+        render();
+        Array.from(content.querySelectorAll('[data-selection-key]'))
+          .find(node => node.dataset.selectionKey === item.key)?.focus();
+      });
+      list.append(button);
+    });
+    layout.append(list, detail);
+    content.append(layout);
+    return detail;
+  }
+  function requirementLink(req) {
+    const button = element('button', req.requirement_id + ' · ' + req.title, 'source-link');
+    button.type = 'button';
+    button.addEventListener('click', () => {
+      queryInput.value = req.requirement_id;
+      statusInput.value = '';
+      evidenceInput.value = '';
+      selectedModule = null;
+      navigate('modules');
+    });
+    return button;
+  }
   function sourceLink(sourceId) {
     const button = element('button', sourceId, 'source-link');
     button.type = 'button';
@@ -115,6 +153,17 @@
       summary.append(item);
     }
     content.append(summary);
+    const outputs = panel('项目成果');
+    for (const [view, label, prefix] of [['documents', '方案文档', null], ['prototype', '原型预览', 'prototype/'], ['technical', '技术设计', 'diagrams/']]) {
+      const row = element('button', null, 'output-row');
+      row.type = 'button';
+      const available = prefix ? data.artifacts.some(item => item.path.startsWith(prefix) && item.path.endsWith('.html')) : true;
+      const actionLabel = view === 'technical' ? '查看模型与图示 →' : available ? '查看当前版本 →' : '查看待生成内容 →';
+      row.append(element('strong', label), element('span', actionLabel));
+      row.addEventListener('click', () => navigate(view));
+      outputs.append(row);
+    }
+    content.append(outputs);
     const profile = element('details', null, 'panel requirement-card');
     profile.append(element('summary', '需求画像'));
     const profileLabels = {customer_and_roles: '客户与角色', business_scenario: '业务场景', pain_points: '核心痛点', desired_outcomes: '目标结果', scope: '需求范围', constraints: '约束条件', integrations: '集成与依赖', evidence_and_questions: '证据与待确认'};
@@ -126,90 +175,75 @@
     content.append(questions);
   }
   function materials() {
-    if (project.meetings && project.meetings.length) {
-      const section = panel('会议记录');
-      for (const meeting of project.meetings.filter(matches)) {
-        fields(section, [['会议', meeting.title || meeting.meeting_id], ['日期', meeting.date], ['关联素材', meeting.material_ids]]);
-      }
-      content.append(section);
+    const entries = [];
+    const assigned = new Set();
+    for (const material of project.materials || []) {
+      const sources = data.sources.filter(source => (material.source_ids || []).includes(source.source_id) || source.material_id === material.material_id);
+      sources.forEach(source => assigned.add(source.source_id));
+      const meetings = (project.meetings || []).filter(meeting => (meeting.material_ids || []).includes(material.material_id));
+      entries.push({key: 'material:' + material.material_id, title: material.name || material.material_id, meta: (material.kind || '素材') + ' · ' + sources.length + ' 段原话', material, sources, meetings});
     }
     const groups = new Map();
-    for (const source of data.sources) {
-      const key = source.material_id || source.source_name || '会议材料';
+    data.sources.filter(source => !assigned.has(source.source_id)).forEach(source => {
+      const key = source.material_id || source.source_name || 'transcript';
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(source);
+    });
+    groups.forEach((sources, key) => entries.push({key: 'source:' + key, title: sources[0].source_name || '会议原话', meta: sources.length + ' 段原话', sources, meetings: (project.meetings || []).filter(meeting => (meeting.material_ids || []).includes(key))}));
+    if (project.context_sources.length) entries.push({key: 'context', title: '前情资料', meta: project.context_sources.length + ' 项背景资料', sources: [], meetings: [], context: project.context_sources});
+    const visible = entries.filter(item => matches(item));
+    const selected = visible.find(item => selectedSource && item.sources.some(source => source.source_id === selectedSource)) || visible.find(item => item.key === selectedMaterial) || visible[0];
+    if (!selected) { content.append(empty('暂无匹配素材，可调整搜索词后查看')); return; }
+    selectedMaterial = selected.key;
+    const detail = selectionLayout(visible, selected.key, '会议素材列表', key => { selectedMaterial = key; selectedSource = null; });
+    const card = panel(selected.title);
+    if (selected.context) {
+      card.append(valueNode(selected.context));
+      detail.append(card);
+      return;
     }
-    let shown = 0;
-    for (const sources of groups.values()) {
-      const visible = sources.filter(source => (!selectedSource || source.source_id === selectedSource) && matches(source));
-      if (!visible.length) continue;
-      const card = panel(sources[0].source_name || '会议原话');
-      for (const source of visible) {
-        const detail = element('details');
-        detail.open = Boolean(selectedSource);
-        detail.append(element('summary', source.source_id + ' · ' + locatorLabel(source.locator)));
-        detail.append(element('blockquote', source.text, 'source-quote'));
-        const linked = requirements.filter(req => req.source_refs.includes(source.source_id));
-        linked.forEach(req => {
-          const button = element('button', req.requirement_id + ' · ' + req.title, 'source-link');
-          button.type = 'button';
-          button.addEventListener('click', () => {
-            queryInput.value = req.requirement_id;
-            statusInput.value = '';
-            evidenceInput.value = '';
-            navigate('modules');
-          });
-          detail.append(button);
-        });
-        card.append(detail);
-        shown++;
+    selected.meetings.forEach(meeting => fields(card, [['会议', meeting.title || meeting.meeting_id], ['日期', meeting.date]]));
+    const attached = data.attachments.find(item => item.material_id === selected.material?.material_id);
+    if (attached) {
+      card.append(fileLink(attached.path, '打开素材'));
+      if (/\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(attached.path)) {
+        const audio = element('audio');
+        audio.controls = true;
+        audio.preload = 'none';
+        audio.src = '../' + attached.path.split('/').map(encodeURIComponent).join('/');
+        card.append(audio);
       }
-      content.append(card);
-    }
-    for (const material of (project.materials || []).filter(matches)) {
-      const card = panel(material.name || material.material_id);
-      fields(card, [['类型', material.kind], ['关联来源', material.source_ids]]);
-      const attached = data.attachments.find(item => item.material_id === material.material_id);
-      if (attached) {
-        card.append(fileLink(attached.path, '打开素材'));
-        if (/\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(attached.path)) {
-          const audio = element('audio');
-          audio.controls = true;
-          audio.preload = 'none';
-          audio.src = '../' + attached.path.split('/').map(encodeURIComponent).join('/');
-          card.append(audio);
-        }
-      }
-      content.append(card);
-      shown++;
-    }
-    if (selectedSource) {
-      const reset = element('button', '查看全部素材', 'button ghost small');
-      reset.addEventListener('click', () => { selectedSource = null; render(); });
-      content.prepend(reset);
-    }
-    if (project.context_sources.length) {
-      const context = panel('前情资料');
-      context.append(element('pre', display(project.context_sources), 'workbench-document'));
-      content.append(context);
-      shown++;
-    }
-    if (!shown) content.append(empty('暂无匹配的会议原话或素材'));
+    } else if (selected.material) card.append(element('p', '原始文件尚未随当前版本附带', 'inline-note'));
+    selected.sources.forEach(source => {
+      const excerpt = element('section', null, 'source-excerpt');
+      if (source.source_id === selectedSource) excerpt.classList.add('source-selected');
+      badges(excerpt, [locatorLabel(source.locator), source.speaker || '说话人待确认', source.source_id]);
+      excerpt.append(element('blockquote', source.text, 'source-quote'));
+      const linked = requirements.filter(req => req.source_refs.includes(source.source_id));
+      linked.forEach(req => excerpt.append(requirementLink(req)));
+      card.append(excerpt);
+    });
+    if (!selected.sources.length) card.append(element('p', '当前素材尚无可定位的原话片段', 'inline-note'));
+    detail.append(card);
+    if (selectedSource) detail.querySelector('.source-selected')?.scrollIntoView?.({block: 'nearest'});
   }
   function modules() {
     const visible = filteredRequirements();
-    const assigned = new Set();
-    for (const module of project.modules || []) {
-      const items = visible.filter(req => module.requirement_ids.includes(req.requirement_id));
-      if (!items.length && !matches(module)) continue;
-      const card = panel(module.name || module.module_id);
-      badges(card, [module.module_id, items.length + ' 条匹配需求']);
-      items.forEach(req => { card.append(requirementCard(req)); assigned.add(req.requirement_id); });
-      content.append(card);
-    }
+    const groups = (project.modules || []).map(module => ({
+      key: 'module:' + module.module_id, title: module.name || module.module_id,
+      items: visible.filter(req => (module.requirement_ids || []).includes(req.requirement_id))
+    }));
+    const assigned = new Set((project.modules || []).flatMap(module => module.requirement_ids || []));
     const remaining = visible.filter(req => !assigned.has(req.requirement_id));
-    remaining.forEach(req => content.append(requirementCard(req)));
-    if (!content.children.length) content.append(empty('暂无匹配需求'));
+    if (remaining.length) groups.push({key: 'unassigned', title: '待归类', items: remaining});
+    const choices = groups.filter(group => group.items.length).map(group => ({...group, meta: group.items.length + ' 条需求 · ' + group.items.filter(req => req.review_status === 'confirmed').length + ' 条已确认'}));
+    const selected = choices.find(group => group.key === selectedModule) || choices[0];
+    if (!selected) { content.append(empty('暂无匹配需求，可调整搜索词或筛选条件')); return; }
+    selectedModule = selected.key;
+    const detail = selectionLayout(choices, selected.key, '业务模块列表', key => { selectedModule = key; });
+    const card = panel(selected.title);
+    selected.items.forEach(req => card.append(requirementCard(req)));
+    detail.append(card);
   }
   function markdownDocument(text) {
     const body = element('div', null, 'document-body');
@@ -250,12 +284,13 @@
     return wrapper;
   }
   function documents() {
-    for (const [path, title] of [['proposal.md', '项目方案'], ['prd.md', '产品需求文档']]) {
-      const card = panel(title);
-      card.append(fileLink(path, '打开文件'));
-      card.append(markdownDocument(data.documents[path]));
-      content.append(card);
-    }
+    const items = [{key: 'proposal.md', title: '项目方案', meta: '目标、范围、实现思路'}, {key: 'prd.md', title: 'PRD', meta: '功能、规则、异常、验收'}];
+    const selected = items.find(item => item.key === selectedDocument) || items[0];
+    const detail = selectionLayout(items, selected.key, '方案文档列表', key => { selectedDocument = key; });
+    const card = panel(selected.title);
+    card.append(fileLink(selected.key, '打开文件'));
+    card.append(markdownDocument(data.documents[selected.key]));
+    detail.append(card);
   }
   function artifactPreviews(prefix, emptyMessage) {
     const files = data.artifacts.filter(item => item.path.startsWith(prefix) && item.path.endsWith('.html'));
@@ -309,7 +344,8 @@
       content.append(issue);
     }
     const decisions = panel('评审决定');
-    decisions.append(element('pre', data.review.decisions.length ? display(data.review.decisions) : '等待人工核对与记录决定', 'workbench-document'));
+    if (data.review.decisions.length) decisions.append(valueNode(data.review.decisions));
+    else decisions.append(element('p', '等待人工核对与记录决定'));
     content.append(decisions);
   }
   function technical() {
@@ -363,6 +399,9 @@
       if (button.dataset.view === active) button.setAttribute('aria-current', 'page');
       else button.removeAttribute('aria-current');
     });
+    const searchLabels = {materials: '搜索素材或会议原话', modules: '搜索需求、规则或依据', review: '搜索评审问题', technical: '搜索接口草案'};
+    queryInput.placeholder = searchLabels[active] || '搜索';
+    queryInput.setAttribute('aria-label', queryInput.placeholder);
     statusInput.hidden = active !== 'modules';
     evidenceInput.hidden = active !== 'modules';
     document.querySelector('.workbench-toolbar').hidden = !['materials', 'modules', 'review'].includes(active) && !(active === 'technical' && technicalTab === 'api');
@@ -383,7 +422,13 @@
   for (const [view, title] of Object.entries(views)) {
     const button = element('button', title, 'nav-button');
     button.dataset.view = view;
-    button.addEventListener('click', () => { selectedSource = null; navigate(view); });
+    button.addEventListener('click', () => {
+      selectedSource = null;
+      queryInput.value = '';
+      statusInput.value = '';
+      evidenceInput.value = '';
+      navigate(view);
+    });
     document.getElementById('navigation').append(button);
   }
   document.getElementById('export-project').addEventListener('click', () => {
@@ -396,7 +441,7 @@
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
-  [queryInput, statusInput, evidenceInput].forEach(input => input.addEventListener('input', render));
+  [queryInput, statusInput, evidenceInput].forEach(input => input.addEventListener('input', () => { selectedSource = null; render(); }));
   window.addEventListener('hashchange', () => navigate(location.hash.slice(1)));
   navigate(location.hash.slice(1));
 })();

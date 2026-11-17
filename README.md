@@ -24,7 +24,7 @@ python3 product-requirements/scripts/normalize_transcript.py --input /path/to/me
 
 ## 能力接入
 
-主 Skill 组织录音接入、需求转化、建模、方案与 PRD、人工确认、原型、工作台汇总和最终复核。图示与 ERD 按 [能力接入与设计路由](product-requirements/references/capabilities.md) 调用，原型和工作台采用 [内置 UI 规范](product-requirements/references/ui-design.md) 与包内 assets/ui.css，固定依赖见包内 integrations.json。外部依赖通过宿主安装或工程旁 skill-dependencies 提供。
+主 Skill 组织录音接入、需求转化、建模、方案与 PRD、人工确认、原型、工作台汇总和最终复核。图示与 ERD 按 [能力接入与设计路由](product-requirements/references/capabilities.md) 调用，原型采用 [内置 UI 规范](product-requirements/references/ui-design.md) 与 assets/ui.css，工作台采用 [页面规范](product-requirements/references/workbench.md) 与包内 assets/workbench-template.html、workbench.css、workbench.js，固定依赖见包内 integrations.json。外部依赖通过宿主安装或工程旁 skill-dependencies 提供。
 
 ## 工作台样式参考副本
 

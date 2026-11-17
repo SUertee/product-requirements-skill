@@ -2,7 +2,7 @@
 
 本规范供主 Skill 生成客户原型和内部工作台时使用，基础样式位于 ../assets/ui.css。视觉参考 ParTrace Vision 的 workbench 工作台中的侧栏、内容区和预览结构，具体页面围绕当前客户的任务与数据组织。
 
-可编辑参考副本位于 [docs/references/partrace-workbench/workbench.html](../../docs/references/partrace-workbench/workbench.html)，资源随目录保存。副本保留 ParTrace Vision 示例业务内容，可在这里继续调整布局与样式。
+工作台页面与内容约定见 [工作台页面规范](workbench.md)。包内 assets/workbench-template.html、workbench.css 和 workbench.js 参与实际生成。ParTrace Vision 的原工作台副本在仓库 docs/references/partrace-workbench/ 保留，供开发时比对。
 
 ## 确认设计依据
 
@@ -28,7 +28,7 @@
 | 移动端服务 | 移动导航、核心任务、单列表单与操作结果 |
 | 客户展示原型 | 围绕已确认主流程组织入口、关键操作与结果反馈 |
 
-内部工作台导航按实际产出启用总览、需求与来源、方案／PRD、业务模型、流程／架构、原型和评审记录。首屏呈现目标、范围、成果入口与待确认问题。
+内部工作台采用总览、会议素材、功能需求、方案文档、原型预览、技术设计、评审记录七页。技术设计使用流程架构、数据库和 API 标签。首屏呈现目标、范围、成果入口与待确认问题。会议素材、功能需求和方案文档采用列表选择与详情布局，完整约定见工作台页面规范。
 
 ## 卡片内容与文案
 
