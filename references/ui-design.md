@@ -2,7 +2,7 @@
 
 本规范供主 Skill 生成客户原型和内部工作台时使用，基础样式位于 ../assets/ui.css。视觉参考 ParTrace Vision 的 workbench 工作台中的侧栏、内容区和预览结构，具体页面围绕当前客户的任务与数据组织。
 
-具体参考文件为用户工程中的 `Anker/开发预览/驿站追迹-App原型-v1/workbench.html`，相关资源以同目录引用为准。
+可编辑参考副本位于 [docs/references/partrace-workbench/workbench.html](../docs/references/partrace-workbench/workbench.html)，资源随目录保存。副本保留 ParTrace Vision 示例业务内容，可在这里继续调整布局与样式。
 
 ## 确认设计依据
 

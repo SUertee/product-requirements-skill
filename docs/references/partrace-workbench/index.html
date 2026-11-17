@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <!-- /* finesse · register=h5+product · A=poster-white+electric-blue+cyan+semantic-orange · B=system-sans-700/400 · C=station-overview+editable-task-plan · D=push+resident-run-state · E=quiet-field-review · SOUL=6 SPECTACLE=2 DENSITY=7 */; styles in styles.css -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#EEF4FA">
+  <title>驿站追迹 · App 交互原型</title>
+  <link rel="stylesheet" href="styles.css?v=poster-20261010-final">
+</head>
+<body>
+  <aside class="studio">
+    <a class="brand" href="board.html"><span class="brandmark">↗</span> 驿站追迹 <span class="version">APP / V2</span></a>
+    <div class="studio-intro"><span class="eyebrow">ANKER HACKATHON · 2026</span><h1>驿站的日常，<br>一眼看清。</h1><p>查看区域活动与证据缺口。<br>让 AI 整理核查，由你确认与保存。</p></div>
+    <nav class="screen-nav" aria-label="原型页面"></nav>
+    <div class="studio-note"><span class="status-dot"></span> 可点击的 App 设计预览<p>所有事件、示意帧与助手回答均为模拟样例。保存仅在当前浏览器生效。</p><a class="board-link" href="board.html">查看新版设计总览 ↗</a><br><a class="board-link" href="workbench.html?v=overview-inline-20261010#overview">查看模块与任务工作台 ↗</a></div>
+  </aside>
+  <main class="phone" aria-label="驿站追迹手机原型">
+    <div class="status"><span id="clock"></span><span class="island"></span><span class="os-icons"><svg width="48" height="14" viewBox="0 0 48 14" aria-hidden="true"><path d="M2 11V8M6 11V6M10 11V3M14 11V1" stroke="currentColor" stroke-width="2.5"/><path d="M20 4q5-5 10 0M22 7q3-3 6 0M25 10h.01" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><rect x="34" y="2" width="11" height="9" rx="2" fill="none" stroke="currentColor"/><rect x="36" y="4" width="7" height="5" rx="1" fill="currentColor"/><path d="M47 5v3" stroke="currentColor"/></svg></span></div>
+    <div id="app" class="app" tabindex="-1"></div>
+    <div id="task-controls" class="task-controls"></div>
+    <nav id="tabbar" class="tabbar" aria-label="主导航"></nav>
+    <div id="sheet-root"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div class="home-ind" aria-hidden="true"></div>
+  </main>
+  <div class="desktop-caption">管理员 App · 390 × 844<span>总览 → AI 任务 → 人工核查</span></div>
+  <script>
+    (() => {
+      const input = new URLSearchParams(window.JOURNEY_TRACE_PREVIEW_PARAMS ?? location.search);
+      const embedded = input.get('embed') === '1' && window.parent !== window;
+      const baseOrigin = new URL(document.baseURI).origin;
+      const targetOrigin = baseOrigin === 'null' ? '*' : baseOrigin;
+      const send = (type,reason) => {
+        if (!embedded) return;
+        try {
+          window.parent.postMessage({type,reason,screen:input.get('screen'),previewId:input.get('previewId')},targetOrigin);
+        } catch (error) {
+          console.warn('原型就绪消息发送失败',error);
+        }
+      };
+      const ready = () => { document.documentElement.dataset.appReady = 'true'; send('journey-trace:preview-ready'); };
+      window.addEventListener('journey-trace:rendered',ready);
+      if (!embedded) return;
+      window.addEventListener('message',event => {
+        if ((event.origin === baseOrigin || event.origin === 'null') && event.source === window.parent && event.data?.type === 'journey-trace:preview-ready-request' && event.data.previewId === input.get('previewId') && document.documentElement.dataset.appReady === 'true') send('journey-trace:preview-ready');
+      });
+      window.addEventListener('error',event => {
+        if (document.documentElement.dataset.appReady === 'true') return;
+        const script = event.target?.tagName === 'SCRIPT' && event.target.src.includes('/app.js');
+        const appSource = /(?:^|\/)app\.js(?:[?#]|$)/.test(event.filename || '');
+        const inlineApp = document.querySelector('script[data-preview-app]') && event.filename === document.URL;
+        if (script || appSource || inlineApp) send('journey-trace:preview-error',script ? 'script-unavailable' : 'render-failed');
+      },true);
+    })();
+  </script>
+  <script src="app.js?v=preview-handshake-20261010"></script>
+</body>
+</html>

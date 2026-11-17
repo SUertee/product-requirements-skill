@@ -1,0 +1,16 @@
+/* finesse · register=product · A=approved-poster-blue · B=Chinese-system-type · C=compact-handoff-toolbar · D=copy+download+source · E=quiet-light-surfaces · SOUL=5 SPECTACLE=1 DENSITY=3; component redesign */
+.prototype-header { flex-wrap:wrap; }
+.prototype-header > div:first-child { flex:1 1 260px; min-width:0; }
+.prototype-header-actions { display:flex; align-items:center; flex-wrap:wrap; justify-content:flex-end; gap:8px; max-width:100%; }
+.prototype-header-actions .button { white-space:nowrap; }
+#prototype-export-controls { display:contents; }
+.prototype-export-status { margin:7px 0 0; color:var(--ink-2); font-size:13px; line-height:1.7; overflow-wrap:anywhere; }
+.design-source-dialog { width:min(900px,calc(100vw - 32px)); height:min(660px,calc(100dvh - 32px)); max-height:none; border:1px solid var(--border); border-radius:var(--r); background:var(--bg); color:var(--ink-1); padding:20px; overflow:hidden; }
+.design-source-dialog[open] { display:flex; flex-direction:column; gap:14px; }
+.design-source-dialog::backdrop { background:var(--surface-19); }
+.design-source-dialog header,.design-source-dialog footer { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+.design-source-dialog h2 { font-size:19px; line-height:1.5; }
+.design-source-dialog label { color:var(--ink-2); font-size:13px; }
+.design-source-dialog textarea { width:100%; flex:1; min-height:0; resize:none; border:1px solid var(--border-strong); border-radius:var(--r-sm); padding:14px; background:var(--page); color:var(--ink-1); font:12px/1.7 ui-monospace,SFMono-Regular,Menlo,monospace; white-space:pre; overflow:auto; }
+.design-source-dialog footer p { margin:0; color:var(--ink-2); font-size:13px; }
+@media(max-width:640px) { .prototype-header > div:first-child { flex-basis:auto; } .prototype-header-actions { width:100%; justify-content:flex-start; } .design-source-dialog { padding:14px; } }

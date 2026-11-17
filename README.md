@@ -4,7 +4,7 @@
 
 ## 使用入口
 
-将整个仓库目录作为 Skill 包加载，入口为 [SKILL.md](SKILL.md)。当前已编写工作流、需求建模约定、输出合同与 PRD 模板，文本标准化脚本可以运行。端到端生成效果需在比赛宿主中验证，ASR 适配器、后台监听、工作台模板和原型生成待团队实现。
+Skill 的执行入口为 [SKILL.md](SKILL.md)，执行指南、模板和工具分别位于 references/、assets/ 和 scripts/。当前已编写工作流、需求建模约定、输出合同与 PRD 模板，文本标准化脚本可以运行。端到端生成效果需在比赛宿主中验证，ASR 适配器、后台监听、工作台模板和原型生成待团队实现。
 
 ```bash
 python3 scripts/normalize_transcript.py --input /path/to/meeting.srt --project-id demo --output runs/demo/sources.jsonl
@@ -20,7 +20,18 @@ python3 scripts/normalize_transcript.py --input /path/to/meeting.srt --project-i
 
 项目方案在星宫赛事目录维护。工程源码在本仓库维护。
 
-
 ## 能力接入
 
 主 Skill 组织录音接入、需求转化、建模、方案与 PRD、人工确认、原型、工作台汇总和最终复核。图示与 ERD 按 [能力接入与设计路由](references/capabilities.md) 调用，原型和工作台采用 [内置 UI 规范](references/ui-design.md) 与 assets/ui.css，固定依赖见 integrations.json。外部依赖通过宿主安装或工程旁 skill-dependencies 提供。
+
+## 工作台样式参考副本
+
+[打开可编辑的 workbench](docs/references/partrace-workbench/workbench.html)。该副本保留 ParTrace Vision 的示例内容，用于继续优化工作台布局和样式，所需本地资源随目录保存。
+
+## 文件组织
+
+- `SKILL.md` 为执行入口。
+- `references/` 保存需求建模、能力接入、输出合同和内置 UI 规范。
+- `assets/` 保存 PRD 模板和通用 UI 样式。
+- `scripts/` 保存可执行的输入处理及依赖定位工具。
+- `docs/` 保存开发分工与工程文档，设计参考副本见 [docs/references/](docs/references/README.md)。
