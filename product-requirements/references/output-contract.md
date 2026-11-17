@@ -36,3 +36,8 @@ manifest 记录实际调用的 Skill、固定版本或提交、输入数据版�
 ## 内置界面样式
 
 原型与工作台使用 assets/ui.css 和 references/ui-design.md，按输出文件位置复制样式并设置可部署的相对路径。design_context.design_system_version 记录内置版本和项目覆盖，页面中展示的原型仍关联确认后的需求版本。
+
+
+## 当前文档生成入口
+
+结构化项目输入与实际命令见 [项目输入规范](project-data.md)。build_documents.py 已实现输入结构和引用检查、PRD／方案生成、初始评审问题及产物清单。整体文档以 draft 输出，原型、工作台、图示和部署由后续生成阶段登记真实结果。

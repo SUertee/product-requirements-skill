@@ -4,7 +4,7 @@
 
 ## 使用入口
 
-Skill 的执行入口为 [SKILL.md](product-requirements/SKILL.md)，执行指南、模板和工具位于该包内的 references/、assets/ 和 scripts/。当前已编写工作流、需求建模约定、输出合同与 PRD 模板，文本标准化脚本可以运行。端到端生成效果需在比赛宿主中验证，ASR 适配器、后台监听、工作台模板和原型生成待团队实现。
+Skill 的执行入口为 [SKILL.md](product-requirements/SKILL.md)，执行指南、模板和工具位于该包内的 references/、assets/ 和 scripts/。当前已编写工作流、需求建模约定、输出合同与 PRD 模板，文本标准化脚本可以运行。端到端生成效果需在比赛宿主中验证，结构化需求可生成方案与 PRD 草稿。ASR 适配器、后台监听、工作台模板和原型生成待实现。
 
 ```bash
 python3 product-requirements/scripts/normalize_transcript.py --input /path/to/meeting.srt --project-id demo --output runs/demo/sources.jsonl
@@ -13,6 +13,8 @@ python3 product-requirements/scripts/normalize_transcript.py --input /path/to/me
 ## 开发文档
 
 整体框架、模块职责、数据契约和实际能力见 [docs 导航](docs/README.md)。
+
+文档生成命令与字段见 [项目输入规范](product-requirements/references/project-data.md)。
 
 ## 参考与适配
 
