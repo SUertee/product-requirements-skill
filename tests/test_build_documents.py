@@ -52,7 +52,7 @@ class DocumentBundleTests(unittest.TestCase):
         self.assertIn('SRC-001', (destination / 'prd.md').read_text())
         self.assertIn('希望按状态查工单', (destination / 'prd.md').read_text())
         manifest = json.loads((destination / 'manifest.json').read_text())
-        self.assertEqual(len(manifest['artifacts']), 5)
+        self.assertEqual(len(manifest['artifacts']), 6)
         for artifact in manifest['artifacts']:
             self.assertEqual(artifact['review_status'], 'draft')
             self.assertEqual(artifact['sha256'], hashlib.sha256((destination / artifact['path']).read_bytes()).hexdigest())
@@ -126,6 +126,73 @@ class DocumentBundleTests(unittest.TestCase):
         text = (self.root / 'literal/prd.md').read_text()
         self.assertNotIn('\n# injected', text)
         self.assertNotIn('[external](https://example.com)', text)
+
+    def test_workbench_embeds_literal_data_and_no_invented_outputs(self):
+        self.source['text'] = '</script><script>alert(1)</script>'
+        self.project['modules'] = [{'module_id': 'MOD-001', 'name': '工单查询', 'requirement_ids': ['REQ-001']}]
+        self.save()
+        project, sources = self.read()
+        destination = self.root / 'workbench'
+        build.publish(project, sources, destination)
+        page = (destination / 'workbench/index.html').read_text()
+        self.assertNotIn(self.source['text'], page)
+        start = page.index('<script id="workbench-data" type="application/json">') + len('<script id="workbench-data" type="application/json">')
+        payload = json.loads(page[start:page.index('</script>', start)])
+        self.assertEqual(payload['sources'][0]['text'], self.source['text'])
+        self.assertEqual(payload['project']['modules'][0]['module_id'], 'MOD-001')
+        self.assertFalse(any(item['path'].startswith('prototype/') for item in payload['artifacts']))
+        self.assertIn('会议与素材', page)
+
+    def test_module_must_reference_existing_requirement(self):
+        self.project['modules'] = [{'module_id': 'MOD-001', 'requirement_ids': ['REQ-404']}]
+        self.save()
+        with self.assertRaisesRegex(ValueError, 'invalid requirement_ids'):
+            self.read()
+
+    def test_materials_are_copied_with_explicit_root_and_listed(self):
+        assets = self.root / 'assets'
+        assets.mkdir()
+        (assets / 'background.txt').write_text('Approved synthetic background')
+        self.project['materials'] = [{'material_id': 'MAT-001', 'path': 'background.txt', 'source_ids': ['SRC-001']}]
+        self.save()
+        project, sources = self.read()
+        destination = self.root / 'attached'
+        build.publish(project, sources, destination, assets)
+        self.assertEqual((destination / 'materials/background.txt').read_text(), 'Approved synthetic background')
+        manifest = json.loads((destination / 'manifest.json').read_text())
+        attachment = next(item for item in manifest['artifacts'] if item.get('material_id') == 'MAT-001')
+        self.assertEqual(attachment['path'], 'materials/background.txt')
+
+    def test_material_paths_cannot_escape_selected_root(self):
+        self.project['materials'] = [{'material_id': 'MAT-001', 'path': '../outside.txt'}]
+        self.save()
+        project, sources = self.read()
+        with self.assertRaisesRegex(ValueError, 'within materials root'):
+            build.publish(project, sources, self.root / 'escape', self.root)
+        self.assertFalse((self.root / 'escape').exists())
+
+    def test_material_symlink_cannot_read_outside_root(self):
+        assets = self.root / 'assets'
+        assets.mkdir()
+        (assets / 'linked.txt').symlink_to(self.project_path)
+        self.project['materials'] = [{'material_id': 'MAT-001', 'path': 'linked.txt'}]
+        self.save()
+        project, sources = self.read()
+        with self.assertRaisesRegex(ValueError, 'within materials root'):
+            build.publish(project, sources, self.root / 'symlink', assets)
+
+    def test_material_copy_requires_explicit_root(self):
+        self.project['materials'] = [{'material_id': 'MAT-001', 'path': 'background.txt'}]
+        self.save()
+        project, sources = self.read()
+        with self.assertRaisesRegex(ValueError, 'materials-root'):
+            build.publish(project, sources, self.root / 'unconfigured')
+
+    def test_meeting_cannot_reference_missing_material(self):
+        self.project['meetings'] = [{'meeting_id': 'MEET-001', 'material_ids': ['missing']}]
+        self.save()
+        with self.assertRaisesRegex(ValueError, 'invalid material_ids'):
+            self.read()
 
 
 if __name__ == '__main__':

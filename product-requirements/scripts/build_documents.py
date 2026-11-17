@@ -4,7 +4,7 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shutil
 import tempfile
@@ -101,6 +101,26 @@ def read_inputs(project_path, sources_path):
         page_ids.add(page_id)
         refs = page.get('requirement_ids')
         require(isinstance(refs, list) and all(nonempty(ref) and ref in requirement_ids for ref in refs), f'{page_id} has invalid requirement_ids')
+    for field, identity in [('modules', 'module_id'), ('apis', 'api_id'), ('meetings', 'meeting_id'), ('materials', 'material_id')]:
+        records = project.get(field, [])
+        require(isinstance(records, list), f'{field} must be an array')
+        identities = set()
+        for record in records:
+            require(isinstance(record, dict), f'{field} entries must be objects')
+            key = record.get(identity)
+            require(nonempty(key) and key not in identities, f'{field} identities must be unique nonempty strings')
+            identities.add(key)
+            if field in {'modules', 'apis'}:
+                refs = record.get('requirement_ids', [])
+                require(isinstance(refs, list) and all(nonempty(ref) and ref in requirement_ids for ref in refs), f'{key} has invalid requirement_ids')
+            if field == 'materials':
+                refs = record.get('source_ids', [])
+                require(isinstance(refs, list) and all(nonempty(ref) and ref in sources for ref in refs), f'{key} has invalid source_ids')
+    material_ids = {item['material_id'] for item in project.get('materials', [])}
+    material_ids.update(item['material_id'] for item in sources.values() if nonempty(item.get('material_id')))
+    for meeting in project.get('meetings', []):
+        refs = meeting.get('material_ids', [])
+        require(isinstance(refs, list) and all(nonempty(ref) and ref in material_ids for ref in refs), f"{meeting['meeting_id']} has invalid material_ids")
     return project, sources
 
 
@@ -142,10 +162,10 @@ def render(project, sources, questions, generated_at):
         '背景与问题': profile,
         '目标与范围': literal({key: project['requirement_profile'].get(key) for key in ['desired_outcomes', 'scope', 'constraints']}),
         '角色与权限': literal(project['requirement_profile'].get('customer_and_roles')),
-        '业务流程与数据模型': literal(project['business_model']),
+        '业务流程与数据模型': literal({'功能模块': project.get('modules', []), '业务模型': project['business_model']}),
         '功能需求': '\n\n'.join(cards) or '待确认',
         '页面与交互': literal(project['pages']),
-        '质量约束与集成': literal({key: project['requirement_profile'].get(key) for key in ['constraints', 'integrations']}),
+        '质量约束与集成': literal({key: project['requirement_profile'].get(key) for key in ['constraints', 'integrations']}) + '\n\n' + literal({'接口草案': project.get('apis', [])}),
         '验收与待确认': question_text,
     }
     template = (PACKAGE / 'assets/prd-template.md').read_text()
@@ -159,7 +179,42 @@ def render(project, sources, questions, generated_at):
     return '\n\n'.join(document) + '\n', proposal
 
 
-def publish(project, sources, destination):
+def copy_materials(project, materials_root, stage):
+    attachments = []
+    for item in project.get('materials', []):
+        relative = item.get('path')
+        if relative is None:
+            continue
+        require(materials_root is not None, 'Materials with a path require --materials-root')
+        require(nonempty(relative) and not any(char in relative for char in ['\\', ':']), 'Invalid material path')
+        path = PurePosixPath(relative)
+        require(not path.is_absolute() and '..' not in path.parts, 'Material path must stay within materials root')
+        root = materials_root.resolve()
+        source = (root / relative).resolve()
+        require(source.is_relative_to(root) and source.is_file(), f'Material is unavailable within materials root: {relative}')
+        require(source.suffix.lower() in {'.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.txt', '.md', '.pdf', '.docx', '.pptx', '.png', '.jpg', '.jpeg', '.webp'}, f'Unsupported material file type: {relative}')
+        output = stage / 'materials' / relative
+        require(not output.exists(), f'Duplicate material destination: {relative}')
+        output.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, output)
+        attachments.append({'material_id': item['material_id'], 'path': output.relative_to(stage).as_posix()})
+    return attachments
+
+
+def render_workbench(project, sources, review, documents, artifacts):
+    attachments = [{'material_id': item['material_id'], 'path': item['path']} for item in artifacts if item.get('material_id')]
+    payload = json.dumps({'project': project, 'sources': list(sources.values()), 'review': review, 'documents': documents, 'artifacts': artifacts, 'attachments': attachments}, ensure_ascii=False)
+    payload = payload.replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
+    values = {
+        '__WORKBENCH_STYLE__': (PACKAGE / 'assets/workbench.css').read_text(),
+        '__WORKBENCH_DATA__': payload,
+        '__WORKBENCH_SCRIPT__': (PACKAGE / 'assets/workbench.js').read_text(),
+    }
+    template = (PACKAGE / 'assets/workbench-template.html').read_text()
+    return re.sub('|'.join(re.escape(key) for key in values), lambda match: values[match.group()], template)
+
+
+def publish(project, sources, destination, materials_root=None):
     require(not destination.exists(), 'Output already exists. Choose a new version directory.')
     destination.parent.mkdir(parents=True, exist_ok=True)
     lock = destination.parent / f'.{destination.name}.build.lock'
@@ -178,9 +233,19 @@ def publish(project, sources, destination):
         for name, value in [('project.json', project), ('review.json', review)]:
             (stage / name).write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         (stage / 'sources.jsonl').write_text(''.join(json.dumps(value, ensure_ascii=False) + '\n' for value in sources.values()), encoding='utf-8')
+        attachments = copy_materials(project, materials_root, stage)
+        material_ids = {item['path']: item['material_id'] for item in attachments}
         artifacts = []
-        for file in sorted(stage.iterdir()):
-            artifacts.append({'path': file.name, 'generation_status': 'success', 'review_status': 'draft', 'artifact_version': project['artifact_version'], 'depends_on': ['project.json', 'sources.jsonl'] if file.suffix == '.md' else [], 'source_ids': list(sources), 'audience': 'internal', 'sha256': hashlib.sha256(file.read_bytes()).hexdigest(), 'generator': 'build_documents/0.1', 'validation_results': ['Input identities and source references checked']})
+        for file in sorted(stage.rglob('*')):
+            if not file.is_file():
+                continue
+            artifacts.append({'path': file.relative_to(stage).as_posix(), 'generation_status': 'success', 'review_status': 'draft', 'artifact_version': project['artifact_version'], 'depends_on': ['project.json', 'sources.jsonl'] if file.suffix == '.md' else [], 'source_ids': list(sources), 'audience': 'internal', 'sha256': hashlib.sha256(file.read_bytes()).hexdigest(), 'generator': 'build_documents/0.1', 'validation_results': ['Input identities and source references checked']})
+            if file.relative_to(stage).as_posix() in material_ids:
+                artifacts[-1]['material_id'] = material_ids[file.relative_to(stage).as_posix()]
+        workbench = stage / 'workbench/index.html'
+        workbench.parent.mkdir()
+        workbench.write_text(render_workbench(project, sources, review, {'proposal.md': proposal, 'prd.md': prd}, artifacts), encoding='utf-8')
+        artifacts.append({'path': 'workbench/index.html', 'generation_status': 'success', 'review_status': 'draft', 'artifact_version': project['artifact_version'], 'depends_on': [item['path'] for item in artifacts], 'source_ids': list(sources), 'audience': 'internal', 'sha256': hashlib.sha256(workbench.read_bytes()).hexdigest(), 'generator': 'build_documents/0.1', 'validation_results': ['Embedded data encoded for inert JSON script']})
         manifest = {'schema_version': '0.1', 'project_id': project['project_id'], 'artifact_version': project['artifact_version'], 'generated_at': generated_at, 'artifacts': artifacts}
         (stage / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         stage.rename(destination)
@@ -197,10 +262,11 @@ def main():
     parser.add_argument('--project', required=True, type=Path)
     parser.add_argument('--sources', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
+    parser.add_argument('--materials-root', type=Path, help='Explicit root directory for referenced local materials')
     args = parser.parse_args()
     try:
         project, sources = read_inputs(args.project, args.sources)
-        count = publish(project, sources, args.output.resolve())
+        count = publish(project, sources, args.output.resolve(), args.materials_root)
         print(json.dumps({'output': str(args.output), 'review_status': 'draft', 'questions': count}, ensure_ascii=False))
     except (OSError, ValueError, TypeError) as error:
         parser.exit(1, f'Document generation failed: {error}\n')
