@@ -2,6 +2,7 @@
 
 | 参考 | 用途 | 入口 |
 | --- | --- | --- |
+| 华为与飞书 | 比赛宿主接入、妙记获取、权限和实测记录 | [核查说明](huawei-feishu.md) |
 | Archify | Skill 的组织、流程与架构图生成、检查和交付约定 | [参考说明](archify.md) |
 | Schema Canvas | 业务实体关系展示、字段探索与数据模型交互 | [参考说明](schema-canvas.md) |
 | 组员需求工作台 | 会议原话、REQ、疑问与筛选组织 | [参考说明](team-workbench.md) |

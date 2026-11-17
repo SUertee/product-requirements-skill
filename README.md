@@ -4,7 +4,7 @@
 
 ## 使用入口
 
-Skill 的执行入口为 [SKILL.md](product-requirements/SKILL.md)，执行指南、模板和工具位于该包内的 references/、assets/ 和 scripts/。当前已编写工作流、需求建模约定、输出合同与 PRD 模板，文本标准化脚本可以运行。端到端生成效果需在比赛宿主中验证，结构化需求可生成方案与 PRD 草稿。已增加内部工作台生成，ASR 适配器、后台监听和原型生成待实现。
+Skill 的执行入口为 [SKILL.md](product-requirements/SKILL.md)，执行指南、模板和工具位于该包内的 references/、assets/ 和 scripts/。当前已编写工作流、需求建模约定、输出合同与 PRD 模板，文本标准化脚本可以运行。端到端生成效果需在比赛宿主中验证，结构化需求可生成方案与 PRD 草稿。已增加七页内部工作台、本地文件接收、录屏音轨提取、飞书妙记指定链接 Connector 与评审意见存储。ASR、后台自动分析和原型生成待接入。
 
 ```bash
 python3 product-requirements/scripts/normalize_transcript.py --input /path/to/meeting.srt --project-id demo --output runs/demo/sources.jsonl
@@ -15,6 +15,10 @@ python3 product-requirements/scripts/normalize_transcript.py --input /path/to/me
 整体框架、模块职责、数据契约和实际能力见 [docs 导航](docs/README.md)。
 
 文档生成命令与字段见 [项目输入规范](product-requirements/references/project-data.md)。
+
+## 本地工作台
+
+已生成文档版本后，通过 `product-requirements/scripts/serve_workbench.py --run-dir <版本目录> --workspace <接收箱目录>` 启动。支持导入录音、录屏与逐字稿、获取指定妙记，以及保存版本绑定的评审意见。具体命令与限制见 [本地运行说明](docs/features/intake.md)，整体顺序见 [开发流程](docs/planning/development.md)。
 
 ## 参考与适配
 

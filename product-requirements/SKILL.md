@@ -9,11 +9,12 @@ description: 将客户会议录音、逐字稿与前情资料整理为带依据�
 
 ## 任务路由
 
-- 新会议或后台接收材料，读取 [输入与预处理](references/ingestion.md)。文本来源可使用 `scripts/normalize_transcript.py`，运行前查看 `--help`。
+- 新会议或后台接收材料，读取 [输入与预处理](references/ingestion.md)。本地文件使用 `scripts/ingest_material.py`，飞书妙记使用 `scripts/feishu_connector.py`。运行前查看 `--help`。纯文本标准化可直接运行 `scripts/normalize_transcript.py`。
 - 首次需求整理，读取 [需求建模与评审](references/workflow.md)。
 - 绘制流程、架构或数据模型，先读 [能力接入与设计路由](references/capabilities.md)。
 - 生成客户原型，读取 [内置 UI 规范](references/ui-design.md)，使用 assets/ui.css 的基础样式。
 - 生成内部工作台，读取 [工作台页面规范](references/workbench.md) 和内置 UI 规范，使用 assets/workbench-template.html、assets/workbench.css 与 assets/workbench.js。
+- 需要在网页中导入和记录评审时，运行 scripts/serve_workbench.py，传入已生成的 run-dir 与该项目的 workspace。读取接收箱的分析请求，再执行语义分析与新版本生成。
 - 结构化需求已整理完成时，读取 [项目输入规范](references/project-data.md)，运行 scripts/build_documents.py 生成方案、PRD、内部工作台和评审包草稿。
 - 生成或修订成果，读取 [输出合同](references/output-contract.md)，PRD 使用 [章节模板](assets/prd-template.md)。
 - 收到第二次会议、人工修改或客户反馈，对照已有基线生成差异与影响范围，再更新受影响产物。

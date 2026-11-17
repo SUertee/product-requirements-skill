@@ -1,6 +1,6 @@
 # 项目数据与运行契约
 
-2026-11-17 的字段设计。当前只有来源标准化脚本实际输出来源片段，其余项目数据、评审、产物清单和任务字段为候选交接合同。产物清单及状态枚举统一沿用 [输出合同](../../product-requirements/references/output-contract.md)。
+2026-11-17 的字段设计。来源标准化、文档生成、本地接收任务及评审意见存储已实现，自动分析调度、增量应用与发布字段仍按候选合同维护。产物清单及状态枚举统一沿用 [输出合同](../../product-requirements/references/output-contract.md)。
 
 ## 来源片段
 
@@ -39,11 +39,15 @@ review.json 记录待确认问题、差异、来源、影响范围及决定。�
 
 ## 后台任务与失败恢复
 
-沿用 ingestion.md 的 received、normalized、analyzed、draft_ready、failed 阶段。候选任务记录 job_id、project_id、material_id、input_version、processor_version、stage、attempt、checkpoint_refs 与 error。
+沿用 ingestion.md 的 received、normalized、analyzed、draft_ready、failed 阶段。本地接收任务实际记录 job_id、project_id、material_id、processor_version、stage、status、files、provenance、created_at 和失败 error。文本完成后 stage 为 normalized、status 为 ready_for_analysis；音轨提取后 stage 为 audio_ready、status 为 awaiting_transcript。失败重试保留原任务并通过 retry_of 关联新尝试。input_version、attempt 与 checkpoint_refs 作为后续后台调度字段。
 
 执行器先确认文件稳定，再按材料、项目和处理版本去重并原子认领。完成阶段产物先写临时文件，校验后发布引用。重试复用完成阶段，继续时核对输入与基线版本。晚到结果在其原始运行版本中保存，切换当前版本由编排层确认。
 
 任务阶段、产物生成状态、人工评审状态和部署结果各自记录。依赖不可用、转写失败或输出无效时，保留已有结果、失败阶段和可恢复入口。
+
+## 本地评审意见
+
+运行器将意见保存到接收 workspace 的 reviews.sqlite3，以 project_id 和 artifact_version 为键，revision 检查覆盖冲突。每条记录包含目标、definition 阶段、结论、意见、可为空的记录人和时间。导出 review-notes.json 后交给 Skill 结合基线修订，既有生成目录保留。
 
 ## 发布与外部生成器
 

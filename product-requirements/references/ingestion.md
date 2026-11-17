@@ -8,13 +8,29 @@
 python3 scripts/normalize_transcript.py --input meeting.txt --project-id demo --output runs/demo/sources.jsonl
 ```
 
-支持 UTF-8 TXT、Markdown、SRT、VTT。输出逐段来源 JSONL，包含稳定片段 ID、原文和时间或段落定位。该脚本负责文本标准化，音频先通过宿主中配置的 ASR 服务取得逐字稿。
+支持 UTF-8 TXT、Markdown、SRT、VTT。输出逐段来源 JSONL，包含稳定片段 ID、原文和时间或段落定位。该脚本负责文本标准化，音频通过宿主中已配置且获授权的 ASR 服务取得逐字稿。
 
 对于 DOCX、PDF 或会议链接，使用宿主可用的读取能力提取文本并保留原始定位。若读取失败，报告具体环节与可用导出方式。
 
+## 录音、录屏与飞书接入
+
+```bash
+python3 scripts/ingest_material.py --input meeting.mp4 --project-id demo --workspace runs/demo/inbox
+python3 scripts/feishu_connector.py --minutes 'https://example.feishu.cn/minutes/<token>' --project-id demo --workspace runs/demo/inbox
+python3 scripts/serve_workbench.py --run-dir runs/demo/v0.1 --workspace runs/demo/inbox --port 8765
+```
+
+接收器保留原件、内容摘要与任务状态。文本生成 sources.jsonl 和 analysis-request.md，进入 ready_for_analysis。音视频在 ffmpeg 可用时提取单声道 16kHz WAV，进入 awaiting_transcript。录屏画面中的页面和操作理解仍待实现。失败保留原件与错误，通过 --retry 建立新尝试并保留 retry_of。逐字稿可使用 --related-job 关联同项目已接收的录音，网页提供对应选择。
+
+飞书 Connector 默认获取所选妙记的逐字稿，--media 获取原始音视频。沿用本机 lark-cli 用户身份，要求已有资源访问与对应只读导出权限。指定链接即可获取，搜索、长连接事件与自动授权配置按实际宿主能力接入。权限不足时报告具体 scope。
+
+本地工作台提供文件导入、Connector、接收箱及版本绑定的评审意见存储。分析请求交给主 Skill 执行，结合关联前情和已有基线整理 project.json，随后运行 build_documents.py 生成新版本。预处理完成后仍需执行语义分析。
+
+ASR 服务由用户选择并授权数据目的地。现有妙记逐字稿可直接验证需求分析链路，原录制保留用于对照。
+
 ## 语音转写接入合同
 
-团队成员实现的转写适配器接收本地音频路径、语言提示和项目标识，返回带起止时间的文本片段、实际服务与模型版本、失败原因和可获得的耗时费用。未知说话人使用匿名标签。按服务实际支持的格式和大小处理输入。
+转写适配器接收本地音频路径、语言提示和项目标识，返回带起止时间的文本片段、实际服务与模型版本、失败原因和可获得的耗时费用。未知说话人使用匿名标签。按服务实际支持的格式和大小处理输入。
 
 取得用户对数据目的地的授权后向选定服务发送音频。密钥从运行环境读取，日志记录任务标识与错误摘要。
 
@@ -31,4 +47,4 @@ python3 scripts/normalize_transcript.py --input meeting.txt --project-id demo --
 
 由独立的 PC 运行器监听接收目录，确认文件传输完成后再调度。以内容摘要、项目与处理版本去重，原子认领任务，保留各阶段结果。并发接收同一材料复用同一任务，失败重试从可用阶段继续。项目关联不明时保留未归属草稿等待负责人选择。
 
-运行器需要宿主支持无人值守调用，PC 保持运行。任务阶段为 received、normalized、analyzed、draft_ready 或 failed，失败记录具体阶段。工程实现和真实设备测试由接入负责人完成。
+运行器需要宿主支持无人值守调用，PC 保持运行。任务阶段为 received、normalized、analyzed、draft_ready 或 failed，失败记录具体阶段。本地接收器已实现预处理，目录监听、后台自动调度与真实设备传输待接入。
