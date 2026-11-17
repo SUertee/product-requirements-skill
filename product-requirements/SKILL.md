@@ -13,7 +13,7 @@ description: 将客户会议录音、逐字稿与前情资料整理为带依据�
 - 首次需求整理，读取 [需求建模与评审](references/workflow.md)。
 - 绘制流程、架构或数据模型，先读 [能力接入与设计路由](references/capabilities.md)。
 - 生成原型或工作台，读取 [内置 UI 规范](references/ui-design.md)，使用 assets/ui.css 的基础样式。
-- 结构化需求已整理完成时，读取 [项目输入规范](references/project-data.md)，运行 scripts/build_documents.py 生成方案、PRD 和评审包草稿。
+- 结构化需求已整理完成时，读取 [项目输入规范](references/project-data.md)，运行 scripts/build_documents.py 生成方案、PRD、内部工作台和评审包草稿。
 - 生成或修订成果，读取 [输出合同](references/output-contract.md)，PRD 使用 [章节模板](assets/prd-template.md)。
 - 收到第二次会议、人工修改或客户反馈，对照已有基线生成差异与影响范围，再更新受影响产物。
 

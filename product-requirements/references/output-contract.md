@@ -41,3 +41,8 @@ manifest 记录实际调用的 Skill、固定版本或提交、输入数据版�
 ## 当前文档生成入口
 
 结构化项目输入与实际命令见 [项目输入规范](project-data.md)。build_documents.py 已实现输入结构和引用检查、PRD／方案生成、初始评审问题及产物清单。整体文档以 draft 输出，原型、工作台、图示和部署由后续生成阶段登记真实结果。
+
+
+## 工作台生成
+
+build_documents.py 按项目数据生成 workbench/index.html。功能模块、会议、素材和 API 的扩展字段及附件目录约定见 [项目输入规范](project-data.md)。工作台只从实际产物清单构建文件入口，未生成内容显示相应状态。

@@ -13,7 +13,7 @@ python3 product-requirements/scripts/build_documents.py \
   --output runs/demo/v0.1
 ```
 
-生成 project.json、sources.jsonl、proposal.md、prd.md、review.json 和 manifest.json。已有输出目录会返回错误，选择新版本目录后再执行。需求中的人工锁定字段随项目数据原样保存。
+生成 project.json、sources.jsonl、proposal.md、prd.md、review.json、workbench/index.html 和 manifest.json。已有输出目录会返回错误，选择新版本目录后再执行。需求中的人工锁定字段随项目数据原样保存。
 
 ## 项目字段
 
@@ -46,3 +46,12 @@ python3 product-requirements/scripts/build_documents.py \
 工具按 [PRD 模板](../assets/prd-template.md) 的章节生成内容，补充原始依据和定位。整体文档和初始 review 均为 draft，已有需求确认状态保存在 project.json 中。
 
 引用无效、重复 ID 或项目归属不一致时返回错误。写入采用同目标目录的排他构建锁和临时目录，生成失败清理中间目录；进程被强制终止后遗留锁需要先确认任务已结束再处理。工具负责结构与引用检查，语义正确性由人工评审与后续端到端验证确认。
+
+
+## 工作台输入
+
+可选 modules 数组按 module_id、name、requirement_ids 组织客户业务模块。meetings 按 meeting_id、title、date、material_ids 组织会议；materials 按 material_id、name、kind、source_ids 和 path 组织素材；apis 按 api_id、name、method、path、requirement_ids、request、response、errors、review_status 组织接口草案。各关联引用会核对是否存在。
+
+素材 path 为实际素材根目录内的相对路径，通过 `--materials-root` 显式选择根目录后复制到输出的 materials/。已实现文档及音频入口，生成 HTML 自包含样式和脚本，素材文件随输出目录携带。
+
+侧栏为总览、会议素材、功能需求、方案文档、原型预览、技术设计、评审记录。技术设计的流程架构、数据库和 API 通过页内标签切换。原型和图示按实际文件清单展示，初始工作台提供内部浏览和项目数据导出。人工修改和评审决定通过 Skill 进入下一轮版本。
