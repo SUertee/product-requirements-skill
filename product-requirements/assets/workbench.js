@@ -172,8 +172,10 @@
     return button;
   }
   function sourceLink(sourceId) {
-    const button = element('button', sourceId, 'source-link');
+    const source = sourceMap.get(sourceId);
+    const button = element('button', '查看原话 · ' + locatorLabel(source?.locator || {}), 'source-link');
     button.type = 'button';
+    button.dataset.sourceRef = sourceId;
     button.addEventListener('click', () => {
       selectedSource = sourceId;
       queryInput.value = '';
@@ -257,9 +259,31 @@
     show(selected);
     return card;
   }
+  function needsDefinitionReview() {
+    const activeRequirements = requirements.filter(req => req.review_status !== 'parked' && req.lifecycle_status !== 'cancelled');
+    return !activeRequirements.length || activeRequirements.some(req => req.review_status !== 'confirmed' || !req.acceptance_criteria);
+  }
   function overview() {
     const definition = panel(project.name || project.project_id);
     definition.classList.add('project-definition');
+    const next = element('div', null, 'next-action');
+    next.append(element('span', '下一步'));
+    const action = element('button', null, 'button small primary');
+    action.id = 'next-action'; action.type = 'button';
+    const needsReview = needsDefinitionReview();
+    const prototypeAvailable = data.artifacts.some(item => item.path.startsWith('prototype/') && item.path.endsWith('.html'));
+    if (!requirements.length) {
+      action.textContent = '导入会议';
+      action.addEventListener('click', () => { materialTab = 'import'; navigate('materials'); });
+    } else if (needsReview) {
+      action.textContent = '核对需求';
+      action.addEventListener('click', () => { moduleView = 'list'; navigate('modules'); });
+    } else {
+      action.textContent = prototypeAvailable ? '查看原型' : '生成原型';
+      action.addEventListener('click', () => { prototypeTab = prototypeAvailable ? 'preview' : 'generate'; navigate('prototype'); });
+    }
+    next.append(action);
+    definition.append(next);
     definition.append(element('p', display(project.requirement_profile.desired_outcomes), 'project-objective'));
     fields(definition, [['面向', project.requirement_profile.customer_and_roles], ['范围', project.requirement_profile.scope]]);
     const flow = project.business_model.flows?.[0];
@@ -443,7 +467,6 @@
       jobs.append(row);
     }
     if (!serverState.jobs.length) jobs.append(element('p', '导入后的素材将在这里显示'));
-    jobs.append(element('p', '接收箱保留新材料。Skill 完成分析并生成下一版本后，需求和文档进入对应页面。', 'inline-note'));
     const refresh = element('button', '刷新接收箱', 'button');
     refresh.type = 'button';
     refresh.disabled = intakeBusy;
@@ -517,7 +540,6 @@
         for (const [key, label] of [['request', '分析请求'], ['baseline', '原基线'], ['sources', '完整来源']]) {
           const link = element('a', label, 'button ghost small'); link.href = '/api/tasks/' + task.id + '/' + key; link.target = '_blank'; link.rel = 'noopener'; row.append(link);
         }
-        if (task.request_path) row.append(element('p', task.request_path, 'inline-note'));
         if (task.kind === 'analysis' && task.status !== 'running') {
           if (serverState.analysis_configured) {
             const execute = element('button', '执行已配置宿主', 'button primary'); execute.type = 'button'; execute.disabled = workflowBusy;
@@ -606,7 +628,7 @@
           }
           list.append(row);
         }
-        card.append(list, element('p', '根据逐字稿提炼 · 待人工复核', 'inline-note'));
+        card.append(list);
         detail.append(card);
         return;
       }
@@ -648,8 +670,6 @@
       player.addEventListener('loadedmetadata', applySeek);
       player.addEventListener('error', () => { seekMessage.textContent = '录音无法加载，请核对文件与浏览器支持的格式'; });
       card.append(player, seekMessage);
-    } else if (selected.sources.some(source => Number.isFinite(source.locator.start_seconds))) {
-      card.append(element('p', '关联录音后可按原话时间定位', 'inline-note'));
     }
     const transcriptSources = selected.sources.filter(source => !queryInput.value.trim() || matches(source) || matches(selected.material?.name || selected.title));
     const selectedIndex = transcriptSources.findIndex(source => source.source_id === selectedSource);
@@ -695,7 +715,6 @@
   function moduleDetails(group, host) {
     host.replaceChildren();
     host.append(element('span', group.module?.module_id || '待归类', 'module-identity'), element('h2', group.title));
-    if (group.module?.goal) host.append(element('p', group.module.goal));
     const reqIds = new Set(group.items.map(req => req.requirement_id));
     const related = element('div', null, 'module-related');
     related.setAttribute('aria-label', '关联成果');
@@ -983,7 +1002,23 @@
   function prototype() {
     content.append(sectionTabs([['preview', '预览'], ['pages', '页面定义'], ['generate', '生成']], prototypeTab, '原型视图', key => { prototypeTab = key; render(); }));
     if (prototypeTab === 'generate') { generationPanel(['prototype']); generationResults(['prototype']); return; }
-    if (prototypeTab === 'preview') { artifactPreviews('prototype/', '原型等待定义确认与实际生成'); return; }
+    if (prototypeTab === 'preview') {
+      const available = data.artifacts.some(item => item.path.startsWith('prototype/') && item.path.endsWith('.html'));
+      if (available) artifactPreviews('prototype/', '原型待生成');
+      else {
+        const card = panel('原型待生成');
+        const label = !requirements.length ? '导入会议' : needsDefinitionReview() ? '核对需求' : '生成原型';
+        const action = element('button', label, 'button primary');
+        action.type = 'button';
+        action.addEventListener('click', () => {
+          if (!requirements.length) { materialTab = 'import'; navigate('materials'); }
+          else if (needsDefinitionReview()) { moduleView = 'list'; navigate('modules'); }
+          else { prototypeTab = 'generate'; render(); }
+        });
+        card.append(action); content.append(card);
+      }
+      return;
+    }
     const pages = panel('页面定义');
     for (const page of project.pages) {
       const section = element('section', null, 'inbox-row');
@@ -1161,7 +1196,7 @@
   function technical() {
     content.append(sectionTabs([['design', '设计'], ['generate', '生成']], technicalMode, '技术设计视图', key => { technicalMode = key; render(); }));
     if (technicalMode === 'generate') { generationPanel(['workflow', 'erd']); generationResults(['workflow', 'erd']); return; }
-    const tabs = {diagrams: '流程架构', database: '数据库', api: 'API'};
+    const tabs = {diagrams: '流程架构', database: '数据模型', api: '接口'};
     const navigation = element('div', null, 'technical-tabs');
     navigation.setAttribute('role', 'tablist');
     navigation.setAttribute('aria-label', '技术设计分类');
@@ -1243,7 +1278,7 @@
     document.getElementById('page-title').focus();
   }
   document.getElementById('project-brand').textContent = project.name || project.project_id;
-  document.getElementById('project-label').textContent = project.project_id;
+  document.getElementById('project-label').textContent = project.name || project.project_id;
   document.getElementById('project-status').textContent = '内部评审草稿 · ' + project.artifact_version + ' · ' + data.review.questions.length + ' 个待确认项';
   for (const [view, title] of Object.entries(views)) {
     const button = element('button', title, 'nav-button');

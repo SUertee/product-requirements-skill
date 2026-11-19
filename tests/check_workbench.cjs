@@ -76,6 +76,10 @@ async function settle() {
   await settle();
   assert.equal(document.querySelectorAll('[data-view]').length, 7);
   assert.equal(document.querySelectorAll('.overview-sections > section').length, 2);
+  assert.equal(document.getElementById('next-action').textContent, '查看原型');
+  document.getElementById('next-action').click();
+  assert(document.querySelector('.workbench-preview'));
+  navigate('overview');
   for (const view of ['materials', 'modules', 'documents', 'prototype', 'technical', 'review']) {
     navigate(view);
     assert(document.getElementById('page-content').children.length > 0);
@@ -107,7 +111,9 @@ async function settle() {
   assert(document.querySelectorAll('.source-excerpt').length <= 30);
   navigate('modules');
   button('依据').click();
-  button(lastSourceId).click();
+  const citation = [...document.querySelectorAll('[data-source-ref]')].find(node => node.dataset.sourceRef === lastSourceId);
+  assert.match(citation.textContent, /查看原话/);
+  citation.click();
   assert.equal(document.querySelector('.source-selected').dataset.sourceId, lastSourceId);
   assert.match(document.querySelector('.transcript-paging').textContent, /2 \/ 2 页/);
   button('会议重点').click();
