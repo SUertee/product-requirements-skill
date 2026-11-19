@@ -1386,7 +1386,6 @@
   }
   document.getElementById('project-brand').textContent = project.name || project.project_id;
   document.getElementById('project-label').textContent = project.name || project.project_id;
-  document.getElementById('project-status').textContent = '内部评审草稿 · ' + project.artifact_version + ' · ' + data.review.questions.length + ' 个待确认项';
   for (const [view, title] of Object.entries(views)) {
     const button = element('button', title, 'nav-button');
     button.dataset.view = view;
