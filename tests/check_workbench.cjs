@@ -51,6 +51,7 @@ const state = {
 window.fetch = async (url, options = {}) => {
   requests.push({url, options});
   if (url === '/api/status') return {ok: true, json: async () => state};
+  if (url === '/api/review') { const entry = JSON.parse(options.body); state.review = {revision: state.review.revision + 1, decisions: [...state.review.decisions, entry]}; return {ok: true, json: async () => ({review: state.review})}; }
   if (url === '/api/review/apply') return {ok: true, json: async () => ({task: {status: 'completed'}})};
   if (url === '/api/documents') return {ok: false, json: async () => ({error: 'Document baseline changed'})};
   if (url === '/api/generate') return {ok: false, json: async () => ({error: 'Fixture dependency unavailable'})};
@@ -144,6 +145,17 @@ async function settle() {
   text.value = '主题必填，提交后显示唯一编号';
   submit(text.closest('form'));
   navigate('review');
+  assert(document.querySelector('[aria-label="评审事项"]'));
+  assert(document.querySelector('.selection-detail #review-comment'));
+  document.getElementById('review-comment').value = '合成评审：需要核对验收';
+  submit(document.getElementById('review-comment').closest('form'));
+  await settle();
+  assert.equal(JSON.parse(requests.find(item => item.url === '/api/review').options.body).target, 'REQ-001');
+  button('已记录').click();
+  assert.match(document.getElementById('page-content').textContent, /合成评审：需要核对验收/);
+  button('版本变更').click();
+  assert.match(document.getElementById('page-content').textContent, /当前版本/);
+  button('待确认').click();
   submit(document.getElementById('review-version').closest('form'));
   await settle();
   const applied = requests.find(item => item.url === '/api/review/apply');
