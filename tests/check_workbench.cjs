@@ -110,7 +110,7 @@ async function settle() {
   assert.match(document.getElementById('page-content').textContent, /原话时间超出录音长度/);
   assert(document.querySelectorAll('.source-excerpt').length <= 30);
   navigate('modules');
-  button('依据').click();
+  button('会议原话').click();
   const citation = [...document.querySelectorAll('[data-source-ref]')].find(node => node.dataset.sourceRef === lastSourceId);
   assert.match(citation.textContent, /查看原话/);
   citation.click();
@@ -119,7 +119,7 @@ async function settle() {
   button('会议重点').click();
   assert.equal(document.querySelectorAll('.source-excerpt').length, 0);
   navigate('modules');
-  button('修订').click();
+  button('修改').click();
   const selector = document.getElementById('edit-field-REQ-001');
   change(selector, 'acceptance_criteria');
   const text = document.getElementById('edit-value-REQ-001');

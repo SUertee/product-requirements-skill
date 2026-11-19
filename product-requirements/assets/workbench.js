@@ -18,6 +18,7 @@
   let selectedModule = null;
   let moduleView = data.module_diagram ? 'map' : 'list';
   let selectedRequirement = null;
+  let moduleDetailTab = 'requirements';
   let requirementTab = 'detail';
   let moduleFrame = null;
   let selectDiagramModule = null;
@@ -160,10 +161,14 @@
     return detail;
   }
   function requirementLink(req) {
-    const button = element('button', req.requirement_id + ' · ' + req.title, 'source-link');
+    const button = element('button', req.title, 'source-link');
+    button.dataset.requirementId = req.requirement_id;
+    button.title = '需求编号 ' + req.requirement_id;
     button.type = 'button';
     button.addEventListener('click', () => {
       queryInput.value = req.requirement_id;
+      requirementTab = 'detail';
+      moduleDetailTab = 'requirements';
       statusInput.value = '';
       evidenceInput.value = '';
       selectedModule = null;
@@ -226,18 +231,19 @@
     detail.append(form); return detail;
   }
   function requirementCard(req) {
-    const card = panel(req.requirement_id + ' · ' + req.title);
-    badges(card, [states[req.review_status], evidenceNames[req.evidence_type]]);
-    fields(card, [['角色', req.role], ['行为', req.behavior], ['验收', req.acceptance_criteria]]);
+    const card = panel(req.title);
+    card.classList.add('requirement-inspector');
+    const identity = element('div', null, 'requirement-identity');
+    identity.append(element('span', '需求编号 ' + req.requirement_id));
+    badges(identity, [states[req.review_status], evidenceNames[req.evidence_type]]);
+    card.append(identity);
     const body = element('div', null, 'requirement-tab-body');
-    const summaryFields = card.querySelector('.workbench-values');
-    summaryFields.remove();
-    const tabs = [['detail', '需求'], ['sources', '依据']];
-    if (serverState) tabs.push(['edit', '修订']);
-    let selected = tabs.some(([key]) => key === requirementTab) ? requirementTab : 'detail';
+    const tabs = [['detail', '功能'], ['rules', '规则'], ['sources', '会议原话']];
+    if (serverState) tabs.push(['edit', '修改']);
+    const selected = tabs.some(([key]) => key === requirementTab) ? requirementTab : 'detail';
     const navigation = sectionTabs(tabs, selected, '需求详情', show);
     function show(key) {
-      selected = key; requirementTab = key;
+      requirementTab = key;
       navigation.querySelectorAll('button').forEach((button, index) => button.setAttribute('aria-pressed', String(tabs[index][0] === key)));
       body.replaceChildren();
       if (key === 'edit') body.append(requirementEditor(req));
@@ -246,10 +252,16 @@
           const source = sourceMap.get(sourceId);
           body.append(sourceLink(sourceId), element('blockquote', source?.text || '来源待补充', 'source-quote'));
         }
+      } else if (key === 'rules') {
+        const known = [['使用者', req.role], ['触发条件', req.trigger], ['输入', req.inputs], ['输出', req.outputs], ['业务规则', req.rules], ['异常处理', req.exceptions]].filter(([, value]) => display(value) !== '待确认');
+        if (known.length) fields(body, known);
+        else body.append(element('p', '业务规则待补充', 'inline-note'));
       } else {
-        body.append(summaryFields);
-        fields(body, [['触发', req.trigger], ['输入', req.inputs], ['输出', req.outputs], ['规则', req.rules], ['异常', req.exceptions]].filter(([, value]) => display(value) !== '待确认'));
-        if (req.open_questions?.length) fields(body, [['待确认', req.open_questions]]);
+        body.append(element('h3', '功能内容'), valueNode(req.behavior));
+        body.append(element('h3', '验收标准'), valueNode(req.acceptance_criteria));
+        if (req.open_questions?.length) {
+          body.append(element('h3', '需要确认'), valueNode(req.open_questions));
+        }
       }
     }
     const reviewButton = element('button', '记录评审意见', 'button ghost small');
@@ -714,38 +726,51 @@
   }
   function moduleDetails(group, host) {
     host.replaceChildren();
-    host.append(element('span', group.module?.module_id || '待归类', 'module-identity'), element('h2', group.title));
-    const reqIds = new Set(group.items.map(req => req.requirement_id));
-    const related = element('div', null, 'module-related');
-    related.setAttribute('aria-label', '关联成果');
-    const pages = project.pages.filter(page => (page.requirement_ids || []).some(id => reqIds.has(id)));
-    const entities = (project.business_model.entities || []).filter(item => (item.requirement_ids || []).some(id => reqIds.has(id)));
-    const apis = (project.apis || []).filter(item => (item.requirement_ids || []).some(id => reqIds.has(id)));
-    const relations = (project.module_relations || []).filter(item => item.from === group.module?.module_id || item.to === group.module?.module_id);
-    if (pages.length || entities.length || apis.length || relations.length) {
-      for (const [items, label, title, view] of [[pages, '页面', item => item.name || item.page_id, 'prototype'], [entities, '实体', item => item.name || item.entity_id, 'database'], [apis, '接口', item => item.name || item.api_id, 'api']]) {
-        if (items.length) {
-          items.forEach(item => { const button = element('button', label + ' · ' + title(item), 'related-chip'); button.type = 'button'; button.addEventListener('click', () => navigate(view)); related.append(button); });
-        }
+    const head = element('div', null, 'module-detail-head');
+    head.append(element('h2', group.title));
+    head.append(sectionTabs([['requirements', '需求'], ['related', '相关内容']], moduleDetailTab, '模块内容', key => { moduleDetailTab = key; moduleDetails(group, host); }));
+    host.append(head);
+    if (moduleDetailTab === 'related') {
+      const reqIds = new Set(group.items.map(req => req.requirement_id));
+      const related = element('div', null, 'module-related');
+      related.setAttribute('aria-label', '关联成果');
+      const pages = project.pages.filter(page => (page.requirement_ids || []).some(id => reqIds.has(id)));
+      const entities = (project.business_model.entities || []).filter(item => (item.requirement_ids || []).some(id => reqIds.has(id)));
+      const apis = (project.apis || []).filter(item => (item.requirement_ids || []).some(id => reqIds.has(id)));
+      const relations = (project.module_relations || []).filter(item => item.from === group.module?.module_id || item.to === group.module?.module_id);
+      for (const [items, label, title, view] of [[pages, '页面', item => item.name || item.page_id, 'prototype'], [entities, '数据', item => item.name || item.entity_id, 'database'], [apis, '接口', item => item.name || item.api_id, 'api']]) {
+        items.forEach(item => {
+          const button = element('button', label + ' · ' + title(item), 'related-chip');
+          button.type = 'button'; button.addEventListener('click', () => navigate(view)); related.append(button);
+        });
       }
       relations.forEach(item => {
         const other = (project.modules || []).find(module => module.module_id === (item.from === group.module?.module_id ? item.to : item.from));
         related.append(element('p', (item.from === group.module?.module_id ? '→ ' : '← ') + (other?.name || other?.module_id) + ' · ' + item.label, 'inline-note'));
       });
-      host.append(related);
+      host.append(related.children.length ? related : empty('暂无关联内容'));
+      return;
     }
     const current = group.items.find(req => req.requirement_id === selectedRequirement) || group.items[0];
     if (!current) { host.append(empty('该模块尚无匹配需求')); return; }
     selectedRequirement = current.requirement_id;
-    const choices = element('div', null, 'requirement-picker');
-    choices.setAttribute('role', 'group'); choices.setAttribute('aria-label', '选择需求');
+    const workspace = element('div', null, 'module-requirements');
+    const choices = element('nav', null, 'requirement-picker');
+    choices.setAttribute('aria-label', '选择需求');
     group.items.forEach(req => {
-      const button = element('button', req.requirement_id + ' · ' + req.title, 'requirement-choice'); button.type = 'button';
+      const button = element('button', null, 'requirement-choice'); button.type = 'button';
+      button.dataset.requirementId = req.requirement_id;
+      button.title = '需求编号 ' + req.requirement_id;
+      button.append(element('strong', req.title), element('span', states[req.review_status]));
       button.setAttribute('aria-pressed', String(req === current));
-      button.addEventListener('click', () => { selectedRequirement = req.requirement_id; moduleDetails(group, host); host.querySelector('.requirement-choice[aria-pressed="true"]')?.focus(); });
+      button.addEventListener('click', () => {
+        selectedRequirement = req.requirement_id; requirementTab = 'detail';
+        moduleDetails(group, host); host.querySelector('.requirement-choice[aria-pressed="true"]')?.focus();
+      });
       choices.append(button);
     });
-    host.append(choices, requirementCard(current));
+    workspace.append(choices, requirementCard(current));
+    host.append(workspace);
   }
   function modules() {
     const visible = filteredRequirements();
@@ -786,21 +811,23 @@
     const workspace = element('div', null, 'module-workspace');
     const surface = element('section', null, 'module-surface'); surface.setAttribute('aria-label', moduleView === 'map' ? '模块关系图' : '需求列表');
     const detail = element('aside', null, 'module-detail panel requirement-card'); detail.setAttribute('aria-label', '模块详情');
-    function select(key) {
+    function select(key, reveal = false) {
       const next = choices.find(group => group.key === key);
       if (!next) return;
+      if (key !== selectedModule || reveal) { requirementTab = 'detail'; moduleDetailTab = 'requirements'; }
       selected = next; selectedModule = key;
       for (const button of filters.querySelectorAll('button')) button.setAttribute('aria-current', String(button.dataset.moduleKey === key));
       moduleDetails(selected, detail);
       moduleFrame?.contentWindow?.postMessage({type: 'product-requirements:module-state', selected: (project.modules || []).findIndex(module => module.module_id === selected.module?.module_id), visible: choices.map(group => (project.modules || []).findIndex(module => module.module_id === group.module?.module_id))}, '*');
       surface.querySelectorAll('[data-req-row]').forEach(row => row.setAttribute('aria-selected', String(selectedRequirement === row.dataset.reqRow)));
+      if (reveal) detail.scrollIntoView?.({block: 'nearest'});
     }
     choices.forEach(group => {
       const button = element('button', null, 'module-filter'); button.type = 'button'; button.dataset.moduleKey = group.key;
       button.setAttribute('aria-current', String(group === selected)); button.append(element('span', group.title), element('span', group.items.length, 'module-filter-count'));
-      button.addEventListener('click', () => select(group.key)); filters.append(button);
+      button.addEventListener('click', () => select(group.key, true)); filters.append(button);
     });
-    content.append(filters, workspace); workspace.append(surface, detail);
+    content.append(workspace); workspace.append(surface, filters, detail);
     if (moduleView === 'map' && data.module_diagram) {
       const head = element('div', null, 'module-surface-head'); head.append(element('h2', '业务模块'));
       head.append(fileLink('diagrams/modules.html', '独立打开')); surface.append(head);
@@ -813,7 +840,7 @@
         window.addEventListener('message', event => { if (event.source !== parent || event.data?.type !== 'product-requirements:module-state') return; document.querySelectorAll('[data-node-id]').forEach(node => { const index = Number(node.getAttribute('data-node-id').replace('module_', '')); node.toggleAttribute('data-workbench-selected', index === event.data.selected); node.toggleAttribute('data-workbench-filtered', Array.isArray(event.data.visible) && !event.data.visible.includes(index)); }); });
       })();`;
       frame.srcdoc = data.module_diagram.replace('</body>', '<scr' + 'ipt>' + bridge + '</scr' + 'ipt></body>');
-      moduleFrame = frame; selectDiagramModule = index => select('module:' + project.modules[index]?.module_id);
+      moduleFrame = frame; selectDiagramModule = index => select('module:' + project.modules[index]?.module_id, true);
       frame.addEventListener('load', () => select(selectedModule));
       surface.append(frame);
       if (!(project.module_relations || []).length) surface.append(element('p', '模块间关系待补充', 'module-map-note'));
@@ -826,8 +853,8 @@
       visible.forEach(req => {
         const group = choices.find(item => item.items.includes(req));
         const row = element('tr'); row.dataset.reqRow = req.requirement_id;
-        const cell = element('td'); const button = element('button', null, 'requirement-row-button'); button.type = 'button'; button.append(element('span', req.requirement_id, 'module-identity'), element('strong', req.title));
-        button.addEventListener('click', () => { selectedRequirement = req.requirement_id; select(group.key); }); cell.append(button);
+        const cell = element('td'); const button = element('button', null, 'requirement-row-button'); button.type = 'button'; button.append(element('strong', req.title), element('span', '需求编号 ' + req.requirement_id, 'module-identity'));
+        button.addEventListener('click', () => { selectedRequirement = req.requirement_id; requirementTab = 'detail'; select(group.key, true); }); cell.append(button);
         row.append(cell, element('td', states[req.review_status]), element('td', group.title)); body.append(row);
       });
       table.append(body); scroll.append(table); surface.append(scroll);
@@ -1081,7 +1108,7 @@
     function fillTargets() {
       targets = new Set(stage.value === 'release' ? data.artifacts.filter(item => item.path.startsWith('prototype/') && item.path.endsWith('.html')).map(item => item.path) : [...requirements.map(item => item.requirement_id), ...data.review.questions.map(item => item.target)]);
       target.replaceChildren();
-      targets.forEach(value => { const option = element('option', value); option.value = value; target.append(option); });
+      targets.forEach(value => { const req = requirements.find(item => item.requirement_id === value); const option = element('option', req ? req.title + '（' + req.requirement_id + '）' : value); option.value = value; target.append(option); });
       if (reviewTarget && targets.has(reviewTarget)) target.value = reviewTarget;
     }
     fillTargets(); stage.addEventListener('change', () => { fillTargets(); save.disabled = !targets.size; });
