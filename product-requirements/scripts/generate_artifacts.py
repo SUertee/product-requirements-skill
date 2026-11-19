@@ -52,6 +52,52 @@ def archify_modules(project, root):
             'validation_results': ['Module identities and explicit relationships checked', 'Archify architecture validate, render and check passed', 'Browser review pending']}
 
 
+def archify_architecture(project, root):
+    package = resolve('archify')
+    architecture = project.get('technical_architecture')
+    if not isinstance(architecture, dict) or not architecture.get('components') or not architecture.get('layers'):
+        raise ValueError('Define technical architecture components and layers first.')
+    layers, components = architecture['layers'], architecture['components']
+    layer_ids = [item['id'] for item in layers]
+    if len(set(layer_ids)) != len(layer_ids):
+        raise ValueError('Technical layer IDs must be unique.')
+    mapping = {item['id']: 'component_' + str(index) for index, item in enumerate(components)}
+    if len(mapping) != len(components):
+        raise ValueError('Technical component IDs must be unique.')
+    candidate = {'schema_version': 1, 'diagram_type': 'architecture',
+                 'meta': {'title': '技术架构', 'output': 'diagrams/architecture.html', 'locale': 'zh-CN', 'quality_profile': 'standard',
+                          'legend': {'entries': {'backend': {'label': '系统组件'}}}},
+                 'components': [], 'connections': []}
+    for layer_index, layer in enumerate(layers):
+        for row, item in enumerate(node for node in components if node.get('layer') == layer['id']):
+            if not isinstance(item.get('name'), str) or not item['name'].strip():
+                raise ValueError('Technical components need names.')
+            candidate['components'].append({'id': mapping[item['id']], 'type': 'backend', 'label': item['name'],
+                                             'sublabel': item.get('runtime', ''), 'tag': layer['name'],
+                                             'pos': [40 + layer_index * 340, 40 + row * 155], 'size': [230, 95]})
+    if len(candidate['components']) != len(components):
+        raise ValueError('Technical component references an unknown layer.')
+    for index, connection in enumerate(architecture.get('connections', [])):
+        if connection.get('from') not in mapping or connection.get('to') not in mapping:
+            raise ValueError('Technical connection references an unknown component.')
+        candidate['connections'].append({'id': 'connection_' + str(index), 'from': mapping[connection['from']], 'to': mapping[connection['to']],
+                                         **({'label': connection['label']} if connection.get('label') else {})})
+    root = Path(root).resolve()
+    (root / 'diagrams').mkdir(parents=True, exist_ok=True)
+    source = root / 'architecture-input.json'
+    source.write_text(json.dumps(candidate, ensure_ascii=False, indent=2), encoding='utf-8')
+    receipts = []
+    for arguments in [['validate', 'architecture', str(source), '--json'], ['render', 'architecture', str(source), 'diagrams/architecture.html'], ['check', 'diagrams/architecture.html', '--json']]:
+        result = subprocess.run(['node', str(package / 'bin/archify.mjs'), *arguments], cwd=root, capture_output=True, text=True, timeout=120)
+        if result.returncode:
+            raise ValueError('Technical architecture ' + arguments[0] + ' failed: ' + (result.stdout or result.stderr)[-3000:])
+        receipts.append({'step': arguments[0], 'stdout': result.stdout[-5000:]})
+    (root / 'architecture-checks.json').write_text(json.dumps(receipts, ensure_ascii=False, indent=2), encoding='utf-8')
+    return {'path': 'diagrams/architecture.html', 'generator': 'Archify',
+            'generator_version': hashlib.sha256((package / 'SKILL.md').read_bytes()).hexdigest(),
+            'validation_results': ['Explicit technical components and layer identities checked', 'Archify architecture validate, render and check passed', 'Browser review pending']}
+
+
 def archify_workflow(project, root, flow_index=0):
     package = resolve('archify')
     flows = project['business_model'].get('flows', [])
@@ -178,8 +224,8 @@ html[data-embedded] .top,html[data-embedded] footer{display:none}html[data-embed
 
 
 def generate(project, sources, root, kinds):
-    if not isinstance(kinds, list) or not kinds or any(kind not in {'modules', 'workflow', 'erd', 'prototype'} for kind in kinds):
-        raise ValueError('Choose modules, workflow, erd or prototype generation.')
+    if not isinstance(kinds, list) or not kinds or any(kind not in {'modules', 'architecture', 'workflow', 'erd', 'prototype'} for kind in kinds):
+        raise ValueError('Choose modules, architecture, workflow, erd or prototype generation.')
     records, results = [], []
     requests = []
     for kind in dict.fromkeys(kinds):
@@ -191,6 +237,8 @@ def generate(project, sources, root, kinds):
         try:
             if kind == 'modules':
                 record = archify_modules(project, root)
+            elif kind == 'architecture':
+                record = archify_architecture(project, root)
             elif kind == 'workflow':
                 record = archify_workflow(project, root, flow_index)
             elif kind == 'erd':

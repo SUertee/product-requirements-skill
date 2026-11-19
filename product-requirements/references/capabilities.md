@@ -19,7 +19,7 @@ Archify 固定提交见 integrations.json。完整仓库与自有 Schema Canvas 
 
 两种能力共同引用 project.json 的版本、REQ ID 和来源。生成器缺少信息时记录未知，导入图示的输入材料保持数据语义。
 
-当前 generate_artifacts.py 提供业务流程与实体模型的确定性适配，调用入口见 [运行流程](execution.md)。业务流程以有序 steps 和显式 transitions 为输入，缺少 transitions 时按已明确的步骤顺序连线。技术架构的拓扑与类型由宿主按 Archify 原生契约整理，再登记实际产物与检查结果。
+当前 generate_artifacts.py 提供业务模块、技术架构、业务流程与实体模型的确定性适配，调用入口见 [运行流程](execution.md)。业务流程以有序 steps 和显式 transitions 为输入，缺少 transitions 时按已明确的步骤顺序连线。技术架构由 technical_architecture 的层次、组件和连接适配为 Archify 原生 architecture，输出 diagrams/architecture.html；保留候选输入与 validate／render／check 记录，浏览器复核单独记录。工作台使用沙箱嵌入并贴合内容高度；没有生成产物时可读取同一结构化数据作基础展示。
 
 ## 原型设计路由
 

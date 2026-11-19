@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'product-requirements/scripts'))
 import build_documents as build
-from generate_artifacts import archify_modules, generate, schema_canvas
+from generate_artifacts import archify_architecture, archify_modules, generate, schema_canvas
 from prototype import generate_prototype
 from workflow import Workflow
 
@@ -53,6 +53,24 @@ class ArtifactTests(unittest.TestCase):
         text = (self.root / 'with-map/workbench/index.html').read_text()
         self.assertIn('module_0', text)
         self.assertIn('module_diagram', text)
+
+    def test_technical_architecture_is_generated_separately(self):
+        self.project['technical_architecture'] = {
+            'layers': [{'id': 'input', 'name': '输入层'}, {'id': 'service', 'name': '理解层'}],
+            'components': [{'id': 'client', 'name': '材料接收', 'layer': 'input'}, {'id': 'analysis', 'name': '需求分析', 'layer': 'service'}],
+            'connections': [{'from': 'client', 'to': 'analysis'}], 'review_status': 'draft',
+        }
+        records, receipt = generate(self.project, self.sources, self.root, ['architecture'])
+        self.assertEqual(receipt['results'][0]['generation_status'], 'success', receipt)
+        record = records[0]
+        self.assertEqual(record['path'], 'diagrams/architecture.html')
+        build.publish(self.project, self.sources, self.root / 'architecture-bundle', artifact_root=self.root, artifact_records=records)
+        text = (self.root / 'architecture-bundle/workbench/index.html').read_text()
+        self.assertIn('architecture_diagram', text)
+        self.assertIn('component_0', text)
+        self.project['technical_architecture']['components'][0]['layer'] = 'missing'
+        with self.assertRaisesRegex(ValueError, 'unknown layer'):
+            archify_architecture(self.project, self.root / 'invalid')
 
     def test_module_relations_reject_unknown_module_ids(self):
         self.project['module_relations'] = [{'from': 'missing', 'to': 'another', 'label': '客户资料'}]

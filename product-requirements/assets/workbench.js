@@ -854,6 +854,25 @@
   function technicalArchitecture() {
     const architecture = project.technical_architecture;
     if (!architecture?.components?.length) { content.append(empty('技术架构待确认')); return; }
+    if (data.architecture_diagram) {
+      const card = panel('技术架构');
+      if (architecture.review_status !== 'confirmed') card.append(element('span', '设计建议 · 待确认', 'workbench-meta'));
+      card.append(fileLink('diagrams/architecture.html', '打开完整页面'));
+      const frame = element('iframe', null, 'architecture-preview'); frame.title = 'Archify 技术架构'; frame.setAttribute('sandbox', 'allow-scripts');
+      const bridge = `(() => {
+        const style = document.createElement('style'); style.textContent = 'html,body{background:#fdfefe;min-height:0 !important;margin:0;padding:0 !important} body > .toolbar,.container > .header,.diagram-nav,.reader-rail,.rail-reveal,#focus-chip,.cards{display:none !important} .container{padding:0;max-width:none} .diagram-container{padding:0;border:0;box-shadow:none;margin:0;min-height:0 !important} .diagram-container > svg{display:block;width:100%;height:auto;min-width:0 !important} svg [data-node-id] text.t-primary{font-size:20px} svg [data-node-id] text.t-muted{font-size:14px} svg [data-node-id] text.t-backend{font-size:10px;opacity:1 !important}'; document.head.append(style);
+        const target = document.querySelector('.diagram-container');
+        const report = () => {if(target)parent.postMessage({type:'product-requirements:architecture-size',height:Math.ceil(target.getBoundingClientRect().height)},'*');};
+        if(target)new ResizeObserver(report).observe(target); report();
+      })();`;
+      const resize = event => {
+        if (!frame.isConnected) {window.removeEventListener('message', resize); return;}
+        if (event.source === frame.contentWindow && event.data?.type === 'product-requirements:architecture-size' && Number.isFinite(event.data.height)) frame.style.height = Math.max(200, Math.min(1800, event.data.height)) + 'px';
+      };
+      window.addEventListener('message', resize);
+      frame.srcdoc = data.architecture_diagram.replace('</body>', '<scr' + 'ipt>' + bridge + '</scr' + 'ipt></body>');
+      card.append(frame); content.append(card); return;
+    }
     const layers = architecture.layers || [];
     const nodes = architecture.components;
     const height = Math.max(280, ...layers.map(layer => nodes.filter(node => node.layer === layer.id).length * 100 + 90));

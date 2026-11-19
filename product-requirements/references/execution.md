@@ -41,10 +41,11 @@ python3 product-requirements/scripts/workflow.py --workspace runs/demo/inbox \
 
 python3 product-requirements/scripts/workflow.py --workspace runs/demo/inbox \
   generate --run-dir /path/to/v2 --version v3 \
-  --kind modules --kind workflow --kind erd --kind prototype
+  --kind modules --kind architecture --kind workflow --kind erd --kind prototype
 ```
 
 - modules 根据 modules 与 module_relations 生成 Archify 业务模块图，输出 diagrams/modules.html，汇入功能需求页并联动详情。
+- architecture 根据 technical_architecture 生成独立 Archify 技术架构，输出 diagrams/architecture.html，汇入技术设计；图中分层是职责划分，不冒充网络或权限隔离边界。
 - workflow 将每条已明确的业务流程分别适配到 Archify，执行 validate、render、check。浏览器复核单独记录。
 - erd 使用 Schema Canvas 模板展示实体与关系。数据库事实依据不足时保留业务模型状态。
 - prototype 根据 pages 中的 fields、actions、columns、records_from 生成表单和列表交互。动作支持 submit、navigate、reset，字段支持 text、textarea、select、email、number、date、checkbox。模拟数据保存在页面内存，刷新后重置。

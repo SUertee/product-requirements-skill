@@ -71,4 +71,4 @@ meetings 可补充 date、duration_label、url 和 highlights。highlights 为�
 
 可选 technical_architecture 独立于 modules 和 business_model.flows。layers 为带唯一 id、name 的层次；components 为带唯一 id、name、layer 的组件，可用 runtime 说明运行环境；connections 以 from、to 连接实际组件。review_status 默认 draft，requirement_ids 和 source_refs 关联已有需求和来源。层次与组件身份、连接端点及引用均经输入校验。
 
-技术架构用于说明实现组件、运行边界与连接，不能把业务流程步骤直接改名为架构。待确认的工程建议标明 evidence_type=suggested 与 draft。工作台用 SVG 按内容高度展示，不使用固定高度的外部页面预览。用例图来自需求角色和功能名称，只表达需求中的角色关联，不推导权限模型、include 或 extend 关系。
+技术架构用于说明实现组件、运行边界与连接，不能把业务流程步骤直接改名为架构。待确认的工程建议标明 evidence_type=suggested 与 draft。通过 architecture 生成任务适配到 Archify，工作台沙箱嵌入产物并按内容高度调整；没有产物时以基础 SVG 展示。用例图来自需求角色和功能名称，只表达需求中的角色关联，不推导权限模型、include 或 extend 关系。
