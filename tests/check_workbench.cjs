@@ -24,6 +24,14 @@ timedSource.locator = {start_seconds: 1, end_seconds: 2};
 transcriptMaterial.provenance.related_job_id = recordingId;
 payload.project.materials.push({material_id: 'synthetic-audio', job_id: recordingId, name: '合成录音.wav', kind: 'recording', path: 'synthetic-audio.wav', source_ids: []});
 payload.attachments.push({material_id: 'synthetic-audio', path: 'materials/synthetic-audio.wav'});
+payload.project.meetings = [{meeting_id: 'fixture-meeting', title: '测试会议', material_ids: [transcriptMaterial.material_id], highlights: [{text: '测试会议重点', source_refs: [timedSource.source_id]}]}];
+for (let index = 0; index < 35; index++) {
+  const source = {...timedSource, source_id: 'SRC-PAGING-' + index, text: '测试分页原话 ' + index, locator: {start_seconds: index + 10}};
+  payload.sources.push(source);
+  transcriptMaterial.source_ids.push(source.source_id);
+}
+const lastSourceId = 'SRC-PAGING-34';
+payload.project.requirements[0].source_refs.push(lastSourceId);
 document.getElementById('workbench-data').textContent = JSON.stringify(payload);
 const jobId = 'JOB-' + 'a'.repeat(24);
 const requests = [];
@@ -67,8 +75,7 @@ async function settle() {
   window.eval(fs.readFileSync(path.join(repository, 'product-requirements/assets/workbench.js'), 'utf8'));
   await settle();
   assert.equal(document.querySelectorAll('[data-view]').length, 7);
-  assert.match(document.getElementById('page-content').textContent, /0 份待发起分析/);
-  assert.match(document.getElementById('page-content').textContent, /1 份已有分析版本/);
+  assert.equal(document.querySelectorAll('.overview-sections > section').length, 2);
   for (const view of ['materials', 'modules', 'documents', 'prototype', 'technical', 'review']) {
     navigate(view);
     assert(document.getElementById('page-content').children.length > 0);
@@ -79,6 +86,9 @@ async function settle() {
   button('导入').click();
   assert.match(document.getElementById('page-content').textContent, /已生成分析版本/);
   button('素材').click();
+  assert.match(document.querySelector('.meeting-highlights').textContent, /测试会议重点/);
+  assert.equal(document.querySelectorAll('.source-excerpt').length, 0);
+  button('00:01 查看原话 →').click();
   const audio = document.querySelector('.selection-detail audio');
   assert(audio, 'Linked recording should be available beside its transcript');
   assert.match(audio.src, /materials\/synthetic-audio.wav$/);
@@ -94,6 +104,14 @@ async function settle() {
   Object.defineProperty(audio, 'duration', {value: 0.5, configurable: true});
   button('定位录音 00:01').click();
   assert.match(document.getElementById('page-content').textContent, /原话时间超出录音长度/);
+  assert(document.querySelectorAll('.source-excerpt').length <= 30);
+  navigate('modules');
+  button('依据').click();
+  button(lastSourceId).click();
+  assert.equal(document.querySelector('.source-selected').dataset.sourceId, lastSourceId);
+  assert.match(document.querySelector('.transcript-paging').textContent, /2 \/ 2 页/);
+  button('会议重点').click();
+  assert.equal(document.querySelectorAll('.source-excerpt').length, 0);
   navigate('modules');
   button('修订').click();
   const selector = document.getElementById('edit-field-REQ-001');

@@ -25,6 +25,8 @@
   let documentChapter = 0;
   let documentEntry = 0;
   let materialTab = 'library';
+  let materialReader = 'highlights';
+  let materialPage = 0;
   let prototypeTab = 'preview';
   let technicalMode = 'design';
   let showFilters = false;
@@ -176,6 +178,7 @@
       selectedSource = sourceId;
       queryInput.value = '';
       materialTab = 'library';
+      materialReader = 'transcript';
       navigate('materials');
     });
     return button;
@@ -255,48 +258,48 @@
     return card;
   }
   function overview() {
-    const card = panel(project.name || project.project_id);
-    fields(card, [['目标', project.requirement_profile.desired_outcomes], ['范围', project.requirement_profile.scope], ['版本', project.artifact_version], ['基线', project.baseline_version]]);
-    content.append(card);
-    const summary = element('div', null, 'workbench-summary');
-    for (const [label, count] of [['需求', requirements.length], ['已确认', requirements.filter(req => req.review_status === 'confirmed').length], ['待确认', data.review.questions.length]]) {
-      const item = element('span', label);
-      item.append(element('strong', count));
-      summary.append(item);
+    const definition = panel(project.name || project.project_id);
+    definition.classList.add('project-definition');
+    definition.append(element('p', display(project.requirement_profile.desired_outcomes), 'project-objective'));
+    fields(definition, [['面向', project.requirement_profile.customer_and_roles], ['范围', project.requirement_profile.scope]]);
+    const flow = project.business_model.flows?.[0];
+    if (flow?.steps?.length) {
+      const steps = element('ol', null, 'overview-flow');
+      steps.setAttribute('aria-label', flow.name || '核心流程');
+      flow.steps.forEach(step => steps.append(element('li', step.label)));
+      definition.append(steps);
     }
-    content.append(summary);
+    content.append(definition);
+    const grid = element('div', null, 'overview-sections');
     const outputs = panel('项目成果');
-    for (const [view, label, prefix] of [['documents', '方案文档', null], ['prototype', '原型预览', 'prototype/'], ['technical', '技术设计', 'diagrams/']]) {
+    for (const [view, label, prefixes] of [['documents', '方案文档', []], ['modules', '功能需求', []], ['prototype', '原型预览', ['prototype/']], ['technical', '技术设计', ['diagrams/', 'data-model/']]]) {
+      const available = !prefixes.length || data.artifacts.some(item => prefixes.some(prefix => item.path.startsWith(prefix)) && item.path.endsWith('.html'));
       const row = element('button', null, 'output-row');
       row.type = 'button';
-      const available = prefix ? data.artifacts.some(item => item.path.startsWith(prefix) && item.path.endsWith('.html')) : true;
-      const actionLabel = view === 'technical' ? '查看模型与图示 →' : available ? '查看当前版本 →' : '查看待生成内容 →';
-      row.append(element('strong', label), element('span', actionLabel));
+      row.append(element('strong', label), element('span', available ? '查看 →' : '待生成 →'));
       row.addEventListener('click', () => navigate(view));
       outputs.append(row);
     }
-    content.append(outputs);
-    if (serverState && serverState.jobs.length) {
-      const intake = panel('素材处理');
-      badges(intake, [serverState.jobs.filter(job => job.status === 'ready_for_analysis' && !analysisFor(job)).length + ' 份待发起分析', serverState.jobs.filter(job => analysisFor(job)?.status === 'completed').length + ' 份已有分析版本', serverState.jobs.filter(job => job.status === 'awaiting_transcript' && !hasTranscript(job)).length + ' 份待转写', serverState.jobs.filter(job => job.status === 'failed').length + ' 份预处理失败']);
-      const open = element('button', '查看接收箱', 'button');
-      open.type = 'button'; open.addEventListener('click', () => navigate('materials')); intake.append(open);
-      content.append(intake);
-    }
-    const questions = panel('待确认问题');
-    data.review.questions.slice(0, 5).forEach(question => questions.append(element('p', question.target + ' · ' + question.reason)));
-    if (!data.review.questions.length) questions.append(element('p', '整体成果等待人工评审'));
-    content.append(questions);
-    if (project.action_items?.length) {
-      const actions = panel('会议行动项');
-      project.action_items.forEach(item => { const row = element('section', null, 'inbox-row'); row.append(element('h3', item.title), element('p', item.details)); for (const ref of item.source_refs || []) row.append(sourceLink(ref)); actions.append(row); });
-      content.append(actions);
-    }
-    if (project.reported_facts?.length) {
-      const facts = panel('会议陈述');
-      project.reported_facts.forEach(item => { facts.append(element('p', item.text)); for (const ref of item.source_refs || []) facts.append(sourceLink(ref)); });
-      content.append(facts);
-    }
+    const questions = panel('关键疑问');
+    const explicit = requirements.flatMap(req => (req.open_questions || []).map(reason => ({target: req.requirement_id, reason})));
+    const candidates = explicit.length ? explicit : data.review.questions;
+    const unique = candidates.filter((question, index) => candidates.findIndex(item => item.reason === question.reason) === index);
+    unique.slice(0, 3).forEach(question => {
+      const button = element('button', question.reason, 'question-row');
+      button.type = 'button';
+      button.addEventListener('click', () => {
+        const req = requirements.find(item => item.requirement_id === question.target);
+        if (req) { selectedRequirement = req.requirement_id; queryInput.value = req.requirement_id; statusInput.value = ''; evidenceInput.value = ''; navigate('modules'); }
+        else navigate('review');
+      });
+      questions.append(button);
+    });
+    if (!unique.length) questions.append(element('p', '等待人工核对当前成果', 'inline-note'));
+    const all = element('button', '查看全部评审事项 →', 'source-link');
+    all.type = 'button'; all.addEventListener('click', () => navigate('review'));
+    questions.append(all);
+    grid.append(outputs, questions);
+    content.append(grid);
   }
   async function localRequest(path, options = {}) {
     const response = await fetch(path, {...options, headers: {'X-Workbench-Request': '1', 'X-Workbench-Run': location.pathname.match(/^\/versions\/(AN-[a-f0-9]{24})\//)?.[1] || '', ...options.headers}});
@@ -550,10 +553,10 @@
       const sources = data.sources.filter(source => (material.source_ids || []).includes(source.source_id) || source.material_id === material.material_id);
       sources.forEach(source => assigned.add(source.source_id));
       const meetings = (project.meetings || []).filter(meeting => (meeting.material_ids || []).includes(material.material_id));
-      entries.push({key: 'material:' + material.material_id, title: material.name || material.material_id, meta: ({transcript: '逐字稿', recording: '音视频', context: '前情资料'}[material.kind] || material.kind || '素材') + ' · ' + sources.length + ' 段原话', material, sources, meetings});
+      entries.push({key: 'material:' + material.material_id, title: meetings[0]?.title || material.name || material.material_id, meta: ({transcript: '逐字稿', recording: '音视频', context: '前情资料'}[material.kind] || material.kind || '素材') + ' · ' + sources.length + ' 段原话', material, sources, meetings});
     }
     const groups = new Map();
-    data.sources.filter(source => !assigned.has(source.source_id)).forEach(source => {
+    data.sources.filter(source => source.source_type !== 'project_metadata' && !assigned.has(source.source_id)).forEach(source => {
       const key = source.material_id || source.source_name || 'transcript';
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(source);
@@ -564,18 +567,50 @@
     const selected = visible.find(item => selectedSource && item.sources.some(source => source.source_id === selectedSource)) || visible.find(item => item.key === selectedMaterial) || visible[0];
     if (!selected) { content.append(empty('暂无匹配素材，可调整搜索词后查看')); return; }
     selectedMaterial = selected.key;
-    const detail = selectionLayout(visible, selected.key, '会议素材列表', key => { selectedMaterial = key; selectedSource = null; });
+    const detail = selectionLayout(visible, selected.key, '会议素材列表', key => { selectedMaterial = key; selectedSource = null; materialPage = 0; materialReader = 'highlights'; });
     const card = panel(selected.title);
     if (selected.context) {
       card.append(valueNode(selected.context));
       detail.append(card);
       return;
     }
-    selected.meetings.forEach(meeting => fields(card, [['会议', meeting.title || meeting.meeting_id], ['日期', meeting.date]]));
+    const meeting = selected.meetings[0];
+    const highlights = (meeting?.highlights || []).filter(item => item.text && item.source_refs?.every(id => sourceMap.has(id)));
+    const transcriptMode = materialReader === 'transcript' || selectedSource || queryInput.value.trim() || !highlights.length;
+    const metadata = [meeting?.date, meeting?.duration_label].filter(Boolean);
+    if (metadata.length) card.append(element('p', metadata.join(' · '), 'material-metadata'));
+    const actions = element('div', null, 'document-actions');
     const attached = data.attachments.find(item => item.material_id === selected.material?.material_id);
-    if (attached) {
-      card.append(fileLink(attached.path, '打开素材'));
-    } else if (selected.material) card.append(element('p', '原始文件尚未随当前版本附带', 'inline-note'));
+    if (attached) actions.append(fileLink(attached.path, selected.material?.kind === 'recording' ? '下载素材' : '下载逐字稿'));
+    if (meeting?.url) {
+      try {
+        const url = new URL(meeting.url);
+        if (url.protocol === 'https:' && (url.hostname === 'feishu.cn' || url.hostname.endsWith('.feishu.cn') || url.hostname.endsWith('.larksuite.com'))) {
+          const link = element('a', '打开飞书妙记', 'button small');
+          link.href = url.href; link.target = '_blank'; link.rel = 'noopener'; actions.append(link);
+        }
+      } catch { /* An invalid source URL is retained in project data. */ }
+    }
+    if (actions.children.length) card.append(actions);
+    if (highlights.length) {
+      card.append(sectionTabs([['highlights', '会议重点'], ['transcript', '逐字稿']], transcriptMode ? 'transcript' : 'highlights', '会议阅读方式', key => { materialReader = key; selectedSource = null; materialPage = 0; queryInput.value = ''; render(); }));
+      if (!transcriptMode) {
+        const list = element('div', null, 'meeting-highlights');
+        for (const highlight of highlights) {
+          const row = element('section', null, 'meeting-highlight');
+          row.append(element('p', highlight.text));
+          for (const id of highlight.source_refs) {
+            const button = sourceLink(id);
+            button.textContent = locatorLabel(sourceMap.get(id).locator) + ' 查看原话 →';
+            row.append(button);
+          }
+          list.append(row);
+        }
+        card.append(list, element('p', '根据逐字稿提炼 · 待人工复核', 'inline-note'));
+        detail.append(card);
+        return;
+      }
+    }
     const relatedId = selected.material?.provenance?.related_job_id;
     const recording = relatedId ? (project.materials || []).find(item => item.job_id === relatedId || item.path?.startsWith(relatedId + '/')) : null;
     const recordingAttachment = data.attachments.find(item => item.material_id === recording?.material_id);
@@ -616,11 +651,28 @@
     } else if (selected.sources.some(source => Number.isFinite(source.locator.start_seconds))) {
       card.append(element('p', '关联录音后可按原话时间定位', 'inline-note'));
     }
-    selected.sources.forEach(source => {
+    const transcriptSources = selected.sources.filter(source => !queryInput.value.trim() || matches(source) || matches(selected.material?.name || selected.title));
+    const selectedIndex = transcriptSources.findIndex(source => source.source_id === selectedSource);
+    if (selectedIndex >= 0) materialPage = Math.floor(selectedIndex / 30);
+    const pageCount = Math.max(1, Math.ceil(transcriptSources.length / 30));
+    materialPage = Math.min(materialPage, pageCount - 1);
+    const paging = element('div', null, 'transcript-paging');
+    for (const [label, offset] of [['上一页', -1], ['下一页', 1]]) {
+      const button = element('button', label, 'button small'); button.type = 'button';
+      button.disabled = materialPage + offset < 0 || materialPage + offset >= pageCount;
+      button.addEventListener('click', () => { materialPage += offset; selectedSource = null; render(); });
+      paging.append(button);
+    }
+    paging.append(element('span', (materialPage + 1) + ' / ' + pageCount + ' 页 · ' + transcriptSources.length + ' 段原话'));
+    if (pageCount > 1) card.append(paging);
+    transcriptSources.slice(materialPage * 30, (materialPage + 1) * 30).forEach(source => {
       const excerpt = element('section', null, 'source-excerpt');
       if (source.source_id === selectedSource) excerpt.classList.add('source-selected');
-      badges(excerpt, [locatorLabel(source.locator), source.speaker || '说话人待确认', source.source_id]);
-      excerpt.append(element('blockquote', source.text, 'source-quote'));
+      const speakerPrefix = /^([\p{Script=Han}]{2,8}|说话人\s*\d+|Speaker\s*\d+)[：:]\s*/u.exec(source.text);
+      const speaker = source.speaker || speakerPrefix?.[1];
+      badges(excerpt, [locatorLabel(source.locator), speaker || '说话人待确认']);
+      excerpt.dataset.sourceId = source.source_id;
+      excerpt.append(element('blockquote', speakerPrefix ? source.text.slice(speakerPrefix[0].length) : source.text, 'source-quote'));
       if (player && Number.isFinite(source.locator.start_seconds)) {
         const seek = element('button', '定位录音 ' + locatorLabel(source.locator), 'button small');
         seek.type = 'button';
@@ -636,7 +688,7 @@
       linked.forEach(req => excerpt.append(requirementLink(req)));
       card.append(excerpt);
     });
-    if (!selected.sources.length) card.append(element('p', '当前素材尚无可定位的原话片段', 'inline-note'));
+    if (!transcriptSources.length) card.append(element('p', '当前素材尚无可定位的原话片段', 'inline-note'));
     detail.append(card);
     if (selectedSource) detail.querySelector('.source-selected')?.scrollIntoView?.({block: 'nearest'});
   }

@@ -60,6 +60,24 @@ class DocumentBundleTests(unittest.TestCase):
         self.assertEqual(review['decisions'], [])
         self.assertTrue(any(item.get('field') == 'acceptance_criteria' for item in review['questions']))
 
+    def test_meeting_highlights_require_citations_from_their_materials(self):
+        self.project['materials'] = [
+            {'material_id': 'M1', 'source_ids': ['SRC-001']},
+            {'material_id': 'M2', 'source_ids': []},
+        ]
+        meeting = {'meeting_id': 'MEETING-1', 'material_ids': ['M1'],
+                   'highlights': [{'text': '按状态查询工单', 'source_refs': ['SRC-001']}]}
+        self.project['meetings'] = [meeting]
+        self.save()
+        self.read()
+        for material_ids, citations in [(['M1'], []), (['M1'], ['unknown']), (['M2'], ['SRC-001'])]:
+            with self.subTest(material_ids=material_ids, citations=citations):
+                meeting['material_ids'] = material_ids
+                meeting['highlights'][0]['source_refs'] = citations
+                self.save()
+                with self.assertRaisesRegex(ValueError, 'Meeting highlights need sources'):
+                    self.read()
+
     def test_duplicate_requirement_rejected(self):
         self.project['requirements'].append(copy.deepcopy(self.project['requirements'][0]))
         self.save()

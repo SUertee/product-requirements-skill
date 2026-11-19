@@ -271,3 +271,22 @@ video { width: 100%; max-height: 520px; margin-top: 20px; background: var(--nav-
 .document-entry-picker { margin-top: 20px; max-height: 200px; overflow-y: auto; }
 .document-entry-picker .section-tabs { border: 0; }
 .document-entry-picker button { text-align: left; }
+
+/* Project overview and meeting reading. */
+.overview-sections { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.project-objective { max-width: 850px; color: var(--ink-2); font-size: 17px; line-height: 1.8; margin-bottom: 24px; }
+.overview-flow { display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0 0; padding: 20px 0 0; border-top: 1px solid var(--border); list-style: none; }
+.overview-flow li { display: flex; align-items: center; gap: 10px; color: var(--ink-2); font-size: 13px; }
+.overview-flow li + li::before { content: '→'; color: var(--ink-3); }
+.question-row { display: block; width: 100%; padding: 16px 0; border: 0; border-top: 1px solid var(--border); background: transparent; text-align: left; color: var(--ink-2); }
+.question-row:hover { color: var(--accent-ink); }
+.material-metadata { color: var(--ink-3); font-size: 13px; margin-bottom: 16px; }
+.selection-detail .section-tabs { margin-top: 20px; }
+.meeting-highlight { padding: 20px 0; border-bottom: 1px solid var(--border); }
+.meeting-highlight p { margin-bottom: 6px; }
+.meeting-highlight .source-link { display: inline-block; font-size: 12px; margin-right: 16px; }
+.transcript-paging { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 18px; }
+.transcript-paging span { color: var(--ink-3); font-size: 12px; }
+@media (max-width: 1050px) { .overview-sections { grid-template-columns: minmax(0, 1fr); } }
+.project-definition .value-list { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 0; list-style: none; }
+.project-definition .value-list li + li { margin-top: 0; }

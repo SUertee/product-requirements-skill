@@ -148,6 +148,18 @@ def read_inputs(project_path, sources_path):
     for meeting in project.get('meetings', []):
         refs = meeting.get('material_ids', [])
         require(isinstance(refs, list) and all(nonempty(ref) and ref in material_ids for ref in refs), f"{meeting['meeting_id']} has invalid material_ids")
+        highlights = meeting.get('highlights', [])
+        require(isinstance(highlights, list), 'Meeting highlights must be an array')
+        meeting_sources = {key for key, source in sources.items() if source.get('material_id') in refs}
+        for material in project.get('materials', []):
+            if material['material_id'] in refs:
+                meeting_sources.update(material.get('source_ids', []))
+        for highlight in highlights:
+            require(isinstance(highlight, dict) and nonempty(highlight.get('text')), 'Meeting highlights need text')
+            citations = highlight.get('source_refs')
+            require(isinstance(citations, list) and bool(citations)
+                    and all(isinstance(key, str) and key in meeting_sources for key in citations),
+                    'Meeting highlights need sources from the associated meeting materials')
     def check_references(value):
         if isinstance(value, dict):
             if 'source_refs' in value:

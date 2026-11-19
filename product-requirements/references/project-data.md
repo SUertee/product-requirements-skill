@@ -55,3 +55,10 @@ python3 product-requirements/scripts/build_documents.py \
 素材 path 为实际素材根目录内的相对路径，通过 `--materials-root` 显式选择根目录后复制到输出的 materials/。生成 HTML 自包含样式和脚本，素材文件随输出目录携带。接收器生成的 material 可包含 job_id 和 provenance.related_job_id，后者将逐字稿关联到同项目录音。workflow.py 将已关联录音一并携带到新版本，原话的 start_seconds 用于定位播放器。旧版本缺少 job_id 时按既有 JOB-ID/文件名路径识别关联，连接本地服务时也可读取接收箱内已关联的录音。
 
 侧栏为总览、会议素材、功能需求、方案文档、原型预览、技术设计、评审记录。技术设计的流程架构、数据库和 API 通过页内标签切换。原型和图示按实际文件清单展示，初始工作台提供内部浏览和项目数据导出。人工修改和评审决定通过 Skill 进入下一轮版本。
+
+
+## 会议重点
+
+meetings 可补充 date、duration_label、url 和 highlights。highlights 为数组，每项提供 text 与非空 source_refs，引用必须属于该会议关联材料。日期和时长来自会议元数据，重点根据逐字稿提炼，并保留人工复核状态。
+
+工作台先展示会议重点，点选时间进入逐字稿对应页；未提供重点时直接阅读逐字稿。原始来源记录保持完整，列表分页和说话人前缀的显示处理在界面完成。
