@@ -34,8 +34,6 @@
   let materialReader = 'highlights';
   let materialQuery = '';
   let materialPage = 0;
-  let prototypeTab = 'preview';
-  let technicalMode = 'design';
   let showFilters = false;
   let serverState = null;
   let intakeBusy = false;
@@ -298,8 +296,8 @@
       action.textContent = '核对需求';
       action.addEventListener('click', () => { moduleView = 'list'; navigate('modules'); });
     } else {
-      action.textContent = prototypeAvailable ? '查看原型' : '生成原型';
-      action.addEventListener('click', () => { prototypeTab = prototypeAvailable ? 'preview' : 'generate'; navigate('prototype'); });
+      action.textContent = prototypeAvailable ? '查看原型' : '查看方案';
+      action.addEventListener('click', () => navigate(prototypeAvailable ? 'prototype' : 'documents'));
     }
     next.append(action);
     definition.append(next);
@@ -1070,73 +1068,8 @@
       content.append(card);
     }
   }
-  function generationPanel(kinds) {
-    if (!serverState) return;
-    const card = panel('生成成果');
-    const labels = {modules: '模块图', workflow: '流程架构', erd: '交互式 ERD', prototype: '交互原型'};
-    const form = element('form', null, 'intake-form generation-form');
-    const choices = [];
-    for (const kind of kinds) {
-      const wrapper = element('label', null, 'workflow-check');
-      const checkbox = element('input'); checkbox.type = 'checkbox'; checkbox.checked = true; checkbox.disabled = workflowBusy;
-      wrapper.append(checkbox, element('span', labels[kind])); form.append(wrapper); choices.push([kind, checkbox]);
-    }
-    const versionLabel = element('label', '成果版本'); versionLabel.htmlFor = 'generation-version';
-    const version = element('input'); version.id = 'generation-version'; version.value = nextVersion(); version.required = true;
-    const submit = element('button', '生成并汇入新版本', 'button primary'); submit.type = 'submit'; submit.disabled = workflowBusy;
-    form.append(versionLabel, version, submit);
-    form.addEventListener('submit', event => {
-      event.preventDefault(); const selected = choices.filter(([, checkbox]) => checkbox.checked).map(([kind]) => kind); const targetVersion = version.value;
-      workflowAction(() => localRequest('/api/generate', {method: 'POST', body: JSON.stringify({version: targetVersion, kinds: selected})}));
-    });
-    card.append(form);
-    if (workflowMessage) card.append(element('p', workflowMessage, 'inline-note'));
-    content.append(card);
-  }
-  function generationResults(kinds) {
-    const results = (data.generation?.results || []).filter(item => kinds.includes(item.capability));
-    if (!results.length) return;
-    const card = panel('生成检查');
-    for (const result of results) {
-      const row = element('section', null, 'inbox-row');
-      row.append(element('h3', result.capability + ' · ' + (result.generation_status === 'success' ? '已生成' : '生成失败')));
-      if (result.error) row.append(element('p', result.error));
-      else row.append(valueNode(result.validation_results));
-      card.append(row);
-    }
-    content.append(card);
-  }
   function prototype() {
-    content.append(sectionTabs([['preview', '预览'], ['pages', '页面定义'], ['generate', '生成']], prototypeTab, '原型视图', key => { prototypeTab = key; render(); }));
-    if (prototypeTab === 'generate') { generationPanel(['prototype']); generationResults(['prototype']); return; }
-    if (prototypeTab === 'preview') {
-      const available = data.artifacts.some(item => item.path.startsWith('prototype/') && item.path.endsWith('.html'));
-      if (available) artifactPreviews('prototype/', '原型待生成');
-      else {
-        const card = panel('原型待生成');
-        const label = !requirements.length ? '导入会议' : needsDefinitionReview() ? '核对需求' : '生成原型';
-        const action = element('button', label, 'button primary');
-        action.type = 'button';
-        action.addEventListener('click', () => {
-          if (!requirements.length) { materialTab = 'import'; navigate('materials'); }
-          else if (needsDefinitionReview()) { moduleView = 'list'; navigate('modules'); }
-          else { prototypeTab = 'generate'; render(); }
-        });
-        card.append(action); content.append(card);
-      }
-      return;
-    }
-    const pages = panel('页面定义');
-    for (const page of project.pages) {
-      const section = element('section', null, 'inbox-row');
-      section.append(element('h3', page.name || page.page_id));
-      badges(section, [page.page_id]);
-      if (page.task || page.goal) fields(section, [['任务', page.task || page.goal]]);
-      requirements.filter(req => page.requirement_ids.includes(req.requirement_id)).forEach(req => section.append(requirementLink(req)));
-      pages.append(section);
-    }
-    if (!project.pages.length) pages.append(element('p', '核心页面与对应需求待整理'));
-    content.append(pages);
+    artifactPreviews('prototype/', '暂无原型');
   }
   function database() {
     if (data.artifacts.some(item => item.path.startsWith('data-model/') && item.path.endsWith('.html'))) {
@@ -1301,8 +1234,6 @@
     content.append(decisions);
   }
   function technical() {
-    content.append(sectionTabs([['design', '设计'], ['generate', '生成']], technicalMode, '技术设计视图', key => { technicalMode = key; render(); }));
-    if (technicalMode === 'generate') { generationPanel(['workflow', 'erd']); generationResults(['workflow', 'erd']); return; }
     const tabs = {diagrams: '流程架构', database: '数据模型', api: '接口'};
     const navigation = element('div', null, 'technical-tabs');
     navigation.setAttribute('role', 'tablist');
@@ -1378,7 +1309,7 @@
     renderers[active]();
   }
   function navigate(view) {
-    if (['database', 'api', 'diagrams'].includes(view)) { technicalMode = 'design'; technicalTab = view; view = 'technical'; }
+    if (['database', 'api', 'diagrams'].includes(view)) { technicalTab = view; view = 'technical'; }
     active = Object.hasOwn(views, view) ? view : 'overview';
     history.replaceState(null, '', '#' + active);
     render();

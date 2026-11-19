@@ -195,11 +195,9 @@ async function settle() {
   assert.equal(document.querySelector('iframe').style.width, '390px');
   button('桌面').click();
   assert.equal(document.querySelector('iframe').style.width, '100%');
-  button('生成').click();
-  submit(document.getElementById('generation-version').closest('form'));
-  await settle();
-  assert.match(document.getElementById('page-content').textContent, /Fixture dependency unavailable/);
+  assert.equal(document.querySelector('[aria-label="原型视图"]'), null);
   navigate('technical');
+  assert.equal(document.querySelector('[aria-label="技术设计视图"]'), null);
   document.getElementById('tab-database').dispatchEvent(new window.KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}));
   assert.equal(document.getElementById('tab-api').getAttribute('aria-selected'), 'true');
   dom.window.close();
@@ -224,7 +222,7 @@ async function settle() {
   assert.match(page.getElementById('screen').textContent, /暂无匹配记录/);
   prototype.window.close();
   assert.deepEqual(errors, []);
-  console.log('DOM checks passed: seven views, linked media seeking and bounds, analysis state, human unlock, review payload, generation failure, keyboard tabs, prototype validation/create/search and malformed shared fragment.');
+  console.log('DOM checks passed: seven views, linked media seeking and bounds, analysis state, human unlock, review payload, direct artifact browsing, keyboard tabs, prototype validation/create/search and malformed shared fragment.');
   function submitPrototype(target) {
     target.dispatchEvent(new prototype.window.Event('submit', {cancelable: true}));
   }
