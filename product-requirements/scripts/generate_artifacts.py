@@ -167,8 +167,10 @@ def schema_canvas(project, root):
 .tableNode b{font-size:14px}.tableNode span{font-size:12px}.columns,.columns code{font-size:13px}.domainBox strong{font-size:14px}.domainBox small{font-size:12px}.canvasWrap{min-height:280px}.panelHead p{font-size:13px}.rel b,.rel span{font-size:12px}
 html[data-embedded] .top,html[data-embedded] footer{display:none}html[data-embedded] .shell{padding:16px}html[data-embedded] .toolbar{margin-top:0}
 """
+    embedded_style += f'html[data-embedded] .canvasWrap{{min-height:0;height:{min(height, 520)}px}}html[data-embedded] .panel{{position:static;max-height:none}}'
     template = template.replace('</style>', embedded_style + '</style>', 1)
     template = template.replace('</head>', '<script>if(new URLSearchParams(location.search).has("embed"))document.documentElement.dataset.embedded="true";</script></head>', 1)
+    template = template.replace('</body>', '<script>if(document.documentElement.dataset.embedded){const report=()=>parent.postMessage({type:"schema-canvas:size",height:Math.ceil(document.querySelector(".shell").getBoundingClientRect().height)},"*");new ResizeObserver(report).observe(document.querySelector(".shell"));report();}</script></body>')
     output = Path(root) / 'data-model/index.html'
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(template, encoding='utf-8')

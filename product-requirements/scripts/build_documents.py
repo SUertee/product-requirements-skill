@@ -260,9 +260,14 @@ def render(project, sources, questions, generated_at):
         ('文档信息', metadata),
         ('模板参考', '- [Asana 项目方案指南](https://asana.com/resources/project-proposal)'),
     ]
-    proposal = f'# {title} 项目方案草稿\n\n' + '\n\n'.join(
-        '## ' + heading + '\n\n' + body for heading, body in proposal_sections
-    ) + '\n'
+    proposal_content = dict(proposal_sections)
+    proposal_template = (PACKAGE / 'assets/proposal-template.md').read_text()
+    proposal_chunks = re.split(r'(?m)^## ', proposal_template)
+    proposal_parts = [f'# {title} 项目方案草稿']
+    for chunk in proposal_chunks[1:]:
+        heading, _, body = chunk.partition('\n')
+        proposal_parts.append('## ' + heading + '\n\n' + proposal_content.get(heading, body.strip()))
+    proposal = '\n\n'.join(proposal_parts) + '\n'
     if meeting_extras:
         proposal += '\n## 会议行动与陈述\n\n' + document_value(meeting_extras) + '\n'
     return '\n\n'.join(document) + '\n', proposal

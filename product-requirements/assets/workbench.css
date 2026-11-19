@@ -340,3 +340,10 @@ video { width: 100%; max-height: 520px; margin-top: 20px; background: var(--nav-
 .review-issues { margin: 0 0 18px; padding-left: 20px; }
 .review-issues li + li { margin-top: 10px; }
 .selection-detail > .panel + .panel { margin-top: 20px; }
+
+.processing-item + .processing-item { border-top: 1px solid var(--border); padding-top: 18px; margin-top: 18px; }
+.processing-flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; list-style: none; padding: 0; margin: 14px 0 0; }
+.processing-flow li { display: grid; gap: 5px; border-left: 2px solid var(--border); padding-left: 12px; }
+.processing-flow span { font-size: 12px; color: var(--ink-3); }
+.workbench-preview.data-model-preview { min-height: 0; height: 600px; }
+@media (max-width: 700px) { .processing-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
