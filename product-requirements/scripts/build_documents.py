@@ -346,6 +346,13 @@ def publish(project, sources, destination, materials_root=None, *, review_data=N
         generated_at = datetime.now(timezone.utc).isoformat()
         questions = collect_questions(project)
         prd, proposal = render(project, sources, questions, generated_at)
+        documents = {'proposal.md': proposal, 'prd.md': prd}
+        overrides = project.get('document_overrides', {})
+        require(isinstance(overrides, dict), 'Document overrides must be an object')
+        for name, record in overrides.items():
+            require(name in documents and isinstance(record, dict) and nonempty(record.get('content')), 'Invalid document override')
+            documents[name] = record['content']
+        prd, proposal = documents['prd.md'], documents['proposal.md']
         (stage / 'prd.md').write_text(prd, encoding='utf-8')
         (stage / 'proposal.md').write_text(proposal, encoding='utf-8')
         review = {'project_id': project['project_id'], 'artifact_version': project['artifact_version'], 'review_status': 'draft', 'questions': questions, 'decisions': []}

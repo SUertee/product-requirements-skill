@@ -30,6 +30,8 @@ for (let index = 0; index < 35; index++) {
   payload.sources.push(source);
   transcriptMaterial.source_ids.push(source.source_id);
 }
+payload.sources.push({...timedSource, source_id: 'OTHER-SOURCE', material_id: 'other-meeting', text: '仅其他会议的词'});
+payload.project.materials.push({material_id: 'other-meeting', name: '其他会议', kind: 'transcript', source_ids: ['OTHER-SOURCE']});
 const lastSourceId = 'SRC-PAGING-34';
 payload.project.requirements[0].source_refs.push(lastSourceId);
 document.getElementById('workbench-data').textContent = JSON.stringify(payload);
@@ -50,6 +52,7 @@ window.fetch = async (url, options = {}) => {
   requests.push({url, options});
   if (url === '/api/status') return {ok: true, json: async () => state};
   if (url === '/api/review/apply') return {ok: true, json: async () => ({task: {status: 'completed'}})};
+  if (url === '/api/documents') return {ok: false, json: async () => ({error: 'Document baseline changed'})};
   if (url === '/api/generate') return {ok: false, json: async () => ({error: 'Fixture dependency unavailable'})};
   throw new Error('Unexpected request ' + url);
 };
@@ -91,6 +94,16 @@ async function settle() {
   assert.match(document.getElementById('page-content').textContent, /已生成分析版本/);
   button('素材').click();
   assert.match(document.querySelector('.meeting-highlights').textContent, /测试会议重点/);
+  assert.equal(document.querySelector('.workbench-toolbar').hidden, true);
+  assert(document.querySelector('.selection-detail').contains(document.getElementById('meeting-search')));
+  const selectedMeeting = document.querySelector('.selection-list [aria-current="true"]').textContent;
+  document.getElementById('meeting-search').value = '仅其他会议的词';
+  document.getElementById('meeting-search').dispatchEvent(new window.Event('input'));
+  assert.equal(document.querySelector('.selection-list [aria-current="true"]').textContent, selectedMeeting);
+  assert.match(document.querySelector('.selection-detail').textContent, /没有匹配的原话/);
+  document.getElementById('meeting-search').value = '';
+  document.getElementById('meeting-search').dispatchEvent(new window.Event('input'));
+
   assert.equal(document.querySelectorAll('.source-excerpt').length, 0);
   button('00:01 查看原话 →').click();
   const audio = document.querySelector('.selection-detail audio');
@@ -147,6 +160,35 @@ async function settle() {
   assert.equal(document.querySelectorAll('.document-body h4').length, 1);
   assert.equal(document.querySelector('.document-entry-picker [aria-pressed="true"]').textContent, 'REQ-001 · 创建工单');
   assert.equal(document.querySelectorAll('details').length, 0);
+  button('编辑本节').click();
+  const editor = document.getElementById('document-editor');
+  editor.value += '\n保存失败后保留的本地修改';
+  editor.dispatchEvent(new window.Event('input'));
+  button('保存新版本').click();
+  await settle();
+  assert.match(document.getElementById('document-editor').value, /保存失败后保留的本地修改/);
+  assert.match(document.getElementById('page-content').textContent, /Document baseline changed/);
+  const saved = JSON.parse(requests.find(item => item.url === '/api/documents').options.body);
+  assert.equal(saved.document, 'prd.md');
+  assert.equal(saved.base_sha256, payload.artifacts.find(item => item.path === 'prd.md').sha256);
+  assert.match(saved.content, /保存失败后保留的本地修改/);
+  const append = document.body.append.bind(document.body);
+  let printCalled = false;
+  document.body.append = (...nodes) => {
+    append(...nodes);
+    for (const node of nodes) if (node.classList?.contains('document-print-frame')) {
+      node.contentWindow.focus = () => {};
+      node.contentWindow.print = () => { printCalled = true; };
+    }
+  };
+  button('打印 / PDF').click();
+  assert(printCalled);
+  const printed = document.querySelector('.document-print-frame');
+  assert.match(printed.contentDocument.body.textContent, /原始依据/);
+  assert.match(printed.contentDocument.body.textContent, /保存失败后保留的本地修改/);
+  printed.contentWindow.dispatchEvent(new window.Event('afterprint'));
+  assert.equal(document.querySelector('.document-print-frame'), null);
+  document.body.append = append;
   navigate('prototype');
   assert.equal(document.querySelector('.generation-results'), null);
   button('手机').click();

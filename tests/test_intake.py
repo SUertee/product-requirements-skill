@@ -1,6 +1,7 @@
 """Intake regressions for immutable inputs, connector paths and local review writes."""
 from concurrent.futures import ThreadPoolExecutor
 import http.client
+import hashlib
 import json
 from pathlib import Path
 import sqlite3
@@ -147,6 +148,19 @@ class LocalServiceTests(unittest.TestCase):
         status = result.status
         connection.close()
         return status, data
+
+    def test_document_endpoint_saves_a_scoped_immutable_version(self):
+        sha = hashlib.sha256((self.run / 'proposal.md').read_bytes()).hexdigest()
+        payload = {'document': 'proposal.md', 'content': '# 已修订方案\n', 'version': 'v2', 'base_sha256': sha}
+        status, raw = self.request('POST', '/api/documents', json.dumps(payload), {'X-Workbench-Request': '1'})
+        self.assertEqual(status, 201, raw)
+        task = json.loads(raw)['task']
+        self.assertEqual(task['kind'], 'document')
+        status, content = self.request('GET', '/versions/' + task['id'] + '/proposal.md')
+        self.assertEqual(status, 200)
+        self.assertEqual(content.decode(), payload['content'])
+        status, raw = self.request('POST', '/api/documents', json.dumps({**payload, 'version': 'v3', 'base_sha256': 'stale'}), {'X-Workbench-Request': '1'})
+        self.assertEqual(status, 409)
 
     def test_upload_is_preprocessed_and_can_be_read_by_artifact_key(self):
         status, raw = self.request('POST', '/api/import?filename=meeting.txt', 'text', {'X-Workbench-Request': '1'})

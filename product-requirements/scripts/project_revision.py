@@ -36,6 +36,11 @@ def reconcile(baseline, candidate):
     for key in set(new) - set(old):
         if new[key]['review_status'] == 'confirmed':
             new[key]['review_status'] = 'draft'
+    for name, saved in baseline.get('document_overrides', {}).items():
+        proposed = result.get('document_overrides', {}).get(name)
+        if proposed != saved:
+            conflicts.append({'target': name, 'field': 'document_overrides', 'retained': saved, 'proposed': proposed, 'reason': 'human_edited_document'})
+        result.setdefault('document_overrides', {})[name] = copy.deepcopy(saved)
     return result, conflicts
 
 
@@ -51,7 +56,7 @@ def differences(baseline, candidate, conflicts=None):
         for field in sorted(set(previous) | set(current)):
             if previous.get(field) != current.get(field):
                 changes.append({'target': key, 'field': field, 'kind': 'modified', 'old': previous.get(field), 'new': current.get(field)})
-    for field in ['requirement_profile', 'context_sources', 'business_model', 'pages', 'modules', 'module_relations', 'apis']:
+    for field in ['requirement_profile', 'context_sources', 'business_model', 'pages', 'modules', 'module_relations', 'apis', 'document_overrides']:
         if baseline.get(field) != candidate.get(field):
             changes.append({'target': field, 'kind': 'modified', 'old': baseline.get(field), 'new': candidate.get(field)})
     return {'project_id': candidate['project_id'], 'baseline_version': baseline['artifact_version'],

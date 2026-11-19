@@ -22,11 +22,17 @@
   let requirementTab = 'detail';
   let moduleFrame = null;
   let selectDiagramModule = null;
-  let selectedDocument = 'proposal.md';
+  const requestedDocument = new URLSearchParams(location.search).get('document');
+  let selectedDocument = ['proposal.md', 'prd.md'].includes(requestedDocument) ? requestedDocument : 'proposal.md';
+  const documentDrafts = {};
+  let documentEditing = false;
+  let documentSaving = false;
+  let documentMessage = '';
   let documentChapter = 0;
   let documentEntry = 0;
   let materialTab = 'library';
   let materialReader = 'highlights';
+  let materialQuery = '';
   let materialPage = 0;
   let prototypeTab = 'preview';
   let technicalMode = 'design';
@@ -186,6 +192,7 @@
       queryInput.value = '';
       materialTab = 'library';
       materialReader = 'transcript';
+      materialQuery = '';
       navigate('materials');
     });
     return button;
@@ -541,7 +548,7 @@
     const labels = {waiting_host: '等待宿主分析', running: '生成中', failed: '失败，可重试', completed: '已生成'};
     for (const task of serverState.tasks || []) {
       const row = element('section', null, 'inbox-row');
-      row.append(element('h3', task.version + ' · ' + ({review: '评审修订', generation: '成果生成', analysis: '需求分析'}[task.kind] || task.kind)));
+      row.append(element('h3', task.version + ' · ' + ({review: '评审修订', document: '文档修订', generation: '成果生成', analysis: '需求分析'}[task.kind] || task.kind)));
       badges(row, [labels[task.status] || task.status, task.id]);
       if (task.error) row.append(element('p', task.error, 'inline-note'));
       for (const result of task.generation_results || []) row.append(element('p', result.capability + ' · ' + (result.generation_status === 'success' ? '已生成' : result.error), 'inline-note'));
@@ -590,18 +597,18 @@
       entries.push({key: 'material:' + material.material_id, title: meetings[0]?.title || material.name || material.material_id, meta: ({transcript: '逐字稿', recording: '音视频', context: '前情资料'}[material.kind] || material.kind || '素材') + ' · ' + sources.length + ' 段原话', material, sources, meetings});
     }
     const groups = new Map();
-    data.sources.filter(source => source.source_type !== 'project_metadata' && !assigned.has(source.source_id)).forEach(source => {
+    data.sources.filter(source => !['project_metadata', 'manual_document_edit'].includes(source.source_type) && !assigned.has(source.source_id)).forEach(source => {
       const key = source.material_id || source.source_name || 'transcript';
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(source);
     });
     groups.forEach((sources, key) => entries.push({key: 'source:' + key, title: sources[0].source_name || '会议原话', meta: sources.length + ' 段原话', sources, meetings: (project.meetings || []).filter(meeting => (meeting.material_ids || []).includes(key))}));
     if (project.context_sources.length) entries.push({key: 'context', title: '前情资料', meta: project.context_sources.length + ' 项背景资料', sources: [], meetings: [], context: project.context_sources});
-    const visible = entries.filter(item => matches(item));
+    const visible = entries;
     const selected = visible.find(item => selectedSource && item.sources.some(source => source.source_id === selectedSource)) || visible.find(item => item.key === selectedMaterial) || visible[0];
     if (!selected) { content.append(empty('暂无匹配素材，可调整搜索词后查看')); return; }
     selectedMaterial = selected.key;
-    const detail = selectionLayout(visible, selected.key, '会议素材列表', key => { selectedMaterial = key; selectedSource = null; materialPage = 0; materialReader = 'highlights'; });
+    const detail = selectionLayout(visible, selected.key, '会议素材列表', key => { selectedMaterial = key; selectedSource = null; materialPage = 0; materialReader = 'highlights'; materialQuery = ''; });
     const card = panel(selected.title);
     if (selected.context) {
       card.append(valueNode(selected.context));
@@ -610,7 +617,7 @@
     }
     const meeting = selected.meetings[0];
     const highlights = (meeting?.highlights || []).filter(item => item.text && item.source_refs?.every(id => sourceMap.has(id)));
-    const transcriptMode = materialReader === 'transcript' || selectedSource || queryInput.value.trim() || !highlights.length;
+    const transcriptMode = materialReader === 'transcript' || selectedSource || materialQuery.trim() || !highlights.length;
     const metadata = [meeting?.date, meeting?.duration_label].filter(Boolean);
     if (metadata.length) card.append(element('p', metadata.join(' · '), 'material-metadata'));
     const actions = element('div', null, 'document-actions');
@@ -626,8 +633,21 @@
       } catch { /* An invalid source URL is retained in project data. */ }
     }
     if (actions.children.length) card.append(actions);
+    const readingTools = element('div', null, 'meeting-reading-tools');
+    const search = element('input', null, 'meeting-search');
+    search.id = 'meeting-search'; search.type = 'search'; search.placeholder = '搜索本次会议原话';
+    search.setAttribute('aria-label', '搜索本次会议原话'); search.value = materialQuery;
+    search.addEventListener('input', () => {
+      const cursor = search.selectionStart;
+      materialQuery = search.value; materialPage = 0; selectedSource = null;
+      render();
+      const current = document.getElementById('meeting-search');
+      current.focus(); current.setSelectionRange(cursor, cursor);
+    });
+    card.append(readingTools);
     if (highlights.length) {
-      card.append(sectionTabs([['highlights', '会议重点'], ['transcript', '逐字稿']], transcriptMode ? 'transcript' : 'highlights', '会议阅读方式', key => { materialReader = key; selectedSource = null; materialPage = 0; queryInput.value = ''; render(); }));
+      readingTools.append(sectionTabs([['highlights', '会议重点'], ['transcript', '逐字稿']], transcriptMode ? 'transcript' : 'highlights', '会议阅读方式', key => { materialReader = key; selectedSource = null; materialPage = 0; materialQuery = ''; render(); }));
+      readingTools.append(search);
       if (!transcriptMode) {
         const list = element('div', null, 'meeting-highlights');
         for (const highlight of highlights) {
@@ -645,6 +665,7 @@
         return;
       }
     }
+    if (!highlights.length) readingTools.append(search);
     const relatedId = selected.material?.provenance?.related_job_id;
     const recording = relatedId ? (project.materials || []).find(item => item.job_id === relatedId || item.path?.startsWith(relatedId + '/')) : null;
     const recordingAttachment = data.attachments.find(item => item.material_id === recording?.material_id);
@@ -683,7 +704,7 @@
       player.addEventListener('error', () => { seekMessage.textContent = '录音无法加载，请核对文件与浏览器支持的格式'; });
       card.append(player, seekMessage);
     }
-    const transcriptSources = selected.sources.filter(source => !queryInput.value.trim() || matches(source) || matches(selected.material?.name || selected.title));
+    const transcriptSources = selected.sources.filter(source => !materialQuery.trim() || JSON.stringify(source).toLowerCase().includes(materialQuery.trim().toLowerCase()));
     const selectedIndex = transcriptSources.findIndex(source => source.source_id === selectedSource);
     if (selectedIndex >= 0) materialPage = Math.floor(selectedIndex / 30);
     const pageCount = Math.max(1, Math.ceil(transcriptSources.length / 30));
@@ -720,7 +741,7 @@
       linked.forEach(req => excerpt.append(requirementLink(req)));
       card.append(excerpt);
     });
-    if (!transcriptSources.length) card.append(element('p', '当前素材尚无可定位的原话片段', 'inline-note'));
+    if (!transcriptSources.length) card.append(element('p', materialQuery.trim() ? '没有匹配的原话' : '当前素材尚无可定位的原话片段', 'inline-note'));
     detail.append(card);
     if (selectedSource) detail.querySelector('.source-selected')?.scrollIntoView?.({block: 'nearest'});
   }
@@ -922,29 +943,88 @@
     wrapper.append(table);
     return wrapper;
   }
+  function printDocument(name) {
+    document.querySelector('.document-print-frame')?.remove();
+    const frame = element('iframe', null, 'document-print-frame');
+    frame.title = '打印文档'; frame.setAttribute('aria-hidden', 'true');
+    frame.setAttribute('sandbox', 'allow-same-origin allow-modals');
+    document.body.append(frame);
+    const page = frame.contentDocument;
+    page.title = (project.name || project.project_id) + (name === 'prd.md' ? ' · PRD' : ' · 项目方案');
+    page.documentElement.lang = 'zh-CN';
+    const style = element('style');
+    style.textContent = document.querySelector('head style').textContent + '\n@page {size:A4;margin:18mm} body{background:white;color:#202d40} .document-body{max-width:none;margin:0} h2,h3,h4{break-after:avoid} p,li{orphans:3;widows:3}';
+    page.head.append(style);
+    page.body.append(markdownDocument(documentDrafts[name] ?? data.documents[name]));
+    frame.contentWindow.addEventListener('afterprint', () => frame.remove(), {once: true});
+    frame.contentWindow.focus(); frame.contentWindow.print();
+  }
   function documents() {
+    const name = selectedDocument;
     const items = [['proposal.md', '项目方案'], ['prd.md', 'PRD']];
-    content.append(sectionTabs(items, selectedDocument, '文档类型', key => { selectedDocument = key; documentChapter = 0; documentEntry = 0; render(); }));
-    const text = data.documents[selectedDocument] || '';
+    content.append(sectionTabs(items, name, '文档类型', key => { selectedDocument = key; documentChapter = 0; documentEntry = 0; documentEditing = false; documentMessage = ''; render(); }));
+    const text = documentDrafts[name] ?? data.documents[name] ?? '';
     const chunks = text.split(/(?=^## )/m);
-    const intro = chunks.shift() || '';
-    const chapters = chunks.map((chunk, index) => ({key: String(index), title: chunk.split('\n')[0].replace(/^## /, ''), meta: '', text: chunk}));
-    if (!chapters.length) { const card = panel('文档'); card.append(markdownDocument(intro)); content.append(card); return; }
+    let intro = chunks.shift() || '';
+    let chapters = chunks.map((chunk, index) => ({key: String(index), title: chunk.split('\n')[0].replace(/^## /, ''), meta: '', text: chunk}));
+    if (!chapters.length) { intro = ''; chapters = [{key: '0', title: '正文', meta: '', text}]; }
     documentChapter = Math.min(documentChapter, chapters.length - 1);
-    const detail = selectionLayout(chapters, String(documentChapter), '文档章节', key => { documentChapter = Number(key); documentEntry = 0; });
-    const card = panel(chapters[documentChapter].title);
+    const selectedIndex = documentChapter;
+    const selected = chapters[selectedIndex];
+    const detail = selectionLayout(chapters, String(selectedIndex), '文档章节', key => { documentChapter = Number(key); documentEntry = 0; documentEditing = false; });
+    const card = panel(selected.title);
     const actions = element('div', null, 'document-actions');
-    actions.append(fileLink(selectedDocument, '打开完整文档'));
+    const edit = element('button', documentEditing ? '预览本节' : '编辑本节', 'button small');
+    edit.type = 'button'; edit.disabled = documentSaving;
+    edit.addEventListener('click', () => { documentEditing = !documentEditing; render(); });
+    const print = element('button', '打印 / PDF', 'button small'); print.type = 'button';
+    print.addEventListener('click', () => printDocument(name));
+    const download = element('button', '下载正文', 'button small'); download.type = 'button';
+    download.addEventListener('click', () => {
+      const url = URL.createObjectURL(new Blob([documentDrafts[name] ?? data.documents[name]], {type: 'text/markdown;charset=utf-8'}));
+      const link = element('a'); link.href = url; link.download = name; document.body.append(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+    actions.append(edit, print, download);
+    const save = element('button', '保存新版本', 'button primary small'); save.type = 'button';
+    save.disabled = documentSaving || !Object.hasOwn(documentDrafts, name) || documentDrafts[name] === data.documents[name];
+    if (serverState) {
+      actions.append(save);
+      save.addEventListener('click', async () => {
+        const value = documentDrafts[name];
+        const version = nextVersion();
+        documentSaving = true; documentMessage = '正在保存…'; render();
+        try {
+          const result = await localRequest('/api/documents', {method: 'POST', body: JSON.stringify({document: name, content: value, version, base_sha256: data.artifacts.find(item => item.path === name)?.sha256})});
+          location.assign('/versions/' + result.task.id + '/workbench/index.html?document=' + encodeURIComponent(name) + '#documents');
+        } catch (error) { documentMessage = error.message; }
+        finally { documentSaving = false; render(); }
+      });
+    }
     card.append(actions);
-    const chapterText = chapters[documentChapter].text.split('\n').slice(1).join('\n');
-    const entries = chapterText.split(/(?=^### )/m);
-    const introduction = entries.shift() || '';
-    if (entries.length > 1) {
-      documentEntry = Math.min(documentEntry, entries.length - 1);
-      const picker = element('div', null, 'document-entry-picker');
-      picker.append(sectionTabs(entries.map((entry, index) => [String(index), entry.split('\n')[0].replace(/^### /, '')]), String(documentEntry), '章节条目', key => { documentEntry = Number(key); render(); }));
-      card.append(picker, markdownDocument(introduction + entries[documentEntry]));
-    } else card.append(markdownDocument(chapterText));
+    if (documentMessage) { const message = element('p', documentMessage, 'inline-note'); message.setAttribute('role', 'status'); card.append(message); }
+    const heading = selected.text.startsWith('## ') ? selected.text.split('\n')[0] : '';
+    const chapterText = heading ? selected.text.split('\n').slice(1).join('\n') : selected.text;
+    if (documentEditing) {
+      const editor = element('textarea', null, 'document-editor');
+      editor.id = 'document-editor'; editor.setAttribute('aria-label', selected.title + '正文');
+      editor.rows = 18; editor.value = chapterText.trim(); editor.disabled = documentSaving;
+      editor.addEventListener('input', () => {
+        const revised = chapters.map((chapter, index) => index === selectedIndex ? (heading ? heading + '\n\n' : '') + editor.value + '\n\n' : chapter.text);
+        documentDrafts[name] = intro + revised.join('');
+        save.disabled = documentSaving || documentDrafts[name] === data.documents[name];
+      });
+      card.append(editor);
+    } else {
+      const entries = chapterText.split(/(?=^### )/m);
+      const introduction = entries.shift() || '';
+      if (entries.length > 1) {
+        documentEntry = Math.min(documentEntry, entries.length - 1);
+        const picker = element('div', null, 'document-entry-picker');
+        picker.append(sectionTabs(entries.map((entry, index) => [String(index), entry.split('\n')[0].replace(/^### /, '')]), String(documentEntry), '章节条目', key => { documentEntry = Number(key); render(); }));
+        card.append(picker, markdownDocument(introduction + entries[documentEntry]));
+      } else card.append(markdownDocument(chapterText));
+    }
     detail.append(card);
   }
   function artifactPreviews(prefix, emptyMessage) {
@@ -1293,7 +1373,7 @@
         content.append(filterPanel);
       }
     }
-    document.querySelector('.workbench-toolbar').hidden = !['materials', 'modules', 'review'].includes(active) && !(active === 'technical' && technicalTab === 'api');
+    document.querySelector('.workbench-toolbar').hidden = !['modules', 'review'].includes(active) && !(active === 'technical' && technicalTab === 'api');
     const renderers = {overview, materials, modules, documents, prototype, technical, review};
     renderers[active]();
   }

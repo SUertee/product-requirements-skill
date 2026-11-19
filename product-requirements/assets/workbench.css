@@ -329,3 +329,10 @@ video { width: 100%; max-height: 520px; margin-top: 20px; background: var(--nav-
   .module-detail .requirement-inspector { padding: 20px 0 0; border: 0; border-top: 1px solid var(--border); }
   .module-detail-head { flex-wrap: wrap; }
 }
+
+.meeting-reading-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; }
+.selection-detail .meeting-reading-tools .section-tabs { margin: 0; padding: 0; border: 0; }
+.meeting-search { margin-left: auto; width: min(100%, 320px); min-height: 40px; padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg); color: var(--ink-1); }
+.document-editor { display: block; width: 100%; min-height: 400px; margin-top: 20px; padding: 18px; border: 1px solid var(--border-strong); border-radius: 8px; color: var(--ink-1); background: var(--bg); font: inherit; line-height: 1.8; resize: vertical; }
+.document-print-frame { position: fixed; width: 1px; height: 1px; left: -10000px; top: 0; border: 0; }
+@media (max-width: 700px) { .meeting-search { width: 100%; } }

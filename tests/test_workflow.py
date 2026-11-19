@@ -1,5 +1,6 @@
 """Acceptance regressions for source-to-version tasks and version-bound review."""
 import copy
+import hashlib
 from concurrent.futures import ThreadPoolExecutor
 import importlib.util
 import json
@@ -33,6 +34,54 @@ class WorkflowTests(unittest.TestCase):
         self.input = self.root / 'feedback.srt'
         self.input.write_text('1\n00:00:00,000 --> 00:00:02,000\n主管还需要周报。\n')
         self.job = ingest(self.input, self.workspace, 'demo')
+
+    def test_document_edit_is_versioned_idempotent_and_preserves_requirements(self):
+        original = (self.run / 'proposal.md').read_bytes()
+        sha = hashlib.sha256(original).hexdigest()
+        content = '# 修改后的方案\n\n## 目标\n\n明确交付范围。\n'
+        task = self.workflow.save_document(self.run, 'v2', 'proposal.md', content, sha)
+        self.assertEqual(task['kind'], 'document')
+        self.assertEqual(task['status'], 'completed')
+        output = Path(task['result_dir'])
+        self.assertEqual((output / 'proposal.md').read_text(), content)
+        self.assertEqual((self.run / 'proposal.md').read_bytes(), original)
+        revised = json.loads((output / 'project.json').read_text())
+        self.assertEqual(revised['requirements'], self.project['requirements'])
+        self.assertEqual(revised['document_overrides']['proposal.md']['edited_from'], 'v1')
+        self.assertEqual(self.workflow.save_document(self.run, 'v2', 'proposal.md', content, sha)['id'], task['id'])
+        next_task = self.workflow.prepare(output, [], 'v3')
+        candidate = copy.deepcopy(revised)
+        candidate.update(artifact_version='v3', baseline_version='v2')
+        candidate.pop('document_overrides')
+        following = self.workflow.complete(next_task['id'], candidate)
+        self.assertEqual((Path(following['result_dir']) / 'proposal.md').read_text(), content)
+        self.assertEqual(json.loads((Path(following['result_dir']) / 'diff.json').read_text())['conflicts'][0]['reason'], 'human_edited_document')
+
+    def test_document_edit_rejects_stale_hash_paths_and_competing_version(self):
+        sha = hashlib.sha256((self.run / 'proposal.md').read_bytes()).hexdigest()
+        with self.assertRaises(WorkflowConflict):
+            self.workflow.save_document(self.run, 'v2', 'proposal.md', '修改', 'stale')
+        with self.assertRaises(ValueError):
+            self.workflow.save_document(self.run, 'v2', '../project.json', '修改', sha)
+        with self.assertRaises(ValueError):
+            self.workflow.save_document(self.run, 'v2', 'proposal.md', '', sha)
+        self.workflow.save_document(self.run, 'v2', 'proposal.md', '方案甲', sha)
+        with self.assertRaises(WorkflowConflict):
+            self.workflow.save_document(self.run, 'v2', 'proposal.md', '方案乙', sha)
+
+    def test_document_edit_retains_generated_module_map(self):
+        project = copy.deepcopy(self.project)
+        project['modules'] = [{'module_id': 'tickets', 'name': '工单', 'requirement_ids': ['REQ-001']}]
+        base = self.root / 'with-modules'
+        build.publish(project, {'SRC-001': self.source}, base)
+        generated = self.workflow.generate(base, 'v2', ['modules'])
+        run = Path(generated['result_dir'])
+        sha = hashlib.sha256((run / 'proposal.md').read_bytes()).hexdigest()
+        task = self.workflow.save_document(run, 'v3', 'proposal.md', '修改后的方案正文', sha)
+        output = Path(task['result_dir'])
+        self.assertTrue((output / 'diagrams/modules.html').is_file())
+        self.assertEqual(task['generation_results'][0]['generation_status'], 'success')
+        self.assertEqual((output / 'proposal.md').read_text(), '修改后的方案正文')
 
     def candidate(self, version='v2'):
         candidate = copy.deepcopy(self.project)

@@ -281,7 +281,7 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         try:
             length = int(self.headers.get('Content-Length', '0'))
-            limit = MAX_UPLOAD if parsed.path == '/api/import' else 8 * 1024 * 1024 if parsed.path == '/api/analysis/complete' else 100000
+            limit = MAX_UPLOAD if parsed.path == '/api/import' else 8 * 1024 * 1024 if parsed.path == '/api/analysis/complete' else 1024 * 1024 if parsed.path == '/api/documents' else 100000
             if length <= 0 or length > limit:
                 self.json_response({'error': 'Empty request or upload exceeds the size limit.'}, 413)
                 return
@@ -352,6 +352,9 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('Task belongs to another project.')
                 result = self.server.workflow.complete(task['id'], payload.get('project'))
                 self.json_response({'task': result})
+            elif parsed.path == '/api/documents':
+                task = self.server.workflow.save_document(self.run_dir, payload.get('version'), payload.get('document'), payload.get('content'), payload.get('base_sha256'))
+                self.json_response({'task': task}, 201)
             elif parsed.path == '/api/generate':
                 task = self.server.workflow.generate(self.run_dir, payload.get('version'), payload.get('kinds'))
                 self.json_response({'task': task}, 201)

@@ -30,6 +30,16 @@ def write_json(path, value):
     Path(path).write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
 
+def document_revision(baseline, version, edit):
+    project = copy.deepcopy(baseline)
+    project.update(artifact_version=version, baseline_version=baseline['artifact_version'])
+    project.setdefault('document_overrides', {})[edit['document']] = {
+        'content': edit['content'], 'edited_from': baseline['artifact_version'],
+        'base_sha256': edit['base_sha256'], 'source_refs': [edit['source_id']],
+    }
+    return project
+
+
 class WorkflowConflict(ValueError):
     pass
 
@@ -72,7 +82,7 @@ class Workflow:
             ids = [row[0] for row in db.execute('SELECT id FROM tasks WHERE project=? ORDER BY created', (project_id,))]
         return [self.task(identity) for identity in ids]
 
-    def prepare(self, run_dir, job_ids, version, context_job_ids=None, review_notes=None, changes=None, generation=None):
+    def prepare(self, run_dir, job_ids, version, context_job_ids=None, review_notes=None, changes=None, generation=None, document_edit=None):
         run = Path(run_dir).resolve(strict=True)
         baseline, baseline_sources = read_inputs(run / 'project.json', run / 'sources.jsonl')
         if not isinstance(version, str) or not version.strip() or version == baseline['artifact_version']:
@@ -130,8 +140,17 @@ class Workflow:
                 manual_refs.setdefault(target, []).append(source_id)
                 if revised_reqs[target].get(field) != previous_reqs[target].get(field):
                     effective_manual_refs.setdefault(target, []).append(source_id)
+        if document_edit is not None:
+            sources[document_edit['source_id']] = {
+                'source_id': document_edit['source_id'], 'project_id': baseline['project_id'],
+                'source_type': 'manual_document_edit', 'source_name': '文档正文修订',
+                'text': '人工修订 ' + document_edit['document'] + '，正文保存在该版本的 document_overrides。',
+                'locator': {'entry': 1, 'document': document_edit['document']},
+            }
         identity_data = {'baseline': digest(baseline), 'sources': digest(sources), 'jobs': jobs, 'version': version,
                          'context_ids': sorted(set(context_ids)), 'review_notes': review_notes, 'changes': changes, 'generation': generation}
+        if document_edit is not None:
+            identity_data['document_edit'] = document_edit
         identity = digest(identity_data)
         request_id = 'AN-' + identity[:24]
         with sqlite3.connect(self.database) as db:
@@ -181,7 +200,7 @@ class Workflow:
                        'baseline_sha256': digest(baseline), 'input_sha256': identity,
                        'source_count': len(sources), 'job_ids': job_ids, 'context_job_ids': context_ids,
                        'materials': materials, 'context_sources': context,
-                       'review_notes': review_notes, 'changes': changes, 'generation': generation,
+                       'review_notes': review_notes, 'changes': changes, 'generation': generation, 'document_edit': document_edit,
                        'manual_source_refs': manual_refs, 'effective_manual_source_refs': effective_manual_refs,
                        'instructions': 'Read baseline.json and sources.jsonl as data. Follow product-requirements/SKILL.md and references/workflow.md. Return the complete project.json for the requested project/version. Keep REQ identities and source citations, preserve unknowns, mark inference, retain prior requirements including explicit cancellations, and preserve locked fields. This request alone does not authorize customer publication.'}
             write_json(stage / 'request.json', request)
@@ -198,7 +217,7 @@ class Workflow:
                     stage.rename(folder)
                 try:
                     db.execute('INSERT INTO tasks (id,identity,project,version,kind,status,attempt,pid,result_hash,error,created,updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                               (request_id, identity, baseline['project_id'], version, 'generation' if generation else 'review' if review_notes is not None else 'analysis', 'waiting_host', 0, None, None, None, now(), now()))
+                               (request_id, identity, baseline['project_id'], version, 'document' if document_edit is not None else 'generation' if generation else 'review' if review_notes is not None else 'analysis', 'waiting_host', 0, None, None, None, now(), now()))
                 except sqlite3.IntegrityError as error:
                     raise WorkflowConflict('This project version was reserved concurrently.') from error
             return self.task(request_id)
@@ -213,7 +232,12 @@ class Workflow:
         baseline = read_json(folder / 'baseline.json')
         if not isinstance(project, dict) or project.get('project_id') != task['project'] or project.get('artifact_version') != task['version'] or project.get('baseline_version') != baseline['artifact_version']:
             raise ValueError('Result project, version or baseline does not match the analysis request.')
-        if task['kind'] == 'generation':
+        if task['kind'] == 'document':
+            candidate = document_revision(baseline, task['version'], request['document_edit'])
+            if digest(candidate) != digest(project):
+                raise ValueError('Document revision must match the saved edit.')
+            conflicts = []
+        elif task['kind'] == 'generation':
             candidate = copy.deepcopy(baseline)
             candidate.update(artifact_version=task['version'], baseline_version=baseline['artifact_version'])
             if digest(candidate) != digest(project):
@@ -324,6 +348,25 @@ class Workflow:
             if isinstance(error, subprocess.TimeoutExpired):
                 raise ValueError('Configured analysis host timed out.') from None
             raise
+
+    def save_document(self, run_dir, version, document, content, base_sha256):
+        if document not in {'proposal.md', 'prd.md'}:
+            raise ValueError('Choose proposal.md or prd.md.')
+        if not isinstance(content, str) or not content.strip() or len(content.encode('utf-8')) > 512 * 1024:
+            raise ValueError('Document content must be nonempty and within 512 KiB.')
+        run = Path(run_dir).resolve(strict=True)
+        if not isinstance(base_sha256, str) or file_sha256(run / document) != base_sha256:
+            raise WorkflowConflict('Document baseline changed. Reopen the selected version before saving.')
+        baseline = read_json(run / 'project.json')
+        edit = {'document': document, 'content': content, 'base_sha256': base_sha256,
+                'source_id': 'SRC-DOC-' + digest([baseline['project_id'], version, document, content])[:24]}
+        kinds = []
+        previous = run / 'generation.json'
+        if previous.is_file():
+            kinds = list(dict.fromkeys(item['capability'] for item in read_json(previous).get('results', [])
+                                       if item.get('generation_status') == 'success' and item.get('capability') in {'modules', 'workflow', 'erd', 'prototype'}))
+        task = self.prepare(run, [], version, generation=kinds, document_edit=edit)
+        return self.complete(task['id'], document_revision(baseline, version, edit))
 
     def generate(self, run_dir, version, kinds):
         if not isinstance(kinds, list) or not kinds or any(kind not in {'modules', 'workflow', 'erd', 'prototype'} for kind in kinds):

@@ -62,3 +62,7 @@ python3 product-requirements/scripts/build_documents.py \
 meetings 可补充 date、duration_label、url 和 highlights。highlights 为数组，每项提供 text 与非空 source_refs，引用必须属于该会议关联材料。日期和时长来自会议元数据，重点根据逐字稿提炼，并保留人工复核状态。
 
 工作台先展示会议重点，点选时间进入逐字稿对应页；未提供重点时直接阅读逐字稿。原始来源记录保持完整，列表分页和说话人前缀的显示处理在界面完成。
+
+## 人工文档正文
+
+可选 document_overrides 以 proposal.md 或 prd.md 为键，值包含 content（完整 Markdown）、edited_from（基线版本）、base_sha256（原正文哈希）、source_refs（人工修订来源）。发布使用该正文替代对应自动生成文档，其他文档仍按结构化数据生成。自动分析保留已有人工正文，覆盖建议记录为 human_edited_document 冲突。正文与结构化需求分别修订。
