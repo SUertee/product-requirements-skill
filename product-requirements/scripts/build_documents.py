@@ -144,6 +144,24 @@ def read_inputs(project_path, sources_path):
     require(isinstance(relations, list), 'module_relations must be an array')
     for relation in relations:
         require(isinstance(relation, dict) and relation.get('from') in module_ids and relation.get('to') in module_ids and nonempty(relation.get('label')), 'Module relations require known module IDs and a label')
+    architecture = project.get('technical_architecture')
+    if architecture is not None:
+        require(isinstance(architecture, dict), 'Technical architecture must be an object')
+        layers, components = architecture.get('layers'), architecture.get('components')
+        require(isinstance(layers, list) and bool(layers) and isinstance(components, list) and bool(components), 'Technical architecture needs layers and components')
+        layer_ids, component_ids = set(), set()
+        for layer in layers:
+            require(isinstance(layer, dict) and nonempty(layer.get('id')) and layer['id'] not in layer_ids and nonempty(layer.get('name')), 'Architecture layers need unique IDs and names')
+            layer_ids.add(layer['id'])
+        for component in components:
+            require(isinstance(component, dict) and nonempty(component.get('id')) and component['id'] not in component_ids and nonempty(component.get('name')) and component.get('layer') in layer_ids, 'Architecture components need unique IDs, names and known layers')
+            component_ids.add(component['id'])
+        connections = architecture.get('connections', [])
+        require(isinstance(connections, list) and all(isinstance(item, dict) and item.get('from') in component_ids and item.get('to') in component_ids for item in connections), 'Architecture connections need known components')
+        require(architecture.get('review_status', 'draft') in REVIEW, 'Invalid architecture review status')
+        for key, allowed in [('requirement_ids', requirement_ids), ('source_refs', sources)]:
+            refs = architecture.get(key, [])
+            require(isinstance(refs, list) and all(nonempty(ref) and ref in allowed for ref in refs), 'Architecture has invalid ' + key)
     material_ids.update(item['material_id'] for item in sources.values() if nonempty(item.get('material_id')))
     for meeting in project.get('meetings', []):
         refs = meeting.get('material_ids', [])

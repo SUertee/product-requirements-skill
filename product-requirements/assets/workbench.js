@@ -818,6 +818,72 @@
     workspace.append(choices, requirementCard(current));
     host.append(workspace);
   }
+  function svgNode(tag, attributes = {}, text) {
+    const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, String(value)));
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+  function useCaseDiagram(groups, onSelect) {
+    const items = groups.flatMap(group => group.items.map(req => ({req, group}))).filter((item, index, all) => all.findIndex(other => other.req.requirement_id === item.req.requirement_id) === index && item.req.lifecycle_status !== 'cancelled' && item.req.review_status !== 'parked');
+    const roleList = req => (Array.isArray(req.role) ? req.role : req.role ? [req.role] : []).filter(role => typeof role === 'string' && role.trim());
+    const roles = [...new Set(items.flatMap(item => roleList(item.req)))];
+    if (!items.length || !roles.length) return empty('角色与功能关系待补充');
+    const height = Math.max(240, items.length * 76 + 80, roles.length * 120 + 50);
+    const svg = svgNode('svg', {viewBox: '0 0 920 ' + height, role: 'group', 'aria-label': '用例图：角色与功能'});
+    svg.append(svgNode('rect', {x: 310, y: 18, width: 590, height: height - 36, rx: 12, class: 'usecase-boundary'}));
+    svg.append(svgNode('text', {x: 330, y: 45, class: 'diagram-label'}, project.name || '功能范围'));
+    const rolePositions = new Map(roles.map((role, index) => [role, 70 + index * ((height - 120) / Math.max(1, roles.length - 1))]));
+    items.forEach(({req}, index) => roleList(req).forEach(role => svg.append(svgNode('line', {x1: 150, y1: rolePositions.get(role) + 24, x2: 450, y2: 90 + index * 76, class: 'usecase-link'}))));
+    roles.forEach(role => {
+      const y = rolePositions.get(role);
+      const actor = svgNode('g'); actor.append(svgNode('circle', {cx: 125, cy: y, r: 12, class: 'usecase-actor'}));
+      actor.append(svgNode('path', {d: `M125 ${y + 12}v32m-22 -20h44m-22 20l-20 27m20 -27l20 27`, class: 'usecase-actor'}));
+      actor.append(svgNode('text', {x: 125, y: y + 92, 'text-anchor': 'middle', class: 'diagram-label'}, role)); svg.append(actor);
+    });
+    items.forEach(({req, group}, index) => {
+      const y = 90 + index * 76;
+      const node = svgNode('g', {role: 'button', tabindex: 0, 'aria-label': '查看功能：' + req.title, 'data-usecase-id': req.requirement_id});
+      node.append(svgNode('ellipse', {cx: 660, cy: y, rx: 210, ry: 27, class: 'usecase-function'}));
+      node.append(svgNode('text', {x: 660, y: y + 5, 'text-anchor': 'middle', class: 'diagram-label'}, req.title));
+      const choose = () => onSelect(group.key, req.requirement_id);
+      node.addEventListener('click', choose); node.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') {event.preventDefault(); choose();} }); svg.append(node);
+    });
+    const wrapper = element('div', null, 'content-diagram'); wrapper.append(svg); return wrapper;
+  }
+  function technicalArchitecture() {
+    const architecture = project.technical_architecture;
+    if (!architecture?.components?.length) { content.append(empty('技术架构待确认')); return; }
+    const layers = architecture.layers || [];
+    const nodes = architecture.components;
+    const height = Math.max(280, ...layers.map(layer => nodes.filter(node => node.layer === layer.id).length * 100 + 90));
+    const width = Math.max(700, layers.length * 300 + 30);
+    const svg = svgNode('svg', {viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': '技术架构：系统组件与连接'});
+    const defs = svgNode('defs'); const marker = svgNode('marker', {id: 'architecture-arrow', markerWidth: 8, markerHeight: 8, refX: 7, refY: 4, orient: 'auto'}); marker.append(svgNode('path', {d: 'M0,0 L8,4 L0,8 Z', fill: '#8293a9'})); defs.append(marker); svg.append(defs);
+    const positions = new Map();
+    layers.forEach((layer, index) => {
+      const x = 15 + index * 300;
+      svg.append(svgNode('rect', {x, y: 12, width: 280, height: height - 24, rx: 12, class: 'usecase-boundary'}));
+      svg.append(svgNode('text', {x: x + 18, y: 40, class: 'diagram-label'}, layer.name));
+      nodes.filter(node => node.layer === layer.id).forEach((node, row) => positions.set(node.id, {x: x + 25, y: 65 + row * 100}));
+    });
+    (architecture.connections || []).forEach(connection => {
+      const a = positions.get(connection.from), b = positions.get(connection.to); if (!a || !b) return;
+      const forward = b.x > a.x; const same = b.x === a.x;
+      const x1 = same ? a.x + 115 : a.x + (forward ? 230 : 0), y1 = a.y + (same ? 62 : 31);
+      const x2 = same ? b.x + 115 : b.x + (forward ? 0 : 230), y2 = b.y + (same ? 0 : 31);
+      svg.append(svgNode('path', {d: same ? `M${x1},${y1} L${x2},${y2}` : `M${x1},${y1} C${(x1+x2)/2},${y1} ${(x1+x2)/2},${y2} ${x2},${y2}`, class: 'architecture-link', 'marker-end': 'url(#architecture-arrow)'}));
+    });
+    nodes.forEach(node => {
+      const pos = positions.get(node.id); if (!pos) return;
+      svg.append(svgNode('rect', {...pos, width: 230, height: 62, rx: 9, class: 'architecture-component'}));
+      svg.append(svgNode('text', {x: pos.x + 115, y: pos.y + 27, 'text-anchor': 'middle', class: 'diagram-label'}, node.name));
+      if (node.runtime) svg.append(svgNode('text', {x: pos.x + 115, y: pos.y + 47, 'text-anchor': 'middle', class: 'diagram-caption'}, node.runtime));
+    });
+    const card = panel('技术架构');
+    if (architecture.review_status !== 'confirmed') card.append(element('span', '设计建议 · 待确认', 'workbench-meta'));
+    const wrapper = element('div', null, 'content-diagram'); wrapper.append(svg); card.append(wrapper); content.append(card);
+  }
   function modules() {
     const visible = filteredRequirements();
     const groups = (project.modules || []).map(module => ({
@@ -832,30 +898,18 @@
     let selected = choices.find(group => group.key === selectedModule) || choices[0];
     const tools = element('div', null, 'module-toolbar');
     const switcher = element('div', null, 'view-switcher'); switcher.setAttribute('role', 'group'); switcher.setAttribute('aria-label', '需求视图');
-    for (const [view, label] of [['map', '模块图'], ['list', '需求列表']]) {
+    for (const [view, label] of [['map', '功能模块'], ['usecases', '用例图'], ['list', '需求列表']]) {
       const button = element('button', label); button.type = 'button'; button.setAttribute('aria-pressed', String(moduleView === view));
       button.addEventListener('click', () => { moduleView = view; render(); content.querySelector('.view-switcher [aria-pressed="true"]')?.focus(); }); switcher.append(button);
     }
     tools.append(switcher, element('span', visible.length + ' / ' + requirements.length + ' 条需求', 'module-count'));
-    const generated = (serverState?.tasks || []).filter(task => task.status === 'completed' && task.generation_results?.some(item => item.capability === 'modules' && item.generation_status === 'success')).at(-1);
-    if (generated && generated.version !== project.artifact_version) {
-      const link = element('a', '打开模块图版本 ' + generated.version, 'button small');
-      link.href = '/versions/' + generated.id + '/workbench/index.html#modules';
-      tools.append(link);
-    }
-    if (serverState && project.modules?.length) {
-      const generate = element('button', '生成模块图', 'button small module-generate');
-      generate.type = 'button'; generate.disabled = workflowBusy;
-      generate.addEventListener('click', () => workflowAction(() => localRequest('/api/generate', {method: 'POST', body: JSON.stringify({version: nextVersion(), kinds: ['modules']})})));
-      tools.append(generate);
-    }
     content.append(tools);
     if (workflowMessage) content.append(element('p', workflowMessage, 'inline-note'));
     if (!selected) { content.append(empty('暂无匹配需求，可调整搜索词或筛选条件')); return; }
     selectedModule = selected.key;
     const filters = element('nav', null, 'module-filters'); filters.setAttribute('aria-label', '业务模块列表');
     const workspace = element('div', null, 'module-workspace');
-    const surface = element('section', null, 'module-surface'); surface.setAttribute('aria-label', moduleView === 'map' ? '模块关系图' : '需求列表');
+    const surface = element('section', null, 'module-surface'); surface.setAttribute('aria-label', {map: '功能模块', usecases: '用例图', list: '需求列表'}[moduleView]);
     const detail = element('aside', null, 'module-detail panel requirement-card'); detail.setAttribute('aria-label', '模块详情');
     function select(key, reveal = false) {
       const next = choices.find(group => group.key === key);
@@ -874,7 +928,9 @@
       button.addEventListener('click', () => select(group.key, true)); filters.append(button);
     });
     content.append(workspace); workspace.append(surface, filters, detail);
-    if (moduleView === 'map' && data.module_diagram) {
+    if (moduleView === 'usecases') {
+      surface.append(useCaseDiagram(choices, (key, requirement) => { selectedRequirement = requirement; select(key, true); }));
+    } else if (moduleView === 'map' && data.module_diagram) {
       const head = element('div', null, 'module-surface-head'); head.append(element('h2', '业务模块'));
       head.append(fileLink('diagrams/modules.html', '独立打开')); surface.append(head);
       const frame = element('iframe', null, 'module-map'); frame.title = 'Archify 业务模块图'; frame.setAttribute('sandbox', 'allow-scripts');
@@ -1305,7 +1361,7 @@
     detail.append(card); reviewForm(detail);
   }
   function technical() {
-    const tabs = {diagrams: '流程架构', database: '数据模型', api: '接口'};
+    const tabs = {diagrams: '技术架构', database: '数据模型', api: '接口'};
     const navigation = element('div', null, 'technical-tabs');
     navigation.setAttribute('role', 'tablist');
     navigation.setAttribute('aria-label', '技术设计分类');
@@ -1342,7 +1398,7 @@
     const before = new Set(content.children);
     if (technicalTab === 'database') database();
     else if (technicalTab === 'api') api();
-    else artifactPreviews('diagrams/', '流程架构图待生成');
+    else technicalArchitecture();
     Array.from(content.children).filter(child => !before.has(child)).forEach(child => panelNode.append(child));
   }
 

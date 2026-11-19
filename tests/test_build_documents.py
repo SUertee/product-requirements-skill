@@ -42,6 +42,20 @@ class DocumentBundleTests(unittest.TestCase):
     def read(self):
         return build.read_inputs(self.project_path, self.sources_path)
 
+    def test_technical_architecture_validates_separate_components(self):
+        self.project['technical_architecture'] = {
+            'review_status': 'draft', 'requirement_ids': ['REQ-001'], 'source_refs': ['SRC-001'],
+            'layers': [{'id': 'service', 'name': '服务层'}],
+            'components': [{'id': 'api', 'name': '查询 API', 'layer': 'service'}],
+            'connections': [],
+        }
+        self.save()
+        self.assertIn('technical_architecture', self.read()[0])
+        self.project['technical_architecture']['connections'] = [{'from': 'api', 'to': 'missing'}]
+        self.save()
+        with self.assertRaisesRegex(ValueError, 'known components'):
+            self.read()
+
     def test_bundle_keeps_evidence_and_locked_fields(self):
         project, sources = self.read()
         destination = self.root / 'v0.1'

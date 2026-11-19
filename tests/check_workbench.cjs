@@ -216,7 +216,8 @@ async function settle() {
   assert.equal(document.querySelector('[aria-label="原型视图"]'), null);
   navigate('technical');
   assert.equal(document.querySelector('[aria-label="技术设计视图"]'), null);
-  assert(document.querySelectorAll('#technical-panel iframe').length <= 1);
+  assert.equal(document.querySelectorAll('#technical-panel iframe').length, 0);
+  assert.match(document.getElementById('technical-panel').textContent, /技术架构待确认/);
   document.getElementById('tab-database').dispatchEvent(new window.KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}));
   assert.equal(document.getElementById('tab-api').getAttribute('aria-selected'), 'true');
   dom.window.close();

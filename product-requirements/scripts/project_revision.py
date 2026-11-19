@@ -56,7 +56,7 @@ def differences(baseline, candidate, conflicts=None):
         for field in sorted(set(previous) | set(current)):
             if previous.get(field) != current.get(field):
                 changes.append({'target': key, 'field': field, 'kind': 'modified', 'old': previous.get(field), 'new': current.get(field)})
-    for field in ['requirement_profile', 'context_sources', 'business_model', 'pages', 'modules', 'module_relations', 'apis', 'document_overrides']:
+    for field in ['requirement_profile', 'context_sources', 'business_model', 'pages', 'modules', 'module_relations', 'apis', 'technical_architecture', 'document_overrides']:
         if baseline.get(field) != candidate.get(field):
             changes.append({'target': field, 'kind': 'modified', 'old': baseline.get(field), 'new': candidate.get(field)})
     return {'project_id': candidate['project_id'], 'baseline_version': baseline['artifact_version'],
