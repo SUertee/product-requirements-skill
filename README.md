@@ -53,7 +53,7 @@ python3 product-requirements/scripts/resolve_capability.py schema-canvas
 | 功能需求 | 业务模块、需求卡、规则、验收、证据与确认状态 |
 | 方案文档 | 按内置方案／PRD 模板生成、章节点选、章节编辑、保存新版本、正文下载和打印／PDF 入口 |
 | 原型预览 | 交互页面、设备预览与独立打开 |
-| 技术设计 | 技术架构、数据模型和接口三类内容 |
+| 技术设计 | 可点选技术组件的架构图、开发内容／交付标准、数据模型和接口 |
 | 评审记录 | 待确认问题、版本绑定的意见、结论和导出 |
 
 默认视觉参考用户已有的 ParTrace Vision workbench。工作台和原型使用包内 UI 规范及模板，卡片通过实际内容、状态和操作表达用途。有效规范见 [页面设计](product-requirements/references/workbench.md) 和 [UI 规范](product-requirements/references/ui-design.md)，原始样式参考见 [可编辑副本](docs/references/partrace-workbench/workbench.html)。

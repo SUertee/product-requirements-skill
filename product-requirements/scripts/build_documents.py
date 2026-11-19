@@ -156,6 +156,14 @@ def read_inputs(project_path, sources_path):
         for component in components:
             require(isinstance(component, dict) and nonempty(component.get('id')) and component['id'] not in component_ids and nonempty(component.get('name')) and component.get('layer') in layer_ids, 'Architecture components need unique IDs, names and known layers')
             component_ids.add(component['id'])
+            for key in ['development_items', 'delivery_criteria']:
+                values = component.get(key, [])
+                require(isinstance(values, list) and all(nonempty(value) for value in values), 'Component ' + key + ' must contain text items')
+            require(component.get('responsibility') is None or nonempty(component.get('responsibility')), 'Component responsibility must be text')
+            for key, allowed in [('requirement_ids', requirement_ids), ('source_refs', sources)]:
+                refs = component.get(key, [])
+                require(isinstance(refs, list) and all(nonempty(ref) and ref in allowed for ref in refs), 'Component has invalid ' + key)
+
         connections = architecture.get('connections', [])
         require(isinstance(connections, list) and all(isinstance(item, dict) and item.get('from') in component_ids and item.get('to') in component_ids for item in connections), 'Architecture connections need known components')
         require(architecture.get('review_status', 'draft') in REVIEW, 'Invalid architecture review status')

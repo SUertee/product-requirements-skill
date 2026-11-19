@@ -51,6 +51,12 @@ class DocumentBundleTests(unittest.TestCase):
         }
         self.save()
         self.assertIn('technical_architecture', self.read()[0])
+        self.project['technical_architecture']['components'][0]['requirement_ids'] = ['missing']
+        self.save()
+        with self.assertRaisesRegex(ValueError, 'Component has invalid requirement_ids'):
+            self.read()
+        self.project['technical_architecture']['components'][0]['requirement_ids'] = ['REQ-001']
+
         self.project['technical_architecture']['connections'] = [{'from': 'api', 'to': 'missing'}]
         self.save()
         with self.assertRaisesRegex(ValueError, 'known components'):

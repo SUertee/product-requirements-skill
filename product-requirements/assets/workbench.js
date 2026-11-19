@@ -14,6 +14,7 @@
   let active = 'overview';
   let selectedSource = null;
   let technicalTab = 'diagrams';
+  let selectedArchitecture = null;
   let selectedMaterial = null;
   let selectedModule = null;
   let moduleView = data.module_diagram ? 'map' : 'list';
@@ -851,6 +852,42 @@
     });
     const wrapper = element('div', null, 'content-diagram'); wrapper.append(svg); return wrapper;
   }
+  function architectureDetails(architecture, frame = null) {
+    const nodes = architecture.components;
+    const host = element('div', null, 'architecture-details');
+    const picker = element('nav', null, 'module-filters'); picker.setAttribute('aria-label', '技术组件');
+    const detail = element('section', null, 'panel architecture-inspector'); detail.setAttribute('aria-label', '组件详情');
+    nodes.forEach(node => {
+      const button = element('button', node.name, 'module-filter'); button.type = 'button'; button.dataset.componentId = node.id;
+      button.addEventListener('click', () => select(node.id)); picker.append(button);
+    });
+    function select(id, reveal = false) {
+      const node = nodes.find(item => item.id === id); if (!node) return;
+      selectedArchitecture = id;
+      picker.querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.componentId === id)));
+      detail.replaceChildren(element('h2', node.name)); detail.dataset.componentId = id;
+      const layer = architecture.layers.find(item => item.id === node.layer);
+      detail.append(element('p', [layer?.name, node.runtime].filter(Boolean).join(' · '), 'inline-note'));
+      if (node.responsibility) detail.append(element('p', node.responsibility));
+      const columns = element('div', null, 'component-deliverables');
+      for (const [key, title] of [['development_items', '开发内容'], ['delivery_criteria', '交付标准']]) {
+        const section = element('section'); section.append(element('h3', title));
+        if (node[key]?.length) section.append(valueNode(node[key])); else section.append(element('p', '待补充', 'inline-note'));
+        columns.append(section);
+      }
+      detail.append(columns);
+      const related = requirements.filter(req => (node.requirement_ids || []).includes(req.requirement_id));
+      if (related.length) {
+        const links = element('div', null, 'component-requirements'); links.append(element('h3', '关联需求'));
+        related.forEach(req => links.append(requirementLink(req))); detail.append(links);
+      }
+      frame?.contentWindow?.postMessage({type: 'product-requirements:architecture-state', selected: nodes.indexOf(node)}, '*');
+      if (reveal) detail.scrollIntoView?.({block: 'nearest'});
+    }
+    host.append(picker, detail);
+    select(nodes.some(node => node.id === selectedArchitecture) ? selectedArchitecture : nodes[0].id);
+    return {host, select};
+  }
   function technicalArchitecture() {
     const architecture = project.technical_architecture;
     if (!architecture?.components?.length) { content.append(empty('技术架构待确认')); return; }
@@ -859,25 +896,40 @@
       if (architecture.review_status !== 'confirmed') card.append(element('span', '设计建议 · 待确认', 'workbench-meta'));
       card.append(fileLink('diagrams/architecture.html', '打开完整页面'));
       const frame = element('iframe', null, 'architecture-preview'); frame.title = 'Archify 技术架构'; frame.setAttribute('sandbox', 'allow-scripts');
+      const details = architectureDetails(architecture, frame);
       const bridge = `(() => {
-        const style = document.createElement('style'); style.textContent = 'html,body{background:#fdfefe;min-height:0 !important;margin:0;padding:0 !important} body > .toolbar,.container > .header,.diagram-nav,.reader-rail,.rail-reveal,#focus-chip,.cards{display:none !important} .container{padding:0;max-width:none} .diagram-container{padding:0;border:0;box-shadow:none;margin:0;min-height:0 !important} .diagram-container > svg{display:block;width:100%;height:auto;min-width:0 !important} svg [data-node-id] text.t-primary{font-size:20px} svg [data-node-id] text.t-muted{font-size:14px} svg [data-node-id] text.t-backend{font-size:10px;opacity:1 !important}'; document.head.append(style);
+        const style = document.createElement('style'); style.textContent = 'html,body{background:#fdfefe;min-height:0 !important;margin:0;padding:0 !important} body > .toolbar,.container > .header,.diagram-nav,.reader-rail,.rail-reveal,#focus-chip,.cards{display:none !important} .container{padding:0;max-width:none} .diagram-container{padding:0;border:0;box-shadow:none;margin:0;min-height:0 !important} .diagram-container > svg{display:block;width:100%;height:auto;min-width:0 !important} svg [data-node-id] text.t-primary{font-size:20px} svg [data-node-id] text.t-muted{font-size:14px} svg [data-node-id] text.t-backend{font-size:10px;opacity:1 !important} [data-node-id]{cursor:pointer} [data-node-id][data-workbench-selected]{filter:drop-shadow(0 0 3px #2863d6)}'; document.head.append(style);
         const target = document.querySelector('.diagram-container');
         const report = () => {if(target)parent.postMessage({type:'product-requirements:architecture-size',height:Math.ceil(target.getBoundingClientRect().height)},'*');};
         if(target)new ResizeObserver(report).observe(target); report();
+        function notify(event) {
+          const node = event.target.closest('[data-node-id]'); if (!node) return;
+          event.preventDefault(); event.stopPropagation();
+          parent.postMessage({type:'product-requirements:architecture-select',id:node.getAttribute('data-node-id')},'*');
+        }
+        target?.querySelector('svg')?.setAttribute('role','group');
+        document.querySelectorAll('[data-node-id]').forEach(node => {node.setAttribute('role','button');node.setAttribute('tabindex','0');node.setAttribute('aria-label','查看组件：'+(node.querySelector('.t-primary')?.textContent || node.getAttribute('data-node-id')));});
+        document.addEventListener('click',notify,true);
+        document.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' ')notify(event);},true);
+        window.addEventListener('message',event=>{if(event.source!==parent||event.data?.type!=='product-requirements:architecture-state')return;document.querySelectorAll('[data-node-id]').forEach(node=>{const selected=node.getAttribute('data-node-id')==='component_'+event.data.selected;node.toggleAttribute('data-workbench-selected',selected);node.setAttribute('aria-pressed',String(selected));});});
       })();`;
       const resize = event => {
         if (!frame.isConnected) {window.removeEventListener('message', resize); return;}
+        if (event.source === frame.contentWindow && event.data?.type === 'product-requirements:architecture-select' && /^component_\d+$/.test(event.data.id)) {
+          const node = architecture.components[Number(event.data.id.slice(10))]; if (node) details.select(node.id, true);
+        }
         if (event.source === frame.contentWindow && event.data?.type === 'product-requirements:architecture-size' && Number.isFinite(event.data.height)) frame.style.height = Math.max(200, Math.min(1800, event.data.height)) + 'px';
       };
       window.addEventListener('message', resize);
       frame.srcdoc = data.architecture_diagram.replace('</body>', '<scr' + 'ipt>' + bridge + '</scr' + 'ipt></body>');
-      card.append(frame); content.append(card); return;
+      frame.addEventListener('load', () => details.select(selectedArchitecture));
+      card.append(frame); content.append(card, details.host); return;
     }
     const layers = architecture.layers || [];
     const nodes = architecture.components;
     const height = Math.max(280, ...layers.map(layer => nodes.filter(node => node.layer === layer.id).length * 100 + 90));
     const width = Math.max(700, layers.length * 300 + 30);
-    const svg = svgNode('svg', {viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': '技术架构：系统组件与连接'});
+    const svg = svgNode('svg', {viewBox: `0 0 ${width} ${height}`, role: 'group', 'aria-label': '技术架构：系统组件与连接'});
     const defs = svgNode('defs'); const marker = svgNode('marker', {id: 'architecture-arrow', markerWidth: 8, markerHeight: 8, refX: 7, refY: 4, orient: 'auto'}); marker.append(svgNode('path', {d: 'M0,0 L8,4 L0,8 Z', fill: '#8293a9'})); defs.append(marker); svg.append(defs);
     const positions = new Map();
     layers.forEach((layer, index) => {
@@ -893,15 +945,20 @@
       const x2 = same ? b.x + 115 : b.x + (forward ? 0 : 230), y2 = b.y + (same ? 0 : 31);
       svg.append(svgNode('path', {d: same ? `M${x1},${y1} L${x2},${y2}` : `M${x1},${y1} C${(x1+x2)/2},${y1} ${(x1+x2)/2},${y2} ${x2},${y2}`, class: 'architecture-link', 'marker-end': 'url(#architecture-arrow)'}));
     });
+    const details = architectureDetails(architecture);
     nodes.forEach(node => {
       const pos = positions.get(node.id); if (!pos) return;
-      svg.append(svgNode('rect', {...pos, width: 230, height: 62, rx: 9, class: 'architecture-component'}));
-      svg.append(svgNode('text', {x: pos.x + 115, y: pos.y + 27, 'text-anchor': 'middle', class: 'diagram-label'}, node.name));
-      if (node.runtime) svg.append(svgNode('text', {x: pos.x + 115, y: pos.y + 47, 'text-anchor': 'middle', class: 'diagram-caption'}, node.runtime));
+      const group = svgNode('g', {role: 'button', tabindex: 0, 'aria-label': '查看组件：' + node.name});
+      group.addEventListener('click', () => details.select(node.id, true));
+      group.addEventListener('keydown', event => {if (event.key === 'Enter' || event.key === ' ') {event.preventDefault(); details.select(node.id, true);}});
+      group.append(svgNode('rect', {...pos, width: 230, height: 62, rx: 9, class: 'architecture-component'}));
+      group.append(svgNode('text', {x: pos.x + 115, y: pos.y + 27, 'text-anchor': 'middle', class: 'diagram-label'}, node.name));
+      if (node.runtime) group.append(svgNode('text', {x: pos.x + 115, y: pos.y + 47, 'text-anchor': 'middle', class: 'diagram-caption'}, node.runtime));
+      svg.append(group);
     });
     const card = panel('技术架构');
     if (architecture.review_status !== 'confirmed') card.append(element('span', '设计建议 · 待确认', 'workbench-meta'));
-    const wrapper = element('div', null, 'content-diagram'); wrapper.append(svg); card.append(wrapper); content.append(card);
+    const wrapper = element('div', null, 'content-diagram'); wrapper.append(svg); card.append(wrapper); content.append(card, details.host);
   }
   function modules() {
     const visible = filteredRequirements();
