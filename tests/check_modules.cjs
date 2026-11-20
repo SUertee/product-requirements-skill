@@ -12,8 +12,13 @@ w.eval(fs.readFileSync(path.join(__dirname,'../product-requirements/assets/workb
 function button(text) { const result = [...d.querySelectorAll('button')].find(item => item.textContent === text); assert(result,text); return result; }
 function detail() { return d.querySelector('.module-detail').textContent; }
 function event(id, source) { w.dispatchEvent(new w.MessageEvent('message',{data:{type:'product-requirements:module-select',id},source})); }
+assert.equal(d.querySelector('.module-map'), null);
+assert(d.querySelector('.requirement-group'));
+assert.equal(d.querySelector('.module-filters'), null);
+button('功能模块').click();
 let frame = d.querySelector('.module-map');
 assert(frame);
+assert.equal(d.querySelector('.module-filters'), null);
 assert.equal(d.querySelectorAll('details').length, 0);
 assert.equal(d.getElementById('status').hidden, true);
 button('筛选').click();
@@ -41,9 +46,11 @@ d.querySelector('[data-usecase-id="REQ-003"]').dispatchEvent(new w.MouseEvent('c
 assert.equal(d.querySelector('.requirement-inspector > h2').textContent,'创建工单');
 button('需求列表').click();
 assert.match(detail(), /创建工单/);
-d.querySelector('[data-req-row="REQ-004"] button').click();
+d.querySelector('.requirement-choice[data-requirement-id="REQ-004"]').click();
 assert.match(detail(), /状态流转待客户确认/);
-assert.equal(d.querySelector('tr[aria-selected="true"]').dataset.reqRow,'REQ-004');
+assert.equal(d.querySelector('.requirement-choice[aria-pressed="true"]').dataset.requirementId,'REQ-004');
+assert(d.querySelector('.requirement-inspector .evidence-tag'));
+assert(d.querySelector('.requirement-inspector [data-source-ref]'));
 const search = d.getElementById('search');
 search.value = '工单处理'; search.dispatchEvent(new w.Event('input'));
 assert.match(d.getElementById('page-content').textContent,/2 \/ 6 条需求/);

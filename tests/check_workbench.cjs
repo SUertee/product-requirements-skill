@@ -130,7 +130,6 @@ async function settle() {
   assert.match(document.getElementById('page-content').textContent, /原话时间超出录音长度/);
   assert(document.querySelectorAll('.source-excerpt').length <= 30);
   navigate('modules');
-  button('会议原话').click();
   const citation = [...document.querySelectorAll('[data-source-ref]')].find(node => node.dataset.sourceRef === lastSourceId);
   assert.match(citation.textContent, /查看原话/);
   citation.click();
@@ -150,7 +149,7 @@ async function settle() {
   assert.equal(text.readOnly, false);
   text.value = '主题必填，提交后显示唯一编号';
   submit(text.closest('form'));
-  navigate('review');
+  button('记录评审意见').click();
   assert(document.querySelector('[aria-label="评审事项"]'));
   assert(document.querySelector('.selection-detail #review-comment'));
   document.getElementById('review-comment').value = '合成评审：需要核对验收';

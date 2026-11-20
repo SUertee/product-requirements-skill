@@ -17,7 +17,7 @@
   let selectedArchitecture = null;
   let selectedMaterial = null;
   let selectedModule = null;
-  let moduleView = data.module_diagram ? 'map' : 'list';
+  let moduleView = 'list';
   let selectedRequirement = null;
   let moduleDetailTab = 'requirements';
   let requirementTab = 'detail';
@@ -172,7 +172,7 @@
     button.title = '需求编号 ' + req.requirement_id;
     button.type = 'button';
     button.addEventListener('click', () => {
-      queryInput.value = req.requirement_id;
+      queryInput.value = '';
       requirementTab = 'detail';
       moduleDetailTab = 'requirements';
       statusInput.value = '';
@@ -241,41 +241,37 @@
     const card = panel(req.title);
     card.classList.add('requirement-inspector');
     const identity = element('div', null, 'requirement-identity');
-    identity.append(element('span', '需求编号 ' + req.requirement_id));
-    badges(identity, [states[req.review_status], evidenceNames[req.evidence_type]]);
+    const evidence = element('span', evidenceNames[req.evidence_type] || '待确认', 'evidence-tag');
+    evidence.dataset.evidence = req.evidence_type || 'unknown';
+    identity.append(evidence, element('span', states[req.review_status] || '草稿', 'status-tag'), element('span', req.requirement_id, 'requirement-code'));
     card.append(identity);
     const body = element('div', null, 'requirement-tab-body');
-    const tabs = [['detail', '功能'], ['rules', '规则'], ['sources', '会议原话']];
-    if (serverState) tabs.push(['edit', '修改']);
-    const selected = tabs.some(([key]) => key === requirementTab) ? requirementTab : 'detail';
-    const navigation = sectionTabs(tabs, selected, '需求详情', show);
-    function show(key) {
-      requirementTab = key;
-      navigation.querySelectorAll('button').forEach((button, index) => button.setAttribute('aria-pressed', String(tabs[index][0] === key)));
-      body.replaceChildren();
-      if (key === 'edit') body.append(requirementEditor(req));
-      else if (key === 'sources') {
-        for (const sourceId of req.source_refs) {
-          const source = sourceMap.get(sourceId);
-          body.append(sourceLink(sourceId), element('blockquote', source?.text || '来源待补充', 'source-quote'));
-        }
-      } else if (key === 'rules') {
-        const known = [['使用者', req.role], ['触发条件', req.trigger], ['输入', req.inputs], ['输出', req.outputs], ['业务规则', req.rules], ['异常处理', req.exceptions]].filter(([, value]) => display(value) !== '待确认');
-        if (known.length) fields(body, known);
-        else body.append(element('p', '业务规则待补充', 'inline-note'));
-      } else {
-        body.append(element('h3', '功能内容'), valueNode(req.behavior));
-        body.append(element('h3', '验收标准'), valueNode(req.acceptance_criteria));
-        if (req.open_questions?.length) {
-          body.append(element('h3', '需要确认'), valueNode(req.open_questions));
-        }
+    const editing = requirementTab === 'edit' && serverState;
+    if (editing) body.append(requirementEditor(req));
+    else {
+      body.append(element('h3', '功能内容'), valueNode(req.behavior));
+      body.append(element('h3', '验收标准'), valueNode(req.acceptance_criteria));
+      if (req.open_questions?.length) body.append(element('h3', '需要确认'), valueNode(req.open_questions));
+      const known = [['使用者', req.role], ['触发条件', req.trigger], ['输入', req.inputs], ['输出', req.outputs], ['业务规则', req.rules], ['异常处理', req.exceptions]].filter(([, value]) => display(value) !== '待确认');
+      if (known.length) { body.append(element('h3', '业务规则')); fields(body, known); }
+      body.append(element('h3', '会议原话'));
+      if (!(req.source_refs || []).length) body.append(element('p', '来源待补充', 'inline-note'));
+      for (const sourceId of req.source_refs || []) {
+        const source = sourceMap.get(sourceId);
+        body.append(sourceLink(sourceId), element('blockquote', source?.text || '来源待补充', 'source-quote'));
       }
     }
+    const actions = element('div', null, 'requirement-actions');
     const reviewButton = element('button', '记录评审意见', 'button ghost small');
     reviewButton.type = 'button';
     reviewButton.addEventListener('click', () => { reviewTarget = req.requirement_id; reviewTab = 'questions'; navigate('review'); });
-    card.append(navigation, body, reviewButton);
-    show(selected);
+    actions.append(reviewButton);
+    if (serverState) {
+      const edit = element('button', editing ? '返回需求' : '修改', 'button ghost small'); edit.type = 'button';
+      edit.addEventListener('click', () => { requirementTab = editing ? 'detail' : 'edit'; card.replaceWith(requirementCard(req)); });
+      actions.append(edit);
+    }
+    card.append(body, actions);
     return card;
   }
   function needsDefinitionReview() {
@@ -333,7 +329,7 @@
       button.type = 'button';
       button.addEventListener('click', () => {
         const req = requirements.find(item => item.requirement_id === question.target);
-        if (req) { selectedRequirement = req.requirement_id; queryInput.value = req.requirement_id; statusInput.value = ''; evidenceInput.value = ''; navigate('modules'); }
+        if (req) { selectedRequirement = req.requirement_id; queryInput.value = ''; statusInput.value = ''; evidenceInput.value = ''; navigate('modules'); }
         else { reviewTab = 'questions'; navigate('review'); }
       });
       questions.append(button);
@@ -380,7 +376,7 @@
   function intakePanel() {
     const card = panel('导入素材');
     if (!serverState) {
-      card.append(element('p', '使用本地运行器后，可导入录音、录屏、逐字稿或飞书妙记。当前版本的资料可继续浏览。', 'inline-note'));
+      card.append(element('p', '当前为只读分享版，导入素材请在本机工作台中进行。当前版本的资料可继续浏览。', 'inline-note'));
       if (intakeMessage) card.append(element('p', intakeMessage, 'inline-note'));
       content.append(card);
       return;
@@ -974,7 +970,7 @@
     let selected = choices.find(group => group.key === selectedModule) || choices[0];
     const tools = element('div', null, 'module-toolbar');
     const switcher = element('div', null, 'view-switcher'); switcher.setAttribute('role', 'group'); switcher.setAttribute('aria-label', '需求视图');
-    for (const [view, label] of [['map', '功能模块'], ['usecases', '用例图'], ['list', '需求列表']]) {
+    for (const [view, label] of [['list', '需求列表'], ['map', '功能模块'], ['usecases', '用例图']]) {
       const button = element('button', label); button.type = 'button'; button.setAttribute('aria-pressed', String(moduleView === view));
       button.addEventListener('click', () => { moduleView = view; render(); content.querySelector('.view-switcher [aria-pressed="true"]')?.focus(); }); switcher.append(button);
     }
@@ -983,6 +979,32 @@
     if (workflowMessage) content.append(element('p', workflowMessage, 'inline-note'));
     if (!selected) { content.append(empty('暂无匹配需求，可调整搜索词或筛选条件')); return; }
     selectedModule = selected.key;
+    if (moduleView === 'list') {
+      const listed = choices.flatMap(group => group.items);
+      const current = listed.find(req => req.requirement_id === selectedRequirement) || listed[0];
+      if (!current) { content.append(empty('暂无需求')); return; }
+      selectedRequirement = current.requirement_id;
+      selectedModule = choices.find(group => group.items.includes(current)).key;
+      const detail = element('section', null, 'module-detail panel requirement-card'); detail.setAttribute('aria-label', '需求列表');
+      const layout = element('div', null, 'module-requirements');
+      const picker = element('nav', null, 'requirement-picker'); picker.setAttribute('aria-label', '选择需求');
+      choices.filter(group => group.items.length).forEach(group => {
+        picker.append(element('p', group.title, 'requirement-group'));
+        group.items.forEach(req => {
+          const button = element('button', null, 'requirement-choice'); button.type = 'button';
+          button.dataset.requirementId = req.requirement_id; button.title = '需求编号 ' + req.requirement_id;
+          button.append(element('strong', req.title), element('span', states[req.review_status]));
+          button.setAttribute('aria-pressed', String(req === current));
+          button.addEventListener('click', () => {
+            selectedRequirement = req.requirement_id; requirementTab = 'detail'; render();
+            content.querySelector('.requirement-choice[aria-pressed="true"]')?.focus();
+          });
+          picker.append(button);
+        });
+      });
+      layout.append(picker, requirementCard(current)); detail.append(layout); content.append(detail);
+      return;
+    }
     const filters = element('nav', null, 'module-filters'); filters.setAttribute('aria-label', '业务模块列表');
     const workspace = element('div', null, 'module-workspace');
     const surface = element('section', null, 'module-surface'); surface.setAttribute('aria-label', {map: '功能模块', usecases: '用例图', list: '需求列表'}[moduleView]);
@@ -995,7 +1017,6 @@
       for (const button of filters.querySelectorAll('button')) button.setAttribute('aria-current', String(button.dataset.moduleKey === key));
       moduleDetails(selected, detail);
       moduleFrame?.contentWindow?.postMessage({type: 'product-requirements:module-state', selected: (project.modules || []).findIndex(module => module.module_id === selected.module?.module_id), visible: choices.map(group => (project.modules || []).findIndex(module => module.module_id === group.module?.module_id))}, '*');
-      surface.querySelectorAll('[data-req-row]').forEach(row => row.setAttribute('aria-selected', String(selectedRequirement === row.dataset.reqRow)));
       if (reveal) detail.scrollIntoView?.({block: 'nearest'});
     }
     choices.forEach(group => {
@@ -1003,7 +1024,9 @@
       button.setAttribute('aria-current', String(group === selected)); button.append(element('span', group.title), element('span', group.items.length, 'module-filter-count'));
       button.addEventListener('click', () => select(group.key, true)); filters.append(button);
     });
-    content.append(workspace); workspace.append(surface, filters, detail);
+    content.append(workspace); workspace.append(surface);
+    if (moduleView === 'map' && !data.module_diagram) workspace.append(filters);
+    workspace.append(detail);
     if (moduleView === 'usecases') {
       surface.append(useCaseDiagram(choices, (key, requirement) => { selectedRequirement = requirement; select(key, true); }));
     } else if (moduleView === 'map' && data.module_diagram) {
@@ -1027,18 +1050,6 @@
       if (!(project.module_relations || []).length) surface.append(element('p', '模块间关系待补充', 'module-map-note'));
     } else if (moduleView === 'map') {
       surface.append(empty('模块图待生成'));
-    } else {
-      const scroll = element('div', null, 'data-table-scroll'); const table = element('table', null, 'data-table requirement-table');
-      const head = element('thead'); const headings = element('tr'); ['需求', '状态', '模块'].forEach(label => headings.append(element('th', label))); head.append(headings); table.append(head);
-      const body = element('tbody');
-      visible.forEach(req => {
-        const group = choices.find(item => item.items.includes(req));
-        const row = element('tr'); row.dataset.reqRow = req.requirement_id;
-        const cell = element('td'); const button = element('button', null, 'requirement-row-button'); button.type = 'button'; button.append(element('strong', req.title), element('span', '需求编号 ' + req.requirement_id, 'module-identity'));
-        button.addEventListener('click', () => { selectedRequirement = req.requirement_id; requirementTab = 'detail'; select(group.key, true); }); cell.append(button);
-        row.append(cell, element('td', states[req.review_status]), element('td', group.title)); body.append(row);
-      });
-      table.append(body); scroll.append(table); surface.append(scroll);
     }
     select(selectedModule);
   }
@@ -1281,7 +1292,7 @@
   function reviewForm(host = content, phase = 'definition') {
     const section = panel('记录评审意见');
     if (!serverState) {
-      section.append(element('p', '本地运行器提供版本绑定的评审保存和导出。', 'inline-note'));
+      section.append(element('p', '当前为只读分享版，评审意见请在本机工作台中记录。', 'inline-note'));
       host.append(section);
       return;
     }
@@ -1421,10 +1432,11 @@
     const groups = targets.map(target => {
       const req = requirements.find(item => item.requirement_id === target);
       const issues = data.review.questions.filter(question => question.target === target);
-      return {key: target, title: req?.title || ({business_model: '业务模型', pages: '页面定义', requirements: '功能需求'}[target] || (target.startsWith('requirement_profile.') ? '项目背景与范围' : target)), meta: req ? ({draft: '待核对', confirmed: '已确认', disputed: '需讨论', parked: '暂缓'}[req.review_status] || '') : '', req, issues};
-    }).filter(group => matches([group.title, group.key, group.issues]));
+      const specific = [...new Set(issues.map(issue => issue.reason))].filter(reason => reason !== '核对依据、范围与确认状态');
+      return {key: target, title: req?.title || ({business_model: '业务模型', pages: '页面定义', requirements: '功能需求'}[target] || (target.startsWith('requirement_profile.') ? '项目背景与范围' : target)), meta: specific.length ? specific.length + ' 个问题' : '', req, issues, specific};
+    }).filter(group => (group.specific.length || group.key === reviewTarget) && matches([group.title, group.key, group.issues]));
     const current = groups.find(group => group.key === reviewTarget) || groups[0];
-    if (!current) { content.append(empty('没有匹配的评审事项')); return; }
+    if (!current) { content.append(empty(queryInput.value.trim() ? '没有匹配的评审事项' : '没有需要确认的问题')); return; }
     reviewTarget = current.key;
     const detail = selectionLayout(groups, current.key, '评审事项', key => { reviewTarget = key; reviewMessage = ''; });
     const card = panel(current.title);
@@ -1435,7 +1447,7 @@
     else card.append(element('p', '核对功能、范围与验收标准', 'inline-note'));
     if (current.req) {
       const button = element('button', '查看需求和原话 →', 'source-link'); button.type = 'button';
-      button.addEventListener('click', () => { selectedRequirement = current.key; queryInput.value = current.key; statusInput.value = ''; evidenceInput.value = ''; navigate('modules'); }); card.append(button);
+      button.addEventListener('click', () => { selectedRequirement = current.key; queryInput.value = ''; statusInput.value = ''; evidenceInput.value = ''; navigate('modules'); }); card.append(button);
     }
     detail.append(card); reviewForm(detail);
   }
@@ -1577,7 +1589,7 @@
     groups.push(['页面', pages.map(([view, title]) => searchResult(title, '', () => navigate(view)))]);
     if (term) {
       groups.push(['需求', requirements.filter(req => has(req.title) || has(req.requirement_id) || has(JSON.stringify(req.behavior ?? ''))).slice(0, 8)
-        .map(req => searchResult(req.title, states[req.review_status] || '', () => { selectedRequirement = req.requirement_id; queryInput.value = req.requirement_id; statusInput.value = ''; evidenceInput.value = ''; navigate('modules'); }))]);
+        .map(req => searchResult(req.title, states[req.review_status] || '', () => { selectedRequirement = req.requirement_id; queryInput.value = ''; statusInput.value = ''; evidenceInput.value = ''; navigate('modules'); }))]);
       groups.push(['会议原话', data.sources.filter(source => source.source_type === 'transcript' && has(source.text)).slice(0, 8)
         .map(source => searchResult(source.text, locatorLabel(source.locator || {}), () => { selectedSource = source.source_id; queryInput.value = ''; materialTab = 'library'; materialReader = 'transcript'; materialQuery = ''; navigate('materials'); }))]);
     }

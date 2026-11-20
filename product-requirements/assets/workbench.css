@@ -391,3 +391,16 @@ video { width: 100%; max-height: 520px; margin-top: 20px; background: var(--nav-
 .component-requirements .source-link { margin-right: 16px; }
 .architecture-details .module-filter[aria-pressed=true] { color: var(--accent-ink); background: var(--accent-soft); border-color: #b2c7eb; }
 @media(max-width:700px) { .component-deliverables { grid-template-columns: minmax(0,1fr); gap: 16px; } }
+
+/* Requirement reading v0.7: grouped list, one-screen detail, visible evidence type */
+.requirement-group { margin: 16px 12px 4px; color: var(--ink-3); font-size: 12px; font-weight: 600; }
+.requirement-group:first-child { margin-top: 0; }
+.requirement-identity .evidence-tag, .requirement-identity .status-tag { padding: 3px 10px; border-radius: 6px; background: var(--panel-2); color: var(--ink-2); font-weight: 500; }
+.evidence-tag[data-evidence="explicit"] { color: #17643f; background: #e6f5ec; }
+.evidence-tag[data-evidence="inferred"] { color: #8a5300; background: #fdf1dc; }
+.evidence-tag[data-evidence="suggested"] { color: var(--accent-ink); background: var(--accent-soft); }
+.requirement-code { margin-left: auto; font-variant-numeric: tabular-nums; }
+.requirement-tab-body .source-link { margin-top: 4px; }
+.requirement-tab-body .source-quote { margin: 8px 0 16px; }
+.requirement-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 16px; border-top: 1px solid var(--border); }
+@media (max-width: 700px) { .requirement-group { flex: 0 0 auto; align-self: center; margin: 0 4px 0 8px; white-space: nowrap; } .requirement-group:first-child { margin-left: 0; } }
