@@ -279,14 +279,54 @@
     return !activeRequirements.length || activeRequirements.some(req => req.review_status !== 'confirmed' || !req.acceptance_criteria);
   }
   function overview() {
+    const needsReview = needsDefinitionReview();
+    const hasArtifact = prefixes => data.artifacts.some(item => prefixes.some(prefix => item.path.startsWith(prefix)) && item.path.endsWith('.html'));
+    const prototypeAvailable = hasArtifact(['prototype/']);
     const definition = panel(project.name || project.project_id);
     definition.classList.add('project-definition');
-    const next = element('div', null, 'next-action');
-    next.append(element('span', '下一步'));
+    definition.append(element('p', display(project.summary || project.requirement_profile.desired_outcomes), 'project-objective'));
+    const facts = element('dl', null, 'project-facts');
+    for (const [label, value] of [['面向', project.requirement_profile.customer_and_roles], ['范围', project.requirement_profile.scope]]) {
+      const items = (Array.isArray(value) ? value : [value]).filter(item => typeof item === 'string' && item.trim());
+      const definitionNode = element('dd');
+      if (items.length) items.forEach(item => definitionNode.append(element('span', item, 'fact-chip')));
+      else definitionNode.append(valueNode(value));
+      facts.append(element('dt', label), definitionNode);
+    }
+    definition.append(facts);
+    const flow = project.business_model.flows?.[0];
+    if (flow?.steps?.length) {
+      const section = element('div', null, 'overview-flow-section');
+      section.append(element('h3', flow.name || '核心流程'));
+      const steps = element('ol', null, 'overview-flow');
+      steps.setAttribute('aria-label', flow.name || '核心流程');
+      flow.steps.forEach((step, index) => { const item = element('li'); item.append(element('span', index + 1, 'flow-index'), element('span', step.label)); steps.append(item); });
+      section.append(steps); definition.append(section);
+    }
+    content.append(definition);
+
+    const grid = element('div', null, 'overview-sections');
+    const outputs = panel('当前版本 · ' + project.artifact_version);
+    const confirmed = requirements.filter(req => req.review_status === 'confirmed').length;
+    const stages = [
+      ['materials', '会议素材', (project.materials || []).length ? (project.materials || []).length + ' 份素材' : '', (project.materials || []).length > 0],
+      ['modules', '功能需求', requirements.length ? requirements.length + ' 条 · ' + confirmed + ' 条已确认' : '', requirements.length > 0],
+      ['documents', '方案文档', '方案 · PRD', Boolean(data.documents?.['proposal.md'])],
+      ['prototype', '原型预览', prototypeAvailable ? '已生成' : '', prototypeAvailable],
+      ['technical', '技术设计', [project.technical_architecture?.components?.length ? '架构' : '', hasArtifact(['data-model/']) ? '数据模型' : ''].filter(Boolean).join(' · '), Boolean(project.technical_architecture?.components?.length) || hasArtifact(['diagrams/', 'data-model/'])],
+    ];
+    for (const [view, label, summary, ready] of stages) {
+      const row = element('button', null, 'output-row'); row.type = 'button'; row.dataset.ready = String(ready);
+      const name = element('strong'); name.append(element('i', null, 'stage-dot'), element('span', label));
+      row.append(name, element('span', ready ? summary : '暂无'));
+      row.addEventListener('click', () => navigate(view));
+      outputs.append(row);
+    }
+
+    const questions = panel('接下来');
+    questions.classList.add('next-panel');
     const action = element('button', null, 'button small primary');
     action.id = 'next-action'; action.type = 'button';
-    const needsReview = needsDefinitionReview();
-    const prototypeAvailable = data.artifacts.some(item => item.path.startsWith('prototype/') && item.path.endsWith('.html'));
     if (!requirements.length) {
       action.textContent = '导入会议';
       action.addEventListener('click', () => { materialTab = 'import'; navigate('materials'); });
@@ -297,36 +337,15 @@
       action.textContent = prototypeAvailable ? '查看原型' : '查看方案';
       action.addEventListener('click', () => navigate(prototypeAvailable ? 'prototype' : 'documents'));
     }
-    next.append(action);
-    definition.append(element('p', display(project.summary || project.requirement_profile.desired_outcomes), 'project-objective'));
-    fields(definition, [['面向', project.requirement_profile.customer_and_roles], ['范围', project.requirement_profile.scope]]);
-    const flow = project.business_model.flows?.[0];
-    if (flow?.steps?.length) {
-      const steps = element('ol', null, 'overview-flow');
-      steps.setAttribute('aria-label', flow.name || '核心流程');
-      flow.steps.forEach(step => steps.append(element('li', step.label)));
-      definition.append(steps);
-    }
-    content.append(definition);
-    const grid = element('div', null, 'overview-sections');
-    const outputs = panel('当前版本 · ' + project.artifact_version);
-    outputs.append(element('p', !requirements.length ? '会议材料尚未整理' : needsReview ? '需求核对中' : prototypeAvailable ? '原型已就绪，等待评审' : '需求已核对，尚无原型', 'version-summary'));
-    for (const [view, label, prefixes] of [['documents', '方案文档', []], ['modules', '功能需求', []], ['prototype', '原型预览', ['prototype/']], ['technical', '技术设计', ['diagrams/', 'data-model/']]]) {
-      const available = !prefixes.length || data.artifacts.some(item => prefixes.some(prefix => item.path.startsWith(prefix)) && item.path.endsWith('.html'));
-      const row = element('button', null, 'output-row');
-      row.type = 'button';
-      row.append(element('strong', label), element('span', available ? '查看 →' : '暂无 →'));
-      row.addEventListener('click', () => navigate(view));
-      outputs.append(row);
-    }
-    const questions = panel('接下来');
-    questions.append(next);
+    const head = element('div', null, 'next-head');
+    head.append(questions.querySelector('h2'), action); questions.prepend(head);
     const explicit = requirements.flatMap(req => (req.open_questions || []).map(reason => ({target: req.requirement_id, reason})));
     const candidates = explicit.length ? explicit : data.review.questions;
     const unique = candidates.filter((question, index) => candidates.findIndex(item => item.reason === question.reason) === index);
+    if (unique.length) questions.append(element('p', '需要你确认', 'next-label'));
     unique.slice(0, 3).forEach(question => {
-      const button = element('button', question.reason, 'question-row');
-      button.type = 'button';
+      const button = element('button', null, 'question-row');
+      button.type = 'button'; button.append(element('span', question.reason), element('span', '›', 'row-chevron'));
       button.addEventListener('click', () => {
         const req = requirements.find(item => item.requirement_id === question.target);
         if (req) { selectedRequirement = req.requirement_id; queryInput.value = ''; statusInput.value = ''; evidenceInput.value = ''; navigate('modules'); }
@@ -334,10 +353,12 @@
       });
       questions.append(button);
     });
-    if (!unique.length) questions.append(element('p', '等待人工核对当前成果', 'inline-note'));
-    const all = element('button', '查看全部评审事项 →', 'source-link');
-    all.type = 'button'; all.addEventListener('click', () => { reviewTab = 'questions'; navigate('review'); });
-    questions.append(all);
+    if (!unique.length) questions.append(element('p', '当前没有需要确认的问题', 'inline-note'));
+    else if (unique.length > 3) {
+      const all = element('button', '全部 ' + unique.length + ' 个问题 →', 'source-link');
+      all.type = 'button'; all.addEventListener('click', () => { reviewTab = 'questions'; navigate('review'); });
+      questions.append(all);
+    }
     grid.append(outputs, questions);
     content.append(grid);
   }
@@ -888,13 +909,12 @@
     const architecture = project.technical_architecture;
     if (!architecture?.components?.length) { content.append(empty('技术架构待确认')); return; }
     if (data.architecture_diagram) {
-      const card = panel('技术架构');
-      if (architecture.review_status !== 'confirmed') card.append(element('span', '设计建议 · 待确认', 'workbench-meta'));
-      card.append(fileLink('diagrams/architecture.html', '打开完整页面'));
+      const card = element('section', null, 'panel diagram-card'); card.setAttribute('aria-label', '技术架构');
       const frame = element('iframe', null, 'architecture-preview'); frame.title = 'Archify 技术架构'; frame.setAttribute('sandbox', 'allow-scripts');
       const details = architectureDetails(architecture, frame);
       const bridge = `(() => {
         const style = document.createElement('style'); style.textContent = 'html,body{background:#fdfefe;min-height:0 !important;margin:0;padding:0 !important} body > .toolbar,.container > .header,.diagram-nav,.reader-rail,.rail-reveal,#focus-chip,.cards{display:none !important} .container{padding:0;max-width:none} .diagram-container{padding:0;border:0;box-shadow:none;margin:0;min-height:0 !important} .diagram-container > svg{display:block;width:100%;height:auto;min-width:0 !important} svg [data-node-id] text.t-primary{font-size:17px;transform:translateY(-5px)} svg [data-node-id] text.t-muted{font-size:12px} svg [data-node-id] text.t-backend{font-size:10px;opacity:1 !important} [data-node-id]{cursor:pointer} [data-node-id][data-workbench-selected]{filter:drop-shadow(0 0 3px #2863d6)}'; document.head.append(style);
+        const legend = document.querySelector('svg [data-legend]'); const drawing = legend?.ownerSVGElement; if (legend && drawing?.viewBox?.baseVal?.height) { const top = legend.getBBox().y; legend.remove(); if (top > 80) drawing.viewBox.baseVal.height = top - 12; }
         const target = document.querySelector('.diagram-container');
         const report = () => {if(target)parent.postMessage({type:'product-requirements:architecture-size',height:Math.ceil(target.getBoundingClientRect().height)},'*');};
         if(target)new ResizeObserver(report).observe(target); report();
@@ -1036,6 +1056,7 @@
       frame.style.height = Math.max(300, Math.ceil(project.modules.length / 3) * 160 + 120) + 'px';
       const bridge = `(() => {
         const style = document.createElement('style'); style.textContent = 'html,body {background:#fdfefe;min-height:0 !important;margin:0;padding:0 !important} body > .toolbar, .container > .header, .diagram-nav, .reader-rail, .rail-reveal, #focus-chip, .cards {display:none !important} .container {padding:0;max-width:none} .diagram-container {padding:0;border:0;box-shadow:none;margin:0;min-height:0 !important} .diagram-container > svg {display:block;width:100%;height:auto;min-width:0 !important} @media(max-width:480px){.diagram-container > svg {min-width:620px !important}} svg [data-node-id] text.t-primary {font-size:17px;transform:translateY(-5px)} svg [data-node-id] text.t-muted {font-size:12px} [data-node-id][data-workbench-selected] {filter:drop-shadow(0 0 3px #2863d6)} [data-node-id][data-workbench-filtered] {opacity:.22}'; document.head.append(style);
+        const legend = document.querySelector('svg [data-legend]'); const drawing = legend?.ownerSVGElement; if (legend && drawing?.viewBox?.baseVal?.height) { const top = legend.getBBox().y; legend.remove(); if (top > 80) drawing.viewBox.baseVal.height = top - 12; }
         const target = document.querySelector('.diagram-container');
         const report = () => {if(target)parent.postMessage({type:'product-requirements:module-size',height:Math.ceil(target.getBoundingClientRect().height)},'*');};
         if(target)new ResizeObserver(report).observe(target); report();
