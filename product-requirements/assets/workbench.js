@@ -898,7 +898,7 @@
       const frame = element('iframe', null, 'architecture-preview'); frame.title = 'Archify 技术架构'; frame.setAttribute('sandbox', 'allow-scripts');
       const details = architectureDetails(architecture, frame);
       const bridge = `(() => {
-        const style = document.createElement('style'); style.textContent = 'html,body{background:#fdfefe;min-height:0 !important;margin:0;padding:0 !important} body > .toolbar,.container > .header,.diagram-nav,.reader-rail,.rail-reveal,#focus-chip,.cards{display:none !important} .container{padding:0;max-width:none} .diagram-container{padding:0;border:0;box-shadow:none;margin:0;min-height:0 !important} .diagram-container > svg{display:block;width:100%;height:auto;min-width:0 !important} svg [data-node-id] text.t-primary{font-size:20px} svg [data-node-id] text.t-muted{font-size:14px} svg [data-node-id] text.t-backend{font-size:10px;opacity:1 !important} [data-node-id]{cursor:pointer} [data-node-id][data-workbench-selected]{filter:drop-shadow(0 0 3px #2863d6)}'; document.head.append(style);
+        const style = document.createElement('style'); style.textContent = 'html,body{background:#fdfefe;min-height:0 !important;margin:0;padding:0 !important} body > .toolbar,.container > .header,.diagram-nav,.reader-rail,.rail-reveal,#focus-chip,.cards{display:none !important} .container{padding:0;max-width:none} .diagram-container{padding:0;border:0;box-shadow:none;margin:0;min-height:0 !important} .diagram-container > svg{display:block;width:100%;height:auto;min-width:0 !important} svg [data-node-id] text.t-primary{font-size:17px;transform:translateY(-5px)} svg [data-node-id] text.t-muted{font-size:12px} svg [data-node-id] text.t-backend{font-size:10px;opacity:1 !important} [data-node-id]{cursor:pointer} [data-node-id][data-workbench-selected]{filter:drop-shadow(0 0 3px #2863d6)}'; document.head.append(style);
         const target = document.querySelector('.diagram-container');
         const report = () => {if(target)parent.postMessage({type:'product-requirements:architecture-size',height:Math.ceil(target.getBoundingClientRect().height)},'*');};
         if(target)new ResizeObserver(report).observe(target); report();
@@ -1012,7 +1012,10 @@
       const frame = element('iframe', null, 'module-map'); frame.title = 'Archify 业务模块图'; frame.setAttribute('sandbox', 'allow-scripts');
       frame.style.height = Math.max(300, Math.ceil(project.modules.length / 3) * 160 + 120) + 'px';
       const bridge = `(() => {
-        const style = document.createElement('style'); style.textContent = 'body {background:#fdfefe} body > .toolbar, .container > .header, .diagram-nav, .reader-rail, .rail-reveal, #focus-chip {display:none !important} .container {padding:0;max-width:none} .diagram-container {border:0;box-shadow:none;margin:0} .diagram-container > svg {min-width:0 !important} @media(max-width:480px){.diagram-container > svg {min-width:620px !important}} svg [data-node-id] text.t-primary {font-size:22px} svg [data-node-id] text.t-muted {font-size:16px} [data-node-id][data-workbench-selected] {filter:drop-shadow(0 0 3px #2863d6)} [data-node-id][data-workbench-filtered] {opacity:.22}'; document.head.append(style);
+        const style = document.createElement('style'); style.textContent = 'html,body {background:#fdfefe;min-height:0 !important;margin:0;padding:0 !important} body > .toolbar, .container > .header, .diagram-nav, .reader-rail, .rail-reveal, #focus-chip, .cards {display:none !important} .container {padding:0;max-width:none} .diagram-container {padding:0;border:0;box-shadow:none;margin:0;min-height:0 !important} .diagram-container > svg {display:block;width:100%;height:auto;min-width:0 !important} @media(max-width:480px){.diagram-container > svg {min-width:620px !important}} svg [data-node-id] text.t-primary {font-size:17px;transform:translateY(-5px)} svg [data-node-id] text.t-muted {font-size:12px} [data-node-id][data-workbench-selected] {filter:drop-shadow(0 0 3px #2863d6)} [data-node-id][data-workbench-filtered] {opacity:.22}'; document.head.append(style);
+        const target = document.querySelector('.diagram-container');
+        const report = () => {if(target)parent.postMessage({type:'product-requirements:module-size',height:Math.ceil(target.getBoundingClientRect().height)},'*');};
+        if(target)new ResizeObserver(report).observe(target); report();
         function notify(event) { const node = event.target.closest('[data-node-id]'); if (node) parent.postMessage({type:'product-requirements:module-select', id:node.getAttribute('data-node-id')}, '*'); }
         document.addEventListener('click', notify, true); document.addEventListener('keydown', event => {if (event.key === 'Enter' || event.key === ' ') notify(event);}, true);
         window.addEventListener('message', event => { if (event.source !== parent || event.data?.type !== 'product-requirements:module-state') return; document.querySelectorAll('[data-node-id]').forEach(node => { const index = Number(node.getAttribute('data-node-id').replace('module_', '')); node.toggleAttribute('data-workbench-selected', index === event.data.selected); node.toggleAttribute('data-workbench-filtered', Array.isArray(event.data.visible) && !event.data.visible.includes(index)); }); });
@@ -1541,7 +1544,9 @@
   document.getElementById('export-project').addEventListener('click', () => downloadJson(project, 'project.json'));
   [queryInput, statusInput, evidenceInput].forEach(input => input.addEventListener('input', () => { selectedSource = null; render(); }));
   window.addEventListener('message', event => {
-    if (active !== 'modules' || !moduleFrame || event.source !== moduleFrame.contentWindow || event.data?.type !== 'product-requirements:module-select') return;
+    if (active !== 'modules' || !moduleFrame || event.source !== moduleFrame.contentWindow) return;
+    if (event.data?.type === 'product-requirements:module-size' && Number.isFinite(event.data.height)) { moduleFrame.style.height = Math.max(200, Math.min(1800, event.data.height)) + 'px'; return; }
+    if (event.data?.type !== 'product-requirements:module-select') return;
     const match = /^module_(\d+)$/.exec(event.data.id || '');
     if (match && Number(match[1]) < (project.modules || []).length) selectDiagramModule?.(Number(match[1]));
   });
