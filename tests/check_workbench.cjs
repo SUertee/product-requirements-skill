@@ -85,9 +85,10 @@ async function settle() {
   assert.match(document.querySelector('.processing-flow').textContent, /接收.*转写.*需求分析.*工作台/);
   button('素材').click();
   navigate('overview');
-  assert.equal(document.querySelectorAll('.overview-sections > section').length, 2);
-  assert.equal(document.getElementById('next-action').textContent, '查看原型');
-  document.getElementById('next-action').click();
+  assert.equal(document.querySelectorAll('.overview-stat').length, 4);
+  assert.match(document.querySelector('.overview-stats').textContent, /当前版本.*已迭代.*会议.*当前进度/);
+  assert.equal(document.getElementById('next-action'), null);
+  document.querySelector('.output-row[data-target="prototype"]').click();
   assert(document.querySelector('.workbench-preview'));
   navigate('overview');
   for (const view of ['materials', 'modules', 'documents', 'prototype', 'technical', 'review']) {

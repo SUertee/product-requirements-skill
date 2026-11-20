@@ -294,73 +294,47 @@
       facts.append(element('dt', label), definitionNode);
     }
     definition.append(facts);
-    const flow = project.business_model.flows?.[0];
-    if (flow?.steps?.length) {
-      const section = element('div', null, 'overview-flow-section');
-      section.append(element('h3', flow.name || '核心流程'));
-      const steps = element('ol', null, 'overview-flow');
-      steps.setAttribute('aria-label', flow.name || '核心流程');
-      flow.steps.forEach((step, index) => { const item = element('li'); item.append(element('span', index + 1, 'flow-index'), element('span', step.label)); steps.append(item); });
-      section.append(steps); definition.append(section);
-    }
     content.append(definition);
 
-    const grid = element('div', null, 'overview-sections');
-    const outputs = panel('当前版本 · ' + project.artifact_version);
     const confirmed = requirements.filter(req => req.review_status === 'confirmed').length;
+    const meetings = project.meetings || [];
+    const day = value => { const date = new Date(String(value || '').replace(' ', 'T')); return Number.isNaN(date.getTime()) ? '' : (date.getMonth() + 1) + ' 月 ' + date.getDate() + ' 日'; };
+    const versionNumber = /(\d+)\s*$/.exec(String(project.artifact_version || ''))?.[1];
+    const lastMeeting = meetings.map(item => item.date).filter(Boolean).sort().at(-1);
+    const stage = !requirements.length ? '待导入会议' : needsReview ? '需求核对中' : prototypeAvailable ? '原型待评审' : '待生成原型';
+    const stats = element('dl', null, 'overview-stats');
+    for (const [label, value, note] of [
+      ['当前版本', project.artifact_version, day(data.generated_at) ? day(data.generated_at) + '生成' : ''],
+      ['已迭代', versionNumber ? versionNumber + ' 版' : '—', project.baseline_version ? '上一版 ' + project.baseline_version : ''],
+      ['会议', meetings.length + ' 次', day(lastMeeting) ? '最近 ' + day(lastMeeting) : ''],
+      ['当前进度', stage, requirements.length ? confirmed + ' / ' + requirements.length + ' 条需求已确认' : ''],
+    ]) {
+      const item = element('div', null, 'overview-stat'); const figure = element('dd', value);
+      item.append(element('dt', label), figure); if (note) item.append(element('dd', note, 'stat-note'));
+      stats.append(item);
+    }
+    content.append(stats);
+
+    const outputs = panel('成果');
+    outputs.classList.add('overview-outputs');
+    const explicit = requirements.flatMap(req => (req.open_questions || []).map(item => item));
+    const pending = new Set(explicit.length ? explicit : (data.review.questions || []).map(item => item.reason)).size;
     const stages = [
       ['materials', '会议素材', (project.materials || []).length ? (project.materials || []).length + ' 份素材' : '', (project.materials || []).length > 0],
       ['modules', '功能需求', requirements.length ? requirements.length + ' 条 · ' + confirmed + ' 条已确认' : '', requirements.length > 0],
       ['documents', '方案文档', '方案 · PRD', Boolean(data.documents?.['proposal.md'])],
       ['prototype', '原型预览', prototypeAvailable ? '已生成' : '', prototypeAvailable],
       ['technical', '技术设计', [project.technical_architecture?.components?.length ? '架构' : '', hasArtifact(['data-model/']) ? '数据模型' : ''].filter(Boolean).join(' · '), Boolean(project.technical_architecture?.components?.length) || hasArtifact(['diagrams/', 'data-model/'])],
+      ['review', '评审记录', pending ? pending + ' 个问题待确认' : '暂无待确认问题', true],
     ];
     for (const [view, label, summary, ready] of stages) {
-      const row = element('button', null, 'output-row'); row.type = 'button'; row.dataset.ready = String(ready);
+      const row = element('button', null, 'output-row'); row.type = 'button'; row.dataset.ready = String(ready); row.dataset.target = view;
       const name = element('strong'); name.append(element('i', null, 'stage-dot'), element('span', label));
       row.append(name, element('span', ready ? summary : '暂无'));
-      row.addEventListener('click', () => navigate(view));
+      row.addEventListener('click', () => { if (view === 'review') reviewTab = 'questions'; navigate(view); });
       outputs.append(row);
     }
-
-    const questions = panel('接下来');
-    questions.classList.add('next-panel');
-    const action = element('button', null, 'button small primary');
-    action.id = 'next-action'; action.type = 'button';
-    if (!requirements.length) {
-      action.textContent = '导入会议';
-      action.addEventListener('click', () => { materialTab = 'import'; navigate('materials'); });
-    } else if (needsReview) {
-      action.textContent = '核对需求';
-      action.addEventListener('click', () => { moduleView = 'list'; navigate('modules'); });
-    } else {
-      action.textContent = prototypeAvailable ? '查看原型' : '查看方案';
-      action.addEventListener('click', () => navigate(prototypeAvailable ? 'prototype' : 'documents'));
-    }
-    const head = element('div', null, 'next-head');
-    head.append(questions.querySelector('h2'), action); questions.prepend(head);
-    const explicit = requirements.flatMap(req => (req.open_questions || []).map(reason => ({target: req.requirement_id, reason})));
-    const candidates = explicit.length ? explicit : data.review.questions;
-    const unique = candidates.filter((question, index) => candidates.findIndex(item => item.reason === question.reason) === index);
-    if (unique.length) questions.append(element('p', '需要你确认', 'next-label'));
-    unique.slice(0, 3).forEach(question => {
-      const button = element('button', null, 'question-row');
-      button.type = 'button'; button.append(element('span', question.reason), element('span', '›', 'row-chevron'));
-      button.addEventListener('click', () => {
-        const req = requirements.find(item => item.requirement_id === question.target);
-        if (req) { selectedRequirement = req.requirement_id; queryInput.value = ''; statusInput.value = ''; evidenceInput.value = ''; navigate('modules'); }
-        else { reviewTab = 'questions'; navigate('review'); }
-      });
-      questions.append(button);
-    });
-    if (!unique.length) questions.append(element('p', '当前没有需要确认的问题', 'inline-note'));
-    else if (unique.length > 3) {
-      const all = element('button', '全部 ' + unique.length + ' 个问题 →', 'source-link');
-      all.type = 'button'; all.addEventListener('click', () => { reviewTab = 'questions'; navigate('review'); });
-      questions.append(all);
-    }
-    grid.append(outputs, questions);
-    content.append(grid);
+    content.append(outputs);
   }
   async function localRequest(path, options = {}) {
     const response = await fetch(path, {...options, headers: {'X-Workbench-Request': '1', 'X-Workbench-Run': location.pathname.match(/^\/versions\/(AN-[a-f0-9]{24})\//)?.[1] || '', ...options.headers}});
