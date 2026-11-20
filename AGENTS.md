@@ -9,7 +9,7 @@
 
 ## 协作与 Git
 
-- 开始修改前用 `git status --short --branch` 核对当前分支及其远端跟踪关系。继续已有任务时沿用对应的开发分支；新任务从核对过的基线创建独立分支，例如 `feat/requirements-workbench-ui` 或 `fix/document-preview`。`main` 用于稳定交付，合并须经用户确认。
+- 当前项目开发统一使用 `feat/workflow-execution`。开始修改前用 `git status --short --branch` 核对分支及其远端跟踪关系；需要其他分支时按用户的安排处理。`main` 用于稳定交付，合并须经用户确认。
 - 所有新提交的标题遵守 Conventional Commits：`<type>(<scope>): <summary>`，范围 `scope` 可省略。按实际变更选择类型：`feat` 新功能、`fix` 修复、`docs` 文档、`refactor` 重构、`test` 测试、`chore` 工程维护。标题概括实际变化，例如 `feat(workbench): show delivery details for architecture nodes`、`fix(workbench): restore document preview`、`docs: define branch and commit conventions`。
 - 提交前检查差异和标题，只暂存本次任务文件。提交、推送、合并与发布沿用当前会话授权。已有远端历史的提交标题如需调整，先确认范围及协作影响。
 - 冲突处理先重读相关文件，保留人工修改和其他工作，变更兼容性按实际调用方核对。
