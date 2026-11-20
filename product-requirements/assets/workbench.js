@@ -1485,7 +1485,7 @@
     moduleFrame = null; selectDiagramModule = null;
     content.replaceChildren();
     document.getElementById('page-title').textContent = views[active];
-    document.getElementById('view-label').textContent = views[active];
+    document.title = views[active] + ' · ' + shortName;
     document.querySelectorAll('[data-view]').forEach(button => {
       button.classList.toggle('active', button.dataset.view === active);
       if (button.dataset.view === active) button.setAttribute('aria-current', 'page');
@@ -1521,10 +1521,81 @@
     render();
     document.getElementById('page-title').focus();
   }
-  document.getElementById('project-brand').textContent = project.name || project.project_id;
-  document.getElementById('project-label').textContent = project.name || project.project_id;
+  const icons = {
+    overview: 'M4 4h7v7H4z M13 4h7v4h-7z M13 11h7v9h-7z M4 14h7v6H4z',
+    materials: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z M5 11a7 7 0 0 0 14 0 M12 18v3',
+    modules: 'M10 6h10 M10 12h10 M10 18h10 M4 6l1 1 2-2 M4 12l1 1 2-2 M4 18l1 1 2-2',
+    documents: 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z M14 3v5h5 M9 13h6 M9 17h6',
+    prototype: 'M3 5h18v11H3z M8 20h8 M12 16v4',
+    technical: 'M4 4h6v6H4z M14 14h6v6h-6z M10 7h4a3 3 0 0 1 3 3v4',
+    review: 'M4 5h16v11H10l-6 4z M9 10.5l2 2 4-4',
+    search: 'M11 4a7 7 0 1 0 0 14a7 7 0 0 0 0-14z M20 20l-4-4',
+    sidebar: 'M3 5h18v14H3z M9 5v14',
+  };
+  function icon(name) {
+    const svg = svgNode('svg', {viewBox: '0 0 24 24', class: 'nav-icon', 'aria-hidden': 'true'});
+    svg.append(svgNode('path', {d: icons[name]}));
+    return svg;
+  }
+  const fullName = project.name || project.project_id;
+  const shortName = project.short_name || String(fullName).split(/\s+[·｜|—–-]\s+/)[0];
+  const brand = document.getElementById('project-brand');
+  brand.textContent = shortName; brand.parentElement.title = fullName;
+  const workspace = document.querySelector('.workspace');
+  const sidebarToggle = document.getElementById('toggle-sidebar');
+  function collapseSidebar(collapsed) {
+    workspace.classList.toggle('sidebar-collapsed', collapsed);
+    sidebarToggle.setAttribute('aria-expanded', String(!collapsed));
+    sidebarToggle.title = collapsed ? '展开侧栏' : '收起侧栏';
+    sidebarToggle.setAttribute('aria-label', sidebarToggle.title);
+    try { localStorage.setItem('workbench-sidebar', collapsed ? 'collapsed' : 'open'); } catch (error) { /* preference only */ }
+  }
+  sidebarToggle.prepend(icon('sidebar'));
+  sidebarToggle.addEventListener('click', () => collapseSidebar(!workspace.classList.contains('sidebar-collapsed')));
+  let sidebarPreference = null;
+  try { sidebarPreference = localStorage.getItem('workbench-sidebar'); } catch (error) { /* preference only */ }
+  collapseSidebar(sidebarPreference === 'collapsed');
+
+  const searchDialog = element('dialog', null, 'search-dialog');
+  searchDialog.setAttribute('aria-label', '搜索项目');
+  const searchInput = element('input'); searchInput.type = 'search'; searchInput.placeholder = '搜索需求、会议原话或页面';
+  searchInput.setAttribute('aria-label', searchInput.placeholder);
+  const searchResults = element('div', null, 'search-results');
+  searchDialog.append(searchInput, searchResults); document.body.append(searchDialog);
+  function searchResult(label, meta, open) {
+    const button = element('button', null, 'search-result'); button.type = 'button';
+    button.append(element('span', label)); if (meta) button.append(element('span', meta, 'search-meta'));
+    button.addEventListener('click', () => { searchDialog.close(); open(); });
+    return button;
+  }
+  function runSearch() {
+    const term = searchInput.value.trim().toLowerCase();
+    searchResults.replaceChildren();
+    const has = value => String(value ?? '').toLowerCase().includes(term);
+    const groups = [];
+    const pages = Object.entries(views).filter(([, title]) => !term || has(title));
+    groups.push(['页面', pages.map(([view, title]) => searchResult(title, '', () => navigate(view)))]);
+    if (term) {
+      groups.push(['需求', requirements.filter(req => has(req.title) || has(req.requirement_id) || has(JSON.stringify(req.behavior ?? ''))).slice(0, 8)
+        .map(req => searchResult(req.title, states[req.review_status] || '', () => { selectedRequirement = req.requirement_id; queryInput.value = req.requirement_id; statusInput.value = ''; evidenceInput.value = ''; navigate('modules'); }))]);
+      groups.push(['会议原话', data.sources.filter(source => source.source_type === 'transcript' && has(source.text)).slice(0, 8)
+        .map(source => searchResult(source.text, locatorLabel(source.locator || {}), () => { selectedSource = source.source_id; queryInput.value = ''; materialTab = 'library'; materialReader = 'transcript'; materialQuery = ''; navigate('materials'); }))]);
+    }
+    groups.filter(([, items]) => items.length).forEach(([title, items]) => searchResults.append(element('p', title, 'search-group'), ...items));
+    if (!searchResults.childElementCount) searchResults.append(element('p', '没有匹配的内容', 'search-empty'));
+  }
+  function openSearch() { if (searchDialog.open) return; searchInput.value = ''; runSearch(); searchDialog.showModal(); searchInput.focus(); }
+  searchInput.addEventListener('input', runSearch);
+  searchInput.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); searchResults.querySelector('.search-result')?.click(); } });
+  searchDialog.addEventListener('click', event => { if (event.target === searchDialog) searchDialog.close(); });
+  const searchButton = document.getElementById('open-search');
+  searchButton.append(icon('search')); searchButton.addEventListener('click', openSearch);
+  document.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); openSearch(); } });
+
   for (const [view, title] of Object.entries(views)) {
-    const button = element('button', title, 'nav-button');
+    const button = element('button', null, 'nav-button');
+    button.append(icon(view), element('span', title, 'nav-label'));
+    button.title = title;
     button.dataset.view = view;
     button.addEventListener('click', () => {
       selectedSource = null;
@@ -1541,7 +1612,6 @@
     document.body.append(link); link.click(); link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  document.getElementById('export-project').addEventListener('click', () => downloadJson(project, 'project.json'));
   [queryInput, statusInput, evidenceInput].forEach(input => input.addEventListener('input', () => { selectedSource = null; render(); }));
   window.addEventListener('message', event => {
     if (active !== 'modules' || !moduleFrame || event.source !== moduleFrame.contentWindow) return;
