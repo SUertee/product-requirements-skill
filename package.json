@@ -1,0 +1,14 @@
+{
+  "name": "product-requirements-skill",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "export:deck": "node scripts/export_deck_pptx.mjs"
+  },
+  "dependencies": {
+    "pptxgenjs": "4.0.1"
+  },
+  "overrides": {
+    "image-size": "2.0.3"
+  }
+}

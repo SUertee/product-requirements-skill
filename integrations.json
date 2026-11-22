@@ -2,6 +2,7 @@
   "archify": {
     "repository": "https://github.com/tt-a1i/archify",
     "commit": "e37848822238e3a61b12739185cdadd49843a620",
+    "dependency_directory": "archify",
     "skill_subdirectory": "archify",
     "license": "Apache-2.0",
     "environment_variable": "ARCHIFY_SKILL_DIR"
@@ -10,5 +11,69 @@
     "source": "user-owned skill",
     "environment_variable": "SCHEMA_CANVAS_SKILL_DIR",
     "distribution_permission": "user confirmed ownership on 2026-11-15"
+  },
+  "pm-create-prd": {
+    "repository": "https://github.com/phuryn/pm-skills",
+    "commit": "9af7bfd0bc47fdad43c2eaa7a43cd13918e7aaef",
+    "dependency_directory": "pm-skills",
+    "skill_subdirectory": "pm-execution/skills/create-prd",
+    "license": "MIT",
+    "environment_variable": "PM_CREATE_PRD_SKILL_DIR"
+  },
+  "pm-user-stories": {
+    "repository": "https://github.com/phuryn/pm-skills",
+    "commit": "9af7bfd0bc47fdad43c2eaa7a43cd13918e7aaef",
+    "dependency_directory": "pm-skills",
+    "skill_subdirectory": "pm-execution/skills/user-stories",
+    "license": "MIT",
+    "environment_variable": "PM_USER_STORIES_SKILL_DIR"
+  },
+  "pm-test-scenarios": {
+    "repository": "https://github.com/phuryn/pm-skills",
+    "commit": "9af7bfd0bc47fdad43c2eaa7a43cd13918e7aaef",
+    "dependency_directory": "pm-skills",
+    "skill_subdirectory": "pm-execution/skills/test-scenarios",
+    "license": "MIT",
+    "environment_variable": "PM_TEST_SCENARIOS_SKILL_DIR"
+  },
+  "pm-prioritization": {
+    "repository": "https://github.com/phuryn/pm-skills",
+    "commit": "9af7bfd0bc47fdad43c2eaa7a43cd13918e7aaef",
+    "dependency_directory": "pm-skills",
+    "skill_subdirectory": "pm-execution/skills/prioritization-frameworks",
+    "license": "MIT",
+    "environment_variable": "PM_PRIORITIZATION_SKILL_DIR"
+  },
+  "pm-pre-mortem": {
+    "repository": "https://github.com/phuryn/pm-skills",
+    "commit": "9af7bfd0bc47fdad43c2eaa7a43cd13918e7aaef",
+    "dependency_directory": "pm-skills",
+    "skill_subdirectory": "pm-execution/skills/pre-mortem",
+    "license": "MIT",
+    "environment_variable": "PM_PRE_MORTEM_SKILL_DIR"
+  },
+  "requirements-analysis": {
+    "repository": "https://github.com/Emmraan/agent-skills",
+    "commit": "4c2ea06aa2aba5465a0f088228283f34fc9dae5b",
+    "dependency_directory": "agent-skills",
+    "skill_subdirectory": "skills/agent-meta/requirements-analysis",
+    "license": "MIT",
+    "environment_variable": "REQUIREMENTS_ANALYSIS_SKILL_DIR"
+  },
+  "code-to-diagram": {
+    "repository": "https://github.com/AIPris/code-to-diagram",
+    "commit": "0ab6520f648f46aaaab918d5d6dc3c948cf0877a",
+    "dependency_directory": "code-to-diagram",
+    "skill_subdirectory": "skills/code-to-diagram",
+    "license": "MIT",
+    "environment_variable": "CODE_TO_DIAGRAM_SKILL_DIR"
+  },
+  "huashu-design": {
+    "repository": "https://github.com/alchaincyf/huashu-design",
+    "commit": "e8d1148a80d5a281d4247cffe320add3df017928",
+    "dependency_directory": "huashu-design",
+    "skill_subdirectory": ".",
+    "license": "MIT; demo sticker assets have separate licenses",
+    "environment_variable": "HUASHU_DESIGN_SKILL_DIR"
   }
 }

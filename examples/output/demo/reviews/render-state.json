@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "files": {
+    "artifacts/proposal.md": "fc0b3f0fca4aa6485c4ca5ea635aa001c39b99cd92c156cb04b867e33c73822d",
+    "artifacts/prd.md": "cd5a6b2a2b7c8f9a4e85ebb595735806fb3f10631be5615f1113b20dac1ee5a3",
+    "artifacts/agent-prompt.md": "73222aa5ba4fe6b669c032baa06f74213fdf60f3edb38131120c033a88c80483",
+    "artifacts/workbench/index.html": "a201a356c67ffdc2b96cdc8324e101135237bd609f34a028c1cde83bb82b48d7",
+    "artifacts/workbench/ui.css": "b1e5d697d87f069fe767763298b3660805346c6fb3bdc134a056edc9b660c2df",
+    "artifacts/prototype/index.html": "c7c0eab9719211b57a40c3ffe8a1f13bd5cd3931bba583b399a8627e1a17dc40",
+    "artifacts/prototype/ui.css": "c0713455b76583894d8732b0005dde3230fa82473539b0c16bebaa90ca69ab61",
+    "artifacts/technical-design.md": "a2d33ddfe8fa6fd72ccefebd499b1f7bb28cd1d320b1d2576ff3e87e9dff75cc",
+    "artifacts/schedule/index.html": "6035f48dc81dc23073e793fce77675d26fc377d8784cef7c5a9a9e9522dd21c7",
+    "artifacts/schedule/ui.css": "c0713455b76583894d8732b0005dde3230fa82473539b0c16bebaa90ca69ab61",
+    "artifacts/deck-brief.md": "45e1eb53581e71bf0e1e9e8d11cb8259c479be387a4a10827a6314fa8c4f5a1d"
+  },
+  "project_id": "nebula-crm",
+  "artifact_version": "v1.1",
+  "generator": "render_artifacts.py"
+}

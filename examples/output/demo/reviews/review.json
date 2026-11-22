@@ -4,7 +4,7 @@
     {
       "action": "draft_created",
       "actor": "demo-fixture",
-      "at": "2026-11-16T07:07:51Z",
+      "at": "2026-11-22T06:32:52Z",
       "simulated": true
     },
     {
@@ -13,21 +13,21 @@
       "decision": "固定样例选择新会议权限规则，历史草案仅保留追溯",
       "actor": "demo-reviewer",
       "simulated": true,
-      "at": "2026-11-16T07:07:51Z"
+      "at": "2026-11-22T06:32:52Z"
     },
     {
       "action": "baseline_confirmed",
       "baseline_id": "BASE-v1.0",
       "actor": "demo-reviewer",
       "simulated": true,
-      "at": "2026-11-16T07:07:51Z"
+      "at": "2026-11-22T06:32:52Z"
     },
     {
       "action": "changeset_approved",
-      "changeset_id": "CHANGE-0ac01ccc36a709d1c8d9",
+      "changeset_id": "CHANGE-826f19876ddf738c204b",
       "actor": "demo-reviewer",
       "simulated": true,
-      "at": "2026-11-16T07:07:52Z"
+      "at": "2026-11-22T06:32:53Z"
     }
   ]
 }

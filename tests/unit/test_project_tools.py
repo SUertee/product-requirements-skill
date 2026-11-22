@@ -7,7 +7,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
-from project_lib import evidence_errors, locked_changes, project_errors, read_json, read_jsonl, write_json, write_jsonl
+from project_lib import evidence_errors, locked_changes, project_errors, read_json, read_jsonl, schema_errors, write_json, write_jsonl
 from render_artifacts import render_project
 
 
@@ -65,6 +65,17 @@ class ProjectToolsTests(unittest.TestCase):
         write_json(project_path, project)
         with self.assertRaisesRegex(ValueError, "approved current baseline"):
             render_project(self.root, include_prototype=True)
+    def test_duplicate_changeset_id_fails(self):
+        source = self.root / "changesets" / "changeset-v1.1.json"
+        target = self.root / "changesets" / "changeset-duplicate.json"
+        target.write_bytes(source.read_bytes())
+        errors = project_errors(self.root)
+        self.assertTrue(any("duplicate changeset_id" in error for error in errors))
+
+    def test_cancelled_is_a_valid_terminal_requirement_status(self):
+        requirement = read_json(self.root / "requirements" / "requirements.json")["requirements"][0]
+        requirement["status"] = "cancelled"
+        self.assertEqual(schema_errors(requirement, "requirement.schema.json"), [])
 
 
 if __name__ == "__main__":

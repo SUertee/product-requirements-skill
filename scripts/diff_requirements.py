@@ -22,12 +22,95 @@ def title_key(requirement):
     return re.sub(r"\s+", "", requirement.get("title", "")).lower()
 
 
+RENDER_ORDER = ["proposal", "prd", "agent_prompt", "workbench", "technical_design", "schedule", "deck_brief", "prototype"]
+METADATA_FIELDS = {"updated_at", "version", "evidence_ids", "evidence_level", "locked_fields", "locked_by_human", "pending_questions"}
+# Generation-time metadata must not enter the ChangeSet identity. Otherwise the
+# same semantic diff rerun one second later gets a different ID, which defeats
+# content addressing and makes every regenerated demo look like a new change.
+VOLATILE_ID_FIELDS = {
+    "created_at", "updated_at", "generated_at", "confirmed_at", "reviewed_at",
+    "normalized_at", "at", "timestamp", "sha256",
+}
+
+
+def normalized_identity(value):
+    """Drop generation-time metadata recursively while preserving semantic fields."""
+    if isinstance(value, dict):
+        return {key: normalized_identity(item) for key, item in sorted(value.items()) if key not in VOLATILE_ID_FIELDS}
+    if isinstance(value, list):
+        return [normalized_identity(item) for item in value]
+    return value
+
+
+def analyze_impacts(changes, project_dir=None):
+    """Calculate review/regeneration impacts from changed fields and real models."""
+    root = Path(project_dir) if project_dir else None
+    records = [record for key in ("added", "modified", "cancelled", "conflicted") for record in changes[key]]
+    if not records and not changes["duplicated"]:
+        return [], [], []
+    base = {"requirements/requirements.json", "artifacts/proposal.md", "artifacts/prd.md", "artifacts/workbench/index.html", "artifacts/agent-prompt.md"}
+    for optional in ("artifacts/proposal-full.md", "artifacts/prd-full.md"):
+        if root and (root / optional).is_file():
+            base.add(optional)
+    keys = {"proposal", "prd", "agent_prompt", "workbench"}
+    details = []
+    technical = read_json(root / "models" / "technical-design.json") if root and (root / "models" / "technical-design.json").is_file() else None
+    plan = read_json(root / "models" / "delivery-plan.json") if root and (root / "models" / "delivery-plan.json").is_file() else None
+    brief = read_json(root / "models" / "deck-brief.json") if root and (root / "models" / "deck-brief.json").is_file() else None
+
+    def references(model, req_id, fields):
+        if model is None:
+            return False
+        if model is technical:
+            rows = model.get("decisions", []) + model.get("diagrams", [])
+        elif model is plan:
+            rows = model.get("items", [])
+        else:
+            rows = model.get("slides", [])
+        return any(req_id in row.get("requirement_ids", []) for row in rows)
+
+    for record in records:
+        new = record.get("new") or {}
+        old = record.get("old") or {}
+        req_id = record.get("requirement_id") or new.get("requirement_id") or old.get("requirement_id")
+        fields = set(record.get("changed_fields", [])) or set(new) or set(old)
+        behavioral = fields - METADATA_FIELDS
+        affected = set(base)
+        record_keys = set(keys)
+        if behavioral:
+            keys.add("prototype")
+            record_keys.add("prototype")
+            affected.add("artifacts/prototype/index.html")
+        is_added = record in changes["added"]
+        if technical and (is_added or references(technical, req_id, fields)) and behavioral:
+            keys.add("technical_design")
+            record_keys.add("technical_design")
+            affected.update({"models/technical-design.json", "artifacts/technical-design.md"})
+            if root and (root / "artifacts" / "technical-design-full.md").is_file():
+                affected.add("artifacts/technical-design-full.md")
+        if plan and (is_added or references(plan, req_id, fields) or fields & {"priority", "scope", "dependencies"}):
+            keys.add("schedule")
+            record_keys.add("schedule")
+            affected.update({"models/delivery-plan.json", "artifacts/schedule/index.html"})
+        if brief and (is_added or references(brief, req_id, fields) or fields & {"priority", "scope", "dependencies"}):
+            keys.add("deck_brief")
+            record_keys.add("deck_brief")
+            affected.update({"models/deck-brief.json", "artifacts/deck-brief.md"})
+            affected.update(brief.get("output_paths", []))
+        details.append({"requirement_id": req_id, "changed_fields": sorted(fields), "artifacts": sorted(affected), "render_keys": [key for key in RENDER_ORDER if key in record_keys]})
+    if changes["duplicated"]:
+        details.append({"requirement_id": None, "change_type": "duplicated", "artifacts": sorted(base), "render_keys": [key for key in RENDER_ORDER if key in keys]})
+    all_artifacts = sorted({path for detail in details for path in detail["artifacts"]} or base)
+    return all_artifacts, [key for key in RENDER_ORDER if key in keys], details
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--old", required=True, type=Path)
     parser.add_argument("--new", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--project-id")
+    parser.add_argument("--project", type=Path, help="Project directory used to calculate model/artifact impacts; inferred from a changesets output when possible")
     parser.add_argument("--source", default="TBD")
     args = parser.parse_args()
     old_list, old_baseline = load_list(args.old)
@@ -75,20 +158,27 @@ def main():
         unique_duplicates[key] = record
     changes["duplicated"] = list(unique_duplicates.values())
     project_id = args.project_id or (new_list[0].get("project_id") if new_list else old_list[0].get("project_id"))
-    total = sum(len(items) for items in changes.values())
+    project_root = args.project or (args.output.parent.parent if args.output.parent.name == "changesets" else None)
+    impact_analysis, render_keys, impact_details = analyze_impacts(changes, project_root)
+    identity = json.dumps(
+        {"old_baseline_id": old_baseline or "draft", "changes": normalized_identity(changes)},
+        ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    )
     changeset = {
         "schema_version": "1.0",
-        "changeset_id": stable_id("CHANGE-", project_id, old_baseline or "draft", utc_now()),
+        "changeset_id": stable_id("CHANGE-", project_id, identity),
         "project_id": project_id,
         "old_baseline_id": old_baseline or "BASE-DRAFT",
         "new_baseline_id": "BASE-PENDING",
         **changes,
-        "impact_analysis": ["requirements/requirements.json", "artifacts/proposal.md", "artifacts/prd.md", "artifacts/workbench/index.html", "artifacts/prototype/index.html"] if total else [],
+        "impact_analysis": impact_analysis,
+        "render_keys": render_keys,
+        "impact_details": impact_details,
         "review_status": "draft",
         "created_at": utc_now(),
     }
     write_json(args.output, changeset)
-    print(json.dumps({"changeset_id": changeset["changeset_id"], "counts": {key: len(value) for key, value in changes.items()}, "output": str(args.output)}, ensure_ascii=False))
+    print(json.dumps({"changeset_id": changeset["changeset_id"], "counts": {key: len(value) for key, value in changes.items()}, "render_keys": render_keys, "output": str(args.output)}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

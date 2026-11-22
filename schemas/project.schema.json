@@ -15,6 +15,8 @@
     "context_sources": {"type": "array", "items": {"type": "string"}},
     "requirement_profile": {"type": "object"},
     "design_context": {"type": "object"},
+    "prototype_flow": {"type": "object"},
+    "prototype_pages": {"type": "array", "items": {"type": "object"}},
     "generation_mode": {"type": "string"},
     "created_at": {"type": "string"},
     "updated_at": {"type": "string"}

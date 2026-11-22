@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0",
+  "project_id": "nebula-crm",
+  "version": "v1.1",
+  "baseline_id": "BASE-v1.1",
+  "review_status": "reviewed",
+  "export_status": "not_exported",
+  "audience": "固定样例内部项目评审人员",
+  "objective": "确认权限与组合筛选范围、候选技术路径和下一步排期，不作为客户正式发布材料。",
+  "slides": [
+    {
+      "slide_id": "SLIDE-001",
+      "title": "项目背景与目标",
+      "purpose": "说明客户信息分散和查询核对成本。",
+      "content": ["统一权限范围内的客户查询与跟进查看", "量化效率指标仍待客户确认"],
+      "requirement_ids": ["REQ-001", "REQ-002", "REQ-003"],
+      "visual_hint": "现状痛点与目标结果双栏对照"
+    },
+    {
+      "slide_id": "SLIDE-002",
+      "title": "本期范围与非目标",
+      "purpose": "避免把未明确的智能化需求纳入承诺。",
+      "content": ["本期：数据权限、组合筛选、跟进时间线", "暂缓：含义未明确的智能能力 REQ-004"],
+      "requirement_ids": ["REQ-001", "REQ-002", "REQ-003", "REQ-004"]
+    },
+    {
+      "slide_id": "SLIDE-003",
+      "title": "核心流程与验收",
+      "purpose": "展示权限过滤、组合查询、空状态和跟进查看主流程。",
+      "content": ["普通销售仅查看本人负责客户", "无匹配结果显示空状态，接口失败不伪装成空数据"],
+      "requirement_ids": ["REQ-001", "REQ-002", "REQ-003"],
+      "visual_hint": "使用已确认原型截图；当前简报不生成截图",
+      "source_paths": ["artifacts/prototype/index.html"]
+    },
+    {
+      "slide_id": "SLIDE-004",
+      "title": "候选技术设计",
+      "purpose": "明确技术方案仍需与现有 CRM 核对。",
+      "content": ["先权限过滤再组合筛选", "候选时序仅保存 Mermaid 输入，未执行 draw.io 导出"],
+      "requirement_ids": ["REQ-001", "REQ-002"],
+      "source_paths": ["artifacts/technical-design.md"]
+    },
+    {
+      "slide_id": "SLIDE-005",
+      "title": "排期与下一步",
+      "purpose": "确认真实负责人、依赖和验收时间。",
+      "content": ["示例排期包含 4 个工作包，其中 1 个待排期", "负责人和日期不是客户承诺", "发布前完成真实接口与浏览器验证"],
+      "requirement_ids": ["REQ-001", "REQ-002", "REQ-003"],
+      "source_paths": ["artifacts/schedule/index.html"]
+    }
+  ],
+  "output_paths": []
+}

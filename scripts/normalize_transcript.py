@@ -71,7 +71,7 @@ def normalize(input_path, project_id, meeting_id=None):
     for index, (body, locator) in enumerate(segments(text, extension in {'.srt', '.vtt'}), 1):
         if not body:
             continue
-        speaker_match = re.match(r'^(Speaker [A-Z])\s*[:：]', body)
+        speaker_match = re.match(r'^((?:Speaker [A-Z])|[\u4e00-\u9fff]{2,8})\s*[:：]', body)
         row = {
             'schema_version': '1.0',
             'segment_id': stable_id('SEG-', project_id, file_hash, index, length=24),

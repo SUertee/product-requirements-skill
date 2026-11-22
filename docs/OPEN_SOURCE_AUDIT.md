@@ -23,3 +23,14 @@
 ## 未采用
 
 没有直接复用第三方代码，没有引入七套运行时，没有增加 FastAPI、Next.js、SQLite、LangGraph 或 Node 依赖。外部仓库测试未在本项目环境执行：本次目的是设计审计，且多个项目需要专有模型凭据或完整应用依赖；不能以 README 的测试数量代替本地验证。
+
+## 2026-11-20 选定 Skill 融合审计
+
+| 项目 | 固定提交与核查证据 | 实际吸收／接入 | 未执行事项 |
+|---|---|---|---|
+| phuryn/pm-skills | `9af7bfd0bc47fdad43c2eaa7a43cd13918e7aaef`；通过仓库文档核查 create-prd、summarize-meeting、技能清单与 MIT License；本地浅克隆因连接重置未完成 | 自主编写 REQ 质量与精简 PRD 规则；注册五个选定能力的真实子目录 | 未执行其 CLI、插件或测试，不声称完整本地源码审计 |
+| Emmraan/agent-skills | `4c2ea06aa2aba5465a0f088228283f34fc9dae5b`；通过仓库／技能索引核查 requirements-analysis 范围与 MIT License；本地浅克隆因连接重置未完成 | 将完整性、一致性、可行性、歧义、NFR、优先级和追溯方法收敛到现有 REQ | 未执行其 Skill CLI 或脚本 |
+| AIPris/code-to-diagram | `0ab6520f648f46aaaab918d5d6dc3c948cf0877a`；浅克隆成功，实际读取 `skills/code-to-diagram/SKILL.md` 和根 LICENSE，确认 MIT、Python 3.9+、`.mmd`→drawio／PNG 工作流 | 注册真实子目录；增加候选时序输入、实际文件与验证状态约束 | 未执行 `c2d.py`、draw.io 渲染或 PNG 视觉检查；固定 Demo 明确保持 draft |
+| alchaincyf/huashu-design | `e8d1148a80d5a281d4247cffe320add3df017928`；通过仓库 SKILL、README、deck／editable-pptx 文档和 LICENSE 核查；本地浅克隆因网络失败未完成 | 只接入 deck 路由与真实导出合同；主包生成受控内容简报，PPTX 使用 ZIP 结构检查 | 未安装其完整 430+ 文件包、Node／浏览器依赖，未生成真实 PPTX；演示贴纸未使用 |
+
+本轮没有复制上述仓库的源码、模板、测试或许可证正文到主 Skill。`integrations.json` 仅保存定位与归因信息，`resolve_capability.py` 不自动下载或执行。固定演示中的技术设计、负责人、日期和汇报内容均标记为模拟／候选，不能作为真实客户批准或第三方运行证据。

@@ -6,7 +6,70 @@ import hashlib
 import json
 from pathlib import Path
 
-from project_lib import load_requirements, project_errors, read_json, stable_id, utc_now, write_json
+from project_lib import load_requirements, project_errors, read_json, read_optional_json, stable_id, utc_now, write_json
+
+
+def artifact_type_for(relative):
+    if "workbench/" in relative:
+        return "workbench"
+    if "prototype/" in relative:
+        return "prototype"
+    if "schedule/" in relative:
+        return "schedule"
+    if "deck/" in relative or "deck-handdrawn/" in relative:
+        return "deck"
+    if "diagrams/" in relative or "data-model/" in relative:
+        return "diagram"
+    if relative.endswith("changelog-v1.1.md") or relative.endswith("changelog.md"):
+        return "review"
+    if relative.endswith("agent-prompt.md"):
+        return "agent_prompt"
+    if relative.endswith("technical-design-full.md"):
+        return "technical_design"
+    if relative.endswith("proposal-full.md"):
+        return "proposal"
+    if relative.endswith("prd-full.md"):
+        return "prd"
+    if relative.endswith("technical-design.md"):
+        return "technical_design"
+    if relative.endswith("deck-brief.md"):
+        return "deck_brief"
+    if relative.endswith("prd.md"):
+        return "prd"
+    if relative.endswith("proposal.md"):
+        return "proposal"
+    return "business_model"
+
+
+def delivery_trace(root, artifact_type, fallback):
+    model_name, fields = {
+        "technical_design": ("technical-design.json", ("decisions", "diagrams")),
+        "diagram": ("technical-design.json", ("diagrams",)),
+        "schedule": ("delivery-plan.json", ("items",)),
+        "deck_brief": ("deck-brief.json", ("slides",)),
+        "deck": ("deck-brief.json", ("slides",)),
+    }.get(artifact_type, (None, ()))
+    if not model_name:
+        return fallback
+    model = read_optional_json(root / "models" / model_name) or {}
+    traced = sorted({req_id for field in fields for row in model.get(field, []) for req_id in row.get("requirement_ids", [])})
+    return traced or fallback
+
+
+def delivery_review_status(root, artifact_type, project, fallback):
+    if artifact_type == "prototype" and project.get("current_baseline_id"):
+        return "approved"
+    model_name = {
+        "technical_design": "technical-design.json", "diagram": "technical-design.json",
+        "schedule": "delivery-plan.json", "deck_brief": "deck-brief.json", "deck": "deck-brief.json",
+    }.get(artifact_type)
+    if not model_name:
+        return fallback
+    model = read_optional_json(root / "models" / model_name) or {}
+    status = model.get("review_status", model.get("status", fallback))
+    if artifact_type == "deck" and model.get("export_status") != "exported":
+        return "draft"
+    return status if status in {"draft", "reviewed", "approved"} else fallback
 
 
 def main():
@@ -34,15 +97,15 @@ def main():
             "updated_at": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat().replace("+00:00", "Z"),
         })
         if relative.startswith("artifacts/") and not relative.startswith("artifacts/versions/"):
-            artifact_type = "workbench" if "workbench/" in relative else "prototype" if "prototype/" in relative else "agent_prompt" if relative.endswith("agent-prompt.md") else "prd" if relative.endswith("prd.md") else "proposal" if relative.endswith("proposal.md") else "business_model"
+            artifact_type = artifact_type_for(relative)
             artifacts.append({
                 "schema_version": "1.0",
                 "artifact_id": stable_id("ART-", project["project_id"], relative, project["current_version"]),
                 "project_id": project["project_id"], "artifact_type": artifact_type,
                 "artifact_path": relative, "version": project["current_version"],
-                "requirement_ids": prototype_req_ids if artifact_type == "prototype" else req_ids,
+                "requirement_ids": delivery_trace(root, artifact_type, prototype_req_ids if artifact_type == "prototype" else req_ids),
                 "generation_status": "success",
-                "review_status": "approved" if artifact_type == "prototype" and project.get("current_baseline_id") else "draft",
+                "review_status": delivery_review_status(root, artifact_type, project, "draft"),
                 "created_at": utc_now(),
             })
     errors = project_errors(root)

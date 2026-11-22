@@ -1,105 +1,178 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>{{PROJECT_NAME}} · 交互原型</title><link rel="stylesheet" href="ui.css">
-</head>
-<body>
-<main class="ui-main ui-stack">
-  <header>
-    <p class="ui-muted">交互原型 · {{VERSION}} · 示例数据 · 模拟接口 · 未连接真实业务系统</p>
-    <h1 class="ui-title">{{PROJECT_NAME}}</h1>
-    <p>本原型仅表达已确认需求 {{REQ_IDS}}，不代表真实功能已经开发。</p>
-  </header>
-  <section class="ui-card" id="business-flow" hidden>
-    <h2 id="flow-title">核心业务操作</h2>
-    <p class="ui-muted">以下客户与跟进记录全部为示例数据，操作不会请求真实接口。</p>
-    <div class="ui-actions">
-      <label class="ui-field">客户名称 <input id="customer-query" type="search" placeholder="输入客户名称"></label>
-      <label class="ui-field" id="owner-field">负责人 <select id="owner-query"><option value="">全部负责人</option></select></label>
-      <button class="ui-button primary" id="filter-customers">查询客户</button>
-      <button class="ui-button" id="clear-filter">清除条件</button>
-    </div>
-    <p id="flow-feedback" role="status" aria-live="polite">输入条件并查询，或直接查看全部示例客户。</p>
-    <div class="ui-table-scroll"><table><thead><tr><th>客户</th><th>负责人</th><th>操作</th></tr></thead><tbody id="customer-rows"></tbody></table></div>
-    <article id="customer-detail" class="ui-card" hidden></article>
-  </section>
-  <section class="ui-card">
-    <h2>核心业务流程</h2>
-    <div class="ui-actions" id="actions">
-      <button class="ui-button primary" id="load">加载需求任务</button>
-      <button class="ui-button" id="empty">查看空状态</button>
-      <button class="ui-button" id="error">模拟接口失败</button>
-      <button class="ui-button" id="reset">返回入口</button>
-    </div>
-    <p id="feedback" role="status" aria-live="polite">请选择“加载需求任务”开始主流程。</p>
-    <div id="content" class="ui-stack"></div>
-  </section>
-  <section class="ui-card"><h2>需求与验收对应</h2>{{REQUIREMENT_DETAILS}}</section>
-  <script id="flow-data" type="application/json">{{FLOW_JSON}}</script>
-  <script id="requirements-data" type="application/json">{{REQUIREMENTS_JSON}}</script>
-  <script>
-    const requirements = JSON.parse(document.getElementById('requirements-data').textContent);
-    const content = document.getElementById('content');
-    const feedback = document.getElementById('feedback');
-    function clear() { content.replaceChildren(); }
-    function card(req) {
-      const article = document.createElement('article'); article.className = 'ui-card';
-      const title = document.createElement('h3'); title.textContent = req.requirement_id + ' · ' + req.title;
-      const state = document.createElement('p'); state.textContent = '状态：已确认 · 证据等级：' + req.evidence_level;
-      const result = document.createElement('p'); result.textContent = req.expected_result;
-      const button = document.createElement('button'); button.className = 'ui-button primary'; button.textContent = '模拟完成此任务';
-      button.addEventListener('click', () => { feedback.textContent = req.requirement_id + ' 模拟操作成功；未调用真实接口。'; });
-      article.append(title, state, result, button); return article;
-    }
-    document.getElementById('load').addEventListener('click', () => {
-      clear(); feedback.textContent = '已加载示例数据。'; requirements.forEach(req => content.appendChild(card(req)));
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>交互原型</title>
+<style>__PROTOTYPE_STYLE__
+html,body{overflow-x:clip}.ui-nav{display:flex;flex-direction:column;gap:24px}.ui-nav h1{font-size:18px;line-height:1.5;margin:0}.ui-nav a[aria-current="page"]{background:#2c4160}.ui-main{max-width:1180px}.prototype-notice{font-size:13px;color:var(--ui-muted);margin-bottom:24px}.prototype-fields{display:grid;gap:20px;max-width:760px}.prototype-records{margin-top:24px}.ui-field input[type="checkbox"]{width:22px;min-height:22px}.ui-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}.prototype-feedback{min-height:24px;color:var(--ui-success);margin-top:16px}.prototype-feedback[data-kind="error"]{color:var(--ui-danger,#b42335)}.prototype-meta{color:var(--ui-muted);font-size:12px;margin-bottom:24px}.ui-card h2{font-size:18px;margin:0 0 20px}.ui-nav nav{display:grid;gap:6px}.prototype-empty{color:var(--ui-muted);padding:24px 0}.prototype-search{width:100%;padding:12px;border:1px solid var(--ui-border);border-radius:8px;margin-bottom:16px}.prototype-row-actions{display:flex;flex-wrap:wrap;gap:8px}.prototype-badge{display:inline-flex;padding:3px 9px;border-radius:999px;background:var(--ui-bg-secondary,#edf1f6);color:var(--ui-muted);font-size:12px}.prototype-detail{display:grid;gap:16px}.prototype-timeline{padding-left:22px}.prototype-timeline li{margin-bottom:12px}.prototype-dialog{width:min(480px,calc(100vw - 32px));padding:24px;border:1px solid var(--ui-border);border-radius:12px;color:var(--ui-text);background:var(--ui-surface,#fff);box-shadow:0 18px 50px rgb(23 36 56/.2)}.prototype-dialog::backdrop{background:rgb(23 36 56/.3)}.prototype-dialog h2{margin-top:0}.prototype-dialog .ui-actions{justify-content:flex-end}.prototype-req{margin-bottom:16px}.prototype-req h3{margin-bottom:8px}.prototype-req details{margin-top:10px}.prototype-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+</style></head>
+<body><div class="ui-shell"><aside class="ui-nav"><h1 id="project-name"></h1><nav id="pages" aria-label="原型页面"></nav></aside><main class="ui-main"><p class="prototype-notice" id="version"></p><h1 class="ui-title" id="title" tabindex="-1"></h1><p class="prototype-meta" id="requirements"></p><div id="screen"></div></main></div>
+<dialog class="prototype-dialog" id="archive-dialog" aria-labelledby="archive-title"><h2 id="archive-title">确认归档</h2><p id="archive-message"></p><p class="prototype-meta">归档仅改变本页面示例状态，不会请求真实接口；取消不会改变记录。</p><div class="ui-actions"><button class="ui-button" id="cancel-archive" type="button">取消</button><button class="ui-button primary" id="confirm-archive" type="button">确认归档</button></div></dialog>
+<script id="prototype-data" type="application/json">__PROTOTYPE_DATA__</script>
+<script>
+(() => {
+  'use strict';
+  const data = JSON.parse(document.getElementById('prototype-data').textContent);
+  const records = new Map();
+  const filters = new Map();
+  const selected = new Map();
+  let sequence = 0;
+  let feedback = '';
+  let feedbackKind = 'success';
+  let emptyMode = false;
+  let archiveTarget = null;
+  for (const page of data.pages) {
+    records.set(page.page_id, (page.records || []).map((item, index) => ({...item, _record_id: item.record_id || item.id || 'DEMO-' + String(++sequence).padStart(4, '0'), archived: Boolean(item.archived)})));
+    filters.set(page.page_id, {});
+  }
+  function node(tag, text, className) {const element = document.createElement(tag); if (text !== undefined && text !== null) element.textContent = String(text); if (className) element.className = className; return element;}
+  function go(id) {location.hash = encodeURIComponent(id);}
+  function currentPage() {let id = ''; try {id = decodeURIComponent(location.hash.slice(1));} catch {} return data.pages.find(item => item.page_id === id) || data.pages[0];}
+  function setFeedback(text, kind = 'success') {feedback = text; feedbackKind = kind;}
+  function recordSource(page) {return page.records_from || page.page_id;}
+  function allRecords(page) {return records.get(recordSource(page)) || [];}
+  function queryFields(page) {return page.query?.fields || page.fields || [];}
+  function matchesQuery(page, row) {
+    const values = filters.get(page.page_id) || {};
+    return queryFields(page).every(field => {
+      const expected = String(values[field.id] ?? '').trim().toLowerCase();
+      if (!expected) return true;
+      const actual = String(row[field.id] ?? '').trim().toLowerCase();
+      const rule = field.match_rule || page.query?.match_rule || 'contains';
+      return rule === 'exact' ? actual === expected : actual.includes(expected);
     });
-    document.getElementById('empty').addEventListener('click', () => { clear(); feedback.textContent = '暂无待处理任务。可返回入口重新加载示例数据。'; });
-    document.getElementById('error').addEventListener('click', () => { clear(); feedback.textContent = '模拟接口失败：未连接真实服务。请返回入口重试。'; });
-    document.getElementById('reset').addEventListener('click', () => { clear(); feedback.textContent = '已返回入口。'; });
-    const flow = JSON.parse(document.getElementById('flow-data').textContent);
-    if (flow) {
-      const section = document.getElementById('business-flow'); section.hidden = false;
-      document.getElementById('flow-title').textContent = flow.title + '（' + (flow.requirement_ids || []).join(' / ') + '）';
-      const query = document.getElementById('customer-query');
-      const owner = document.getElementById('owner-query');
-      const rows = document.getElementById('customer-rows');
-      const flowFeedback = document.getElementById('flow-feedback');
-      const detail = document.getElementById('customer-detail');
-      document.getElementById('owner-field').hidden = !flow.owner_filter;
-      [...new Set(flow.items.map(item => item.owner))].forEach(value => {
-        const option = document.createElement('option'); option.value = value; option.textContent = value; owner.appendChild(option);
-      });
-      function showCustomer(customer) {
-        detail.hidden = false; detail.replaceChildren();
-        const title = document.createElement('h3'); title.textContent = customer.name + ' · 跟进时间线';
-        const meta = document.createElement('p'); meta.textContent = '负责人：' + customer.owner + ' · 示例数据';
-        const list = document.createElement('ol');
-        customer.follow_ups.forEach(item => { const li = document.createElement('li'); li.textContent = item.time + ' · ' + item.text; list.appendChild(li); });
-        const back = document.createElement('button'); back.className = 'ui-button'; back.textContent = '返回客户列表';
-        back.addEventListener('click', () => { detail.hidden = true; flowFeedback.textContent = '已返回客户列表，筛选条件保持不变。'; query.focus(); });
-        detail.append(title, meta, list, back); flowFeedback.textContent = '正在查看 ' + customer.name + ' 的跟进记录。';
-      }
-      function drawCustomers() {
-        rows.replaceChildren(); detail.hidden = true;
-        const name = query.value.trim().toLowerCase(); const selectedOwner = owner.value;
-        const matches = flow.items.filter(item => (!name || item.name.toLowerCase().includes(name)) && (!flow.owner_filter || !selectedOwner || item.owner === selectedOwner));
-        if (!matches.length) { flowFeedback.textContent = '暂无匹配客户。请清除条件后重试。'; return; }
-        flowFeedback.textContent = '找到 ' + matches.length + ' 个示例客户。';
-        matches.forEach(customer => {
-          const tr = document.createElement('tr');
-          [customer.name, customer.owner].forEach(value => { const td = document.createElement('td'); td.textContent = value; tr.appendChild(td); });
-          const action = document.createElement('td'); const button = document.createElement('button'); button.className = 'ui-button'; button.textContent = '查看跟进记录';
-          button.addEventListener('click', () => showCustomer(customer)); action.appendChild(button); tr.appendChild(action); rows.appendChild(tr);
-        });
-      }
-      document.getElementById('filter-customers').addEventListener('click', drawCustomers);
-      document.getElementById('clear-filter').addEventListener('click', () => { query.value = ''; owner.value = ''; drawCustomers(); });
-      query.addEventListener('keydown', event => { if (event.key === 'Enter') drawCustomers(); });
-      drawCustomers();
+  }
+  function visibleRecords(page, searchValue = '') {
+    const keyword = searchValue.trim().toLowerCase();
+    return allRecords(page).filter(row => (page.hide_archived === false || !row.archived) && matchesQuery(page, row) && (!keyword || JSON.stringify(row).toLowerCase().includes(keyword)));
+  }
+  function feedbackNode() {const message = node('p', feedback, 'prototype-feedback'); message.id = 'feedback'; message.dataset.kind = feedbackKind; message.setAttribute('role', 'status'); message.setAttribute('aria-live', 'polite'); return message;}
+  function actionButton(action) {
+    const button = node('button', action.label, 'ui-button' + (['submit','query'].includes(action.type) ? ' primary' : ''));
+    button.type = action.type === 'submit' ? 'submit' : 'button'; button.dataset.action = action.id; button.dataset.actionType = action.type;
+    if (action.type === 'navigate') button.addEventListener('click', () => {setFeedback(''); go(action.target_page_id);});
+    if (action.type === 'clear') button.addEventListener('click', () => {filters.set(currentPage().page_id, {}); emptyMode = false; setFeedback('已清除条件。'); render();});
+    if (action.type === 'reset') button.addEventListener('click', () => {filters.set(currentPage().page_id, {}); emptyMode = false; setFeedback('已返回入口。'); render();});
+    if (action.type === 'empty') button.addEventListener('click', () => {emptyMode = true; setFeedback('暂无待处理任务。可返回入口重新加载示例数据。'); render();});
+    if (action.type === 'error') button.addEventListener('click', () => {emptyMode = false; setFeedback('模拟接口失败：未连接真实服务。请返回入口重试。', 'error'); render();});
+    return button;
+  }
+  function buildForm(page) {
+    const form = node('form', undefined, 'prototype-fields'); form.id = 'prototype-form';
+    const values = filters.get(page.page_id) || {};
+    for (const field of page.fields || []) {
+      const wrapper = node('div', undefined, 'ui-field');
+      const label = node('label', field.label); label.htmlFor = 'field-' + field.id;
+      const input = node(field.type === 'textarea' ? 'textarea' : field.type === 'select' ? 'select' : 'input');
+      input.id = label.htmlFor; input.name = field.id;
+      if (input.tagName === 'INPUT') input.type = field.type || 'text';
+      if (field.type === 'select') {const blank = node('option', field.blank_label || '全部'); blank.value = ''; input.append(blank); (field.options || []).forEach(value => {const option = node('option', value); option.value = value; input.append(option);});}
+      input.required = field.required === true;
+      for (const key of ['min','max','minLength','maxLength','pattern','placeholder']) if (field[key] !== undefined) input[key] = field[key];
+      if (field.type === 'checkbox') input.checked = Boolean(values[field.id] ?? field.default); else input.value = values[field.id] ?? field.default ?? '';
+      wrapper.append(label, input); form.append(wrapper);
     }
-  </script>
-</main>
-</body>
-</html>
+    const actions = node('div', undefined, 'ui-actions');
+    for (const action of page.actions || []) {
+      if (action.type === 'submit') {const button = actionButton(action); button.addEventListener('click', () => {form.dataset.submitAction = action.id;}); actions.append(button);}
+      else if (action.type === 'query') {const button = actionButton(action); button.addEventListener('click', () => {filters.set(page.page_id, Object.fromEntries(new FormData(form).entries())); emptyMode = false; const count = visibleRecords(page).length; setFeedback(count ? '找到 ' + count + ' 个示例记录。' : (page.empty_message || '暂无匹配记录。请清除条件后重试。'), count ? 'success' : 'error'); render();}); actions.append(button);}
+      else actions.append(actionButton(action));
+    }
+    form.append(actions, feedbackNode());
+    form.addEventListener('submit', event => {
+      event.preventDefault(); if (!form.reportValidity()) return;
+      const action = (page.actions || []).find(item => item.id === form.dataset.submitAction) || (page.actions || []).find(item => item.type === 'submit');
+      const row = Object.fromEntries(new FormData(form).entries());
+      (page.fields || []).filter(field => field.type === 'checkbox').forEach(field => {row[field.id] = Boolean(form.elements[field.id]?.checked);});
+      row.record_id = 'DEMO-' + String(++sequence).padStart(4, '0'); row._record_id = row.record_id; row.archived = false;
+      records.get(page.page_id).push(row); filters.set(page.page_id, {}); setFeedback((action?.success_message || '提交成功') + '（模拟） · ' + row.record_id); render();
+    });
+    return form;
+  }
+  function openArchive(page, row) {
+    archiveTarget = {pageId: recordSource(page), recordId: row._record_id};
+    document.getElementById('archive-message').textContent = '确定归档“' + (row.name || row.title || row.record_id || row._record_id) + '”吗？归档后默认查询不再返回，历史记录保留。';
+    document.getElementById('archive-dialog').showModal();
+  }
+  function recordsTable(page) {
+    const card = node('section', undefined, 'ui-card prototype-records'); card.append(node('h2', page.records_title || '示例记录'));
+    const search = node('input', undefined, 'prototype-search'); search.id = 'record-search'; search.type = 'search'; search.placeholder = '筛选当前结果'; search.setAttribute('aria-label', '筛选当前结果');
+    const body = node('div', undefined, 'ui-table-scroll'); body.id = 'records-body';
+    function draw() {
+      body.replaceChildren(); const items = emptyMode ? [] : visibleRecords(page, search.value);
+      if (!items.length) {body.append(node('p', page.empty_message || '暂无匹配记录', 'prototype-empty')); return;}
+      const table = node('table'); table.id = 'records-table'; const head = node('thead'); const line = node('tr');
+      const columns = page.columns || Object.keys(items[0]).filter(key => !key.startsWith('_') && !['follow_ups','archived'].includes(key)).map(id => ({id, label: id}));
+      columns.forEach(column => line.append(node('th', column.label || column.id))); if ((page.row_actions || []).length) line.append(node('th', '操作')); head.append(line); table.append(head);
+      const rows = node('tbody'); rows.id = 'record-rows';
+      items.forEach(item => {
+        const row = node('tr'); row.dataset.recordId = item._record_id;
+        columns.forEach(column => row.append(node('td', item[column.id] ?? '')));
+        if ((page.row_actions || []).length) {
+          const cell = node('td'); const actions = node('div', undefined, 'prototype-row-actions');
+          for (const action of page.row_actions) {
+            const button = node('button', action.label, 'ui-button'); button.type = 'button'; button.dataset.rowAction = action.type; button.dataset.recordId = item._record_id;
+            if (action.type === 'navigate') button.addEventListener('click', () => {selected.set(recordSource(page), item._record_id); setFeedback(''); go(action.target_page_id);});
+            if (action.type === 'archive') {button.disabled = Boolean(item.archived); button.addEventListener('click', () => openArchive(page, item));}
+            actions.append(button);
+          }
+          cell.append(actions); row.append(cell);
+        }
+        rows.append(row);
+      });
+      table.append(rows); body.append(table);
+    }
+    search.addEventListener('input', draw); card.append(search, body); draw(); return card;
+  }
+  function detailView(page) {
+    const card = node('section', undefined, 'ui-card prototype-detail');
+    const sourceId = recordSource(page); const recordId = selected.get(sourceId); const item = allRecords(page).find(row => row._record_id === recordId);
+    if (!item) {card.append(node('p', '请选择一条记录后查看详情。', 'prototype-empty'));}
+    else {
+      const config = page.detail || {}; const titleField = config.title_field || 'name';
+      card.append(node('h2', item[titleField] || item.title || item.record_id || '记录详情'));
+      const meta = node('div', null, 'prototype-meta'); meta.textContent = (config.meta_fields || []).map(key => (page.field_labels?.[key] || key) + '：' + (item[key] ?? '待确认')).join(' · ') + ' · 示例数据'; card.append(meta);
+      const timeline = item[config.timeline_field || 'follow_ups'] || [];
+      if (timeline.length) {const list = node('ol', undefined, 'prototype-timeline'); timeline.slice().sort((a,b) => String(b[config.time_field || 'time'] || '').localeCompare(String(a[config.time_field || 'time'] || ''))).forEach(entry => {const row = node('li'); row.textContent = (entry[config.time_field || 'time'] || '时间待确认') + ' · ' + (entry[config.text_field || 'text'] || '内容待确认'); list.append(row);}); card.append(list);}
+      else card.append(node('p', '暂无跟进记录。', 'prototype-empty'));
+      if ((page.actions || []).some(action => action.type === 'archive')) {const archive = node('button', item.archived ? '已归档' : '归档', 'ui-button'); archive.type = 'button'; archive.disabled = Boolean(item.archived); archive.dataset.rowAction = 'archive'; archive.addEventListener('click', () => openArchive(page, item)); card.append(archive);}
+    }
+    const actions = node('div', undefined, 'ui-actions'); (page.actions || []).filter(action => action.type !== 'archive').forEach(action => actions.append(actionButton(action))); card.append(actions, feedbackNode()); return card;
+  }
+  function requirementsView(page) {
+    const host = node('div');
+    for (const req of data.requirements || []) {
+      const card = node('article', undefined, 'ui-card prototype-req'); card.append(node('h3', req.requirement_id + ' · ' + req.title), node('p', req.expected_result || req.description));
+      const meta = node('p', '状态：已确认 · 证据等级：' + req.evidence_level + ' · 优先级：' + req.priority, 'prototype-meta'); card.append(meta);
+      const details = node('details'); details.append(node('summary', '验收标准')); const list = node('ol'); (req.acceptance_criteria || []).forEach(criterion => list.append(node('li', criterion))); details.append(list); card.append(details);
+      const button = node('button', '模拟完成此任务', 'ui-button primary'); button.type = 'button'; button.dataset.reqTask = req.requirement_id; button.addEventListener('click', () => {setFeedback(req.requirement_id + ' 模拟操作成功；未调用真实接口。'); render();}); card.append(button); host.append(card);
+    }
+    host.append(feedbackNode()); return host;
+  }
+  function render() {
+    const page = currentPage();
+    document.title = data.name + ' · ' + (page.name || page.page_id);
+    document.getElementById('title').textContent = page.name || page.page_id;
+    document.getElementById('requirements').textContent = (page.requirement_ids || []).join(' · ') + ' · 示例数据 / 模拟接口';
+    document.querySelectorAll('[data-page]').forEach(link => {if (link.dataset.page === page.page_id) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');});
+    const host = document.getElementById('screen'); host.replaceChildren();
+    if (page.type === 'requirements') {host.append(requirementsView(page)); return;}
+    if (page.type === 'detail') {host.append(detailView(page)); return;}
+    const card = node('section', undefined, 'ui-card'); if (page.task) card.append(node('h2', page.task));
+    if (page.description) card.append(node('p', page.description, 'prototype-meta'));
+    if ((page.fields || []).length || (page.actions || []).length) card.append(buildForm(page)); else card.append(feedbackNode());
+    host.append(card); if (page.hide_records !== true) host.append(recordsTable(page));
+  }
+  document.getElementById('confirm-archive').addEventListener('click', () => {
+    if (!archiveTarget) return;
+    const row = (records.get(archiveTarget.pageId) || []).find(item => item._record_id === archiveTarget.recordId);
+    if (row) {row.archived = true; setFeedback((row.name || row.title || row.record_id || row._record_id) + ' 已归档（模拟）；默认查询已排除，历史记录保留。');}
+    document.getElementById('archive-dialog').close(); archiveTarget = null; render();
+  });
+  document.getElementById('cancel-archive').addEventListener('click', () => {archiveTarget = null; document.getElementById('archive-dialog').close(); setFeedback('已取消归档，记录保持不变。'); render();});
+  document.getElementById('archive-dialog').addEventListener('cancel', () => {archiveTarget = null; setFeedback('已取消归档，记录保持不变。');});
+  document.getElementById('project-name').textContent = data.name;
+  document.getElementById('version').textContent = '交互原型 · ' + data.artifact_version + ' · 示例数据／接口模拟 · 数据保留在本页面会话';
+  data.pages.forEach(page => {const link = node('a', page.name || page.page_id); link.href = '#' + encodeURIComponent(page.page_id); link.dataset.page = page.page_id; document.getElementById('pages').append(link);});
+  window.addEventListener('hashchange', () => {emptyMode = false; setFeedback(''); render(); document.getElementById('title').focus();});
+  render();
+})();
+</script></body></html>

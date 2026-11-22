@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="由已确认排期数据生成的项目甘特图">
+  <title>{{PROJECT_NAME}} · 项目排期</title>
+  <style>{{INLINE_CSS}}</style>
+</head>
+<body class="schedule-page">
+  <header class="schedule-header">
+    <div>
+      <a class="schedule-back" href="../workbench/index.html#overview">← 返回项目总览</a>
+      <span class="wb-section-kicker">DELIVERY PLAN · {{VERSION}}</span>
+      <h1>{{PROJECT_NAME}} · 项目排期</h1>
+      <p>{{DATE_RANGE}} · 仅展示模型中明确提供的日期，待排期项不自动分配时间。</p>
+    </div>
+    <span class="schedule-status">{{PLAN_STATUS}}</span>
+  </header>
+  <main class="schedule-main">
+    <section class="schedule-metrics" aria-label="排期统计">
+      <article><small>工作包</small><strong>{{TOTAL_COUNT}}</strong><span>关联 REQ 与依赖</span></article>
+      <article><small>已排期</small><strong>{{SCHEDULED_COUNT}}</strong><span>有明确起止日期</span></article>
+      <article><small>待排期</small><strong>{{UNSCHEDULED_COUNT}}</strong><span>负责人或日期待确认</span></article>
+    </section>
+    <section class="schedule-card" aria-labelledby="gantt-title">
+      <div class="schedule-section-head">
+        <div><span class="wb-section-kicker">GANTT VIEW</span><h2 id="gantt-title">工作包时间轴</h2></div>
+        <a class="wb-btn wb-btn-secondary" href="../workbench/index.html#prd">查看方案与 PRD</a>
+      </div>
+      {{GANTT_CONTENT}}
+    </section>
+    <section class="schedule-card" aria-labelledby="unscheduled-title">
+      <div class="schedule-section-head"><div><span class="wb-section-kicker">UNSCHEDULED</span><h2 id="unscheduled-title">待排期工作包</h2></div></div>
+      {{UNSCHEDULED_CONTENT}}
+    </section>
+    <section class="schedule-card" aria-labelledby="assumptions-title">
+      <div class="schedule-section-head"><div><span class="wb-section-kicker">ASSUMPTIONS</span><h2 id="assumptions-title">排期说明</h2></div></div>
+      {{ASSUMPTIONS_CONTENT}}
+    </section>
+    <footer class="schedule-footer">{{GENERATION_MODE}} · 本页面为只读视图，人工调整经评审后重新生成。</footer>
+  </main>
+</body>
+</html>

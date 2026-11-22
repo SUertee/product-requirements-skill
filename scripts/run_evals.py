@@ -4,6 +4,7 @@ import argparse
 import copy
 import json
 from pathlib import Path
+import re
 import tempfile
 
 from project_lib import SKILL_ROOT, load_requirements, read_json, read_jsonl
@@ -21,6 +22,14 @@ def check_cases():
         for quote in case["must_preserve_quotes"]:
             assert quote in json.dumps(case["input"], ensure_ascii=False), f"{case['id']} quote is not in input"
     return len(cases)
+
+
+def prototype_data(path):
+    text = Path(path).read_text(encoding="utf-8")
+    match = re.search(r'<script id="prototype-data" type="application/json">(.*?)</script>', text, re.DOTALL)
+    if not match:
+        raise AssertionError("Generic prototype data is missing")
+    return json.loads(match.group(1))
 
 
 def check_demo(root, expectations):
@@ -50,13 +59,37 @@ def check_demo(root, expectations):
     prototype = (root / "artifacts" / "prototype" / "index.html").read_text(encoding="utf-8")
     assert "REQ-002" in prd and "负责人筛选" in prd
     assert "示例数据" in prototype and "模拟接口" in prototype and "REQ-002" in prototype
-    assert "customer-query" in prototype and "owner-query" in prototype and "返回客户列表" in prototype
-    assert '"owner_filter": true' in prototype
+    prototype_payload = prototype_data(root / "artifacts" / "prototype" / "index.html")
+    customer_page = next(page for page in prototype_payload["pages"] if page["page_id"] == "customer-list")
+    query_field_ids = [field["id"] for field in customer_page["query"]["fields"]]
+    assert "name" in query_field_ids and "owner" in query_field_ids and "返回客户列表" in prototype
+    assert customer_page["query"]["match_rule"] == "contains"
     manifest = read_json(root / "manifest.json")
+    workbench = (root / "artifacts" / "workbench" / "index.html").read_text(encoding="utf-8")
+    for label in ["项目总览", "会议素材", "功能模块", "方案文档", "原型", "技术设计", "评审记录"]:
+        assert label in workbench, f"Workbench module missing: {label}"
+    for view_id in ["overview", "materials", "modules", "documents", "technical", "review"]:
+        assert f"'{view_id}'" in workbench, f"Workbench view missing: {view_id}"
+    assert "__WORKBENCH_" not in workbench and "wb-review-check" in workbench and "buildReviewPackage" in workbench
+    assert "req_revision" in workbench and "Baseline 尚未修改" in workbench
+    technical = (root / "artifacts" / "technical-design.md").read_text(encoding="utf-8")
+    assert "候选" in technical and "未执行 code-to-diagram" in technical
+    schedule = (root / "artifacts" / "schedule" / "index.html").read_text(encoding="utf-8")
+    assert "WORK-004" in schedule and "待排期" in schedule and "schedule-bar" in schedule and "{{" not in schedule
+    brief = (root / "artifacts" / "deck-brief.md").read_text(encoding="utf-8")
+    assert "不是 PPT 成品" in brief and "尚未执行真实" in brief
+    artifact_types = {item["artifact_type"] for item in manifest["artifacts"]}
+    assert {"technical_design", "schedule", "deck_brief", "diagram"} <= artifact_types
+    assert "deck" not in artifact_types, "Demo must not claim an unexecuted PPT export"
+    assert not any(item["artifact_path"].lower().endswith(".pptx") for item in manifest["artifacts"])
     prototype_entry = next(item for item in manifest["artifacts"] if item["artifact_path"] == "artifacts/prototype/index.html")
     assert prototype_entry["requirement_ids"] == ["REQ-001", "REQ-002", "REQ-003"], "Prototype must not trace parked requirements"
     historical = (root / "artifacts" / "versions" / "v1.0" / "prototype" / "index.html").read_text(encoding="utf-8")
-    assert '"owner_filter": false' in historical, "v1.0 prototype snapshot must remain on the old behavior"
+    historical_payload = prototype_data(root / "artifacts" / "versions" / "v1.0" / "prototype" / "index.html")
+    historical_page = next(page for page in historical_payload["pages"] if page["page_id"] == "customer-list")
+    historical_query_ids = [field["id"] for field in historical_page["query"]["fields"]]
+    assert "owner" not in historical_query_ids, "v1.0 prototype snapshot must not expose the owner filter"
+    assert "owner" in query_field_ids, "v1.1 prototype must expose the owner filter"
 
 
 def main():

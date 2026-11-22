@@ -94,6 +94,24 @@
       "expected_req": [],
       "expected_files": ["reviews/review.md"],
       "checks": ["不生成虚构 Transcript", "明确说明缺少转写能力", "其他可读材料可继续"]
+    },
+    {
+      "id": "artifact-manual-edit-protection",
+      "input": {"generated": "artifacts/prd.md 已有生成 hash", "manual": "HUMAN-MANUAL-EDIT：人工审定段落", "approved": false},
+      "expected": {"change": "manual_artifact_conflict", "write_count": 0, "old_value_preserved": true},
+      "must_preserve_quotes": ["HUMAN-MANUAL-EDIT：人工审定段落"],
+      "expected_req": [],
+      "expected_files": ["reviews/render-state.json", "reviews/review.json"],
+      "checks": ["任何写入前失败", "人工原值保留", "逐文件批准才允许覆盖并留痕", "相同内容不重写"]
+    },
+    {
+      "id": "generic-prototype-rules-and-archive",
+      "input": {"query": "名称从包含改为精确匹配", "action": "归档操作需要二次确认", "cancel": "取消归档时记录保持不变"},
+      "expected": {"match_rule": "exact", "archive_confirm": true, "cancel_preserves": true, "default_excludes_archived": true},
+      "must_preserve_quotes": ["名称从包含改为精确匹配", "归档操作需要二次确认", "取消归档时记录保持不变"],
+      "expected_req": ["精确查询", "停用记录归档"],
+      "expected_files": ["artifacts/prototype/index.html"],
+      "checks": ["完整名称命中", "名称片段为空", "确认后默认过滤", "取消不改变记录", "无 JavaScript 运行错误"]
     }
   ]
 }

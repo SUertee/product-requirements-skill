@@ -14,9 +14,10 @@
   ],
   "required_files": [
     "project.json", "sources/sources.jsonl", "sources/transcript.jsonl", "evidence/evidence.jsonl",
-    "requirements/requirements.json", "models/business-model.json", "baselines/v1.0.json", "baselines/v1.1.json",
-    "changesets/changeset-v1.1.json", "artifacts/proposal.md", "artifacts/prd.md", "artifacts/agent-prompt.md",
-    "artifacts/workbench/index.html", "artifacts/prototype/index.html", "artifacts/versions/v1.0/prototype/index.html", "artifacts/versions/v1.1/prd.md", "reviews/review.md", "manifest.json"
+    "requirements/requirements.json", "models/business-model.json", "models/technical-design.json", "models/delivery-plan.json", "models/deck-brief.json", "baselines/v1.0.json", "baselines/v1.1.json",
+    "changesets/changeset-v1.1.json", "artifacts/proposal.md", "artifacts/prd.md", "artifacts/agent-prompt.md", "artifacts/technical-design.md", "artifacts/deck-brief.md",
+    "artifacts/schedule/index.html", "artifacts/schedule/ui.css", "artifacts/diagrams/customer-query-sequence/customer-query-sequence.mmd",
+    "artifacts/workbench/index.html", "artifacts/prototype/index.html", "artifacts/versions/v1.0/prototype/index.html", "artifacts/versions/v1.1/prd.md", "artifacts/versions/v1.1/schedule/index.html", "reviews/review.md", "manifest.json"
   ],
   "changeset": {"modified": 1, "conflicted": 0},
   "human_gate_representation": "simulated_confirmation=true，不得解释为真实客户审批"

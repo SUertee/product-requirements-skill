@@ -7,7 +7,7 @@
     "schema_version": {"type": "string"},
     "artifact_id": {"type": "string", "pattern": "^ART-"},
     "project_id": {"type": "string"},
-    "artifact_type": {"type": "string", "enum": ["proposal", "prd", "agent_prompt", "workbench", "prototype", "business_model", "review"]},
+    "artifact_type": {"type": "string", "enum": ["proposal", "prd", "agent_prompt", "workbench", "prototype", "business_model", "review", "technical_design", "schedule", "deck_brief", "deck", "diagram"]},
     "artifact_path": {"type": "string"},
     "version": {"type": "string", "pattern": "^v[0-9]+\\.[0-9]+$"},
     "requirement_ids": {"type": "array", "items": {"type": "string", "pattern": "^REQ-"}},

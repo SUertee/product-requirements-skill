@@ -11,5 +11,9 @@
 | mirabradshaw-data/chalky-prd | e668c6dc10988736cf41619d0a233ba50dcd81e2 | MIT | 原话、草稿与事实/推断分离 |
 | MadhanMohanReddy2301/TraceX-backend | e49370b782ebef347e43933f670485a6963245ac | 未找到 | 仅参考需求到验收追溯，不复制代码 |
 | initmahesh/ai-prd-builder | 48b10c7a0e9682b03f40e6ad88d0e7d6f5d45005 | 未找到 | 仅参考 Skill 检查点和质量清单组织 |
+| phuryn/pm-skills | 9af7bfd0bc47fdad43c2eaa7a43cd13918e7aaef | MIT | 选择性吸收精简 PRD、用户故事、测试场景、优先级与风险审查方法；外部 Skill 可选定位 |
+| Emmraan/agent-skills | 4c2ea06aa2aba5465a0f088228283f34fc9dae5b | MIT | 将 requirements-analysis 方法收敛为现有 REQ 的质量门禁 |
+| AIPris/code-to-diagram | 0ab6520f648f46aaaab918d5d6dc3c948cf0877a | MIT | 时序／状态／类图的可选 `.mmd`→draw.io／PNG 能力 |
+| alchaincyf/huashu-design | e8d1148a80d5a281d4247cffe320add3df017928 | MIT；部分演示素材单独许可 | 已批准简报的可选 deck／PPTX 导出，不捆绑其素材 |
 
-`integrations.json` 另行记录 Archify 固定提交及 Schema Canvas 用户自有依赖。它们是可选宿主能力，不由本包捆绑；缺失时按 references 记录失败，不伪装调用成功。
+`integrations.json` 记录 Archify、选定 PM Skills、Requirements Analysis、Code to Diagram、Huashu Design 固定提交及 Schema Canvas 用户自有依赖。它们都是可选宿主能力，不由本包捆绑；解析器只定位真实 SKILL.md，不自动下载或执行。缺失时按 references 记录失败，不伪装调用或导出成功。

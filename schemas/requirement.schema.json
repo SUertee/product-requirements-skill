@@ -21,7 +21,7 @@
     "priority": {"type": "string"},
     "evidence_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^EVD-"}},
     "evidence_level": {"type": "string", "enum": ["E0", "E1", "E2", "E3"]},
-    "status": {"type": "string", "enum": ["draft", "confirmed", "disputed", "parked"]},
+    "status": {"type": "string", "enum": ["draft", "confirmed", "disputed", "parked", "cancelled"]},
     "locked_by_human": {"type": "boolean"},
     "locked_fields": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
     "pending_questions": {"type": "array", "items": {"type": "string"}},

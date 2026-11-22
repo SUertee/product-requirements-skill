@@ -17,7 +17,7 @@
 
 每条需求记录 `requirement_id`、标题、角色、触发、行为、输入输出、规则、异常、验收、`source_refs`、`evidence_type`、`review_status` 与 `locked_fields`。REQ ID 在同一项目内唯一且跨版本稳定。
 
-新数据统一使用 `evidence_level`：E1 会议明确表达、E2 上下文支持的推断、E3 模型或产品建议、E0 缺失或冲突。迁移旧数据时依次映射 explicit、inferred、suggested、unknown；旧 `review_status` 迁移到独立的 `status`。事实来源、证据等级与人工确认状态分别保存。
+新数据统一使用 `evidence_level`：E1 会议明确表达、E2 上下文支持的推断、E3 模型或产品建议、E0 缺失或冲突。迁移旧数据时依次映射 explicit、inferred、suggested、unknown；旧 `review_status` 迁移到独立的 `status`。事实来源、证据等级与人工确认状态分别保存。`status` 支持 draft、confirmed、disputed、parked 和 cancelled；cancelled 保留历史但不进入确认原型或本期范围。
 
 REQ 使用 `evidence_ids` 关联独立 Evidence；`source_refs` 仅作为旧数据迁移入口。`locked_by_human=true` 锁定整条需求，`locked_fields` 锁定指定字段。自动合并必须先检查锁定；人工修改和解锁记录操作者、时间、字段、旧值、新值与原因。
 
@@ -32,5 +32,7 @@ REQ 使用 `evidence_ids` 关联独立 Evidence；`source_refs` 仅作为旧数�
 ## 修订
 
 逐条展示新增、修改、取消、冲突和重复，记录旧值、新值、原因、来源及受影响文件。负责人确认后保存新版本。锁定字段发生冲突时先保留原值并列出冲突。取消需求保留历史。
+
+内部工作台允许在 REQ 卡上勾选“纳入本次修订”并填写自然语言意见，导出或复制 `review_package_type=req_revision` 的复核包。复核包包含项目、基线、REQ、意见和 `preserve_human_locks=true`，但只是 Agent 的修订输入，不会直接改写项目文件。Agent 读取后仍须生成候选 ChangeSet、检查锁定并等待批准，再二次生成受影响成果。
 
 未知资料关联先进入疑问清单，后台可继续生成其他有依据的草稿。生成客户原型前确认核心流程、范围、规则及验收，影响核心行为的疑问由负责人处理后继续。

@@ -1,0 +1,17 @@
+%% src: models/technical-design.json requirements/requirements.json
+sequenceDiagram
+  autonumber
+  participant U as 普通销售
+  participant UI as 客户列表
+  participant S as 查询服务
+  participant D as 现有CRM
+  U->>UI: 输入名称与负责人
+  UI->>S: 提交组合筛选
+  S->>D: 按权限范围查询
+  alt 有匹配结果
+    D-->>S: 返回客户与跟进摘要
+    S-->>UI: 渲染列表
+  else 无匹配结果
+    D-->>S: 空集合
+    S-->>UI: 显示空状态
+  end

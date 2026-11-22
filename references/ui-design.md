@@ -2,20 +2,22 @@
 
 ## 统一生成入口
 
-新用户安装 Skill 后，内部工作台必须使用 `assets/workbench-template.html` 和 `assets/ui.css`，由 `scripts/render_artifacts.py` 从 Project Data 渲染。模板已包含商务蓝侧栏、项目 Hero、指标卡、状态图、证据卡、REQ 卡、业务模型、评审区、移动底部导航及 Agent 提示词弹层；不得只复制 CSS 后退回旧版纵向堆叠布局。
+新用户安装 Skill 后，内部工作台使用 `assets/workbench-template.html`、`assets/workbench.css` 和 `assets/workbench.js`，由 `scripts/render_artifacts.py` 从 Project Data 渲染。工作台与交互原型的 HTML 壳均源自 `feat/workflow-execution@0488753`（`__WORKBENCH_STYLE__/__WORKBENCH_DATA__/__WORKBENCH_SCRIPT__` 与 `__PROTOTYPE_STYLE__/__PROTOTYPE_DATA__` 占位符、可折叠侧栏、页面导航和数据驱动渲染），仅替换数据层与交互逻辑以适配当前 Source／Evidence／REQ／Baseline／ChangeSet，不引入分支的后台服务。工作台包含可折叠侧栏、项目指标、证据卡、可勾选修订的 REQ 卡、技术设计、排期、PPT、评审复核包和 Agent 提示词弹层。甘特图使用 `assets/schedule-template.html` 与 `assets/ui.css`。
 
 ```bash
 python scripts/render_artifacts.py --project <项目目录>
 # 已有人工确认 Baseline 时，才允许附加 --prototype
+# 只更新选定产物，避免重写无关文件
+python scripts/render_artifacts.py --project <项目目录> --only prd,workbench,prototype --prototype
 ```
 
-渲染器将 CSS 内联到独立 HTML，同时保留 `workbench/ui.css` 供原型和兼容使用。不得引入在线字体、CDN 或外部 UI 框架。
+渲染器将工作台 CSS 和 JS 内联到独立 HTML，同时保留 `workbench/ui.css`。不得引入在线字体、CDN 或外部 UI 框架。旧版 `{{TOKEN}}` 静态模板和绕过预检的遗留渲染入口已删除，`render_project` 是唯一写入路径。原型使用 `assets/prototype-template.html` 的通用 `pages／fields／actions／records` 模型；`query.match_rule` 支持 `contains` 和 `exact`，`row_actions` 支持详情导航与 `archive` 二次确认。新项目优先定义 `prototype_pages`，旧 `prototype_flow` 自动转换。
 
 ## 设计依据
 
 本规范供主 Skill 生成客户原型和内部工作台时使用，基础样式位于 ../assets/ui.css。视觉参考 ParTrace Vision 的 workbench 工作台中的侧栏、内容区和预览结构，具体页面围绕当前客户的任务与数据组织。
 
-具体参考文件为用户工程中的 `Anker/开发预览/驿站追迹-App原型-v1/workbench.html`，相关资源以同目录引用为准。
+对应参考件位于 `feat/workflow-execution` 分支的 `docs/references/partrace-workbench/`；本包只采用其 HTML 壳与内置设计系统，不打包视频、PPT 或用户机器上的绝对路径。
 
 ## 确认设计依据
 
@@ -41,7 +43,7 @@ python scripts/render_artifacts.py --project <项目目录>
 | 移动端服务 | 移动导航、核心任务、单列表单与操作结果 |
 | 客户展示原型 | 围绕已确认主流程组织入口、关键操作与结果反馈 |
 
-内部工作台导航按实际产出启用总览、需求与来源、方案／PRD、业务模型、流程／架构、原型和评审记录。首屏呈现目标、范围、成果入口与待确认问题。
+内部工作台固定为七个模块：项目总览、会议素材、功能模块、方案文档、原型、技术设计、评审记录。业务模型归入技术设计，排期归入项目总览／方案文档，PPT 是交付操作而非第八个模块。首屏呈现目标、范围、成果入口与待确认问题；只有实际产出时启用文件入口。
 
 ## 卡片内容与文案
 

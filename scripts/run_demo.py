@@ -16,10 +16,29 @@ from project_lib import (
     SKILL_ROOT, project_errors, read_json, requirement_container, stable_id,
     atomic_write_text, utc_now, write_json, write_jsonl,
 )
-from render_artifacts import render_project
+from render_artifacts import ARTIFACT_FILES, render_project
 
 FIXTURE = SKILL_ROOT / "tests" / "fixtures" / "demo_extraction.json"
 INPUT = SKILL_ROOT / "examples" / "input"
+DELIVERY_FIXTURES = ("technical-design.json", "delivery-plan.json", "deck-brief.json")
+SEQUENCE_SPEC = """%% src: models/technical-design.json requirements/requirements.json
+sequenceDiagram
+  autonumber
+  participant U as 普通销售
+  participant UI as 客户列表
+  participant S as 查询服务
+  participant D as 现有CRM
+  U->>UI: 输入名称与负责人
+  UI->>S: 提交组合筛选
+  S->>D: 按权限范围查询
+  alt 有匹配结果
+    D-->>S: 返回客户与跟进摘要
+    S-->>UI: 渲染列表
+  else 无匹配结果
+    D-->>S: 空集合
+    S-->>UI: 显示空状态
+  end
+"""
 
 
 def material_and_segments(path, project_id, source_type, meeting_id):
@@ -87,6 +106,9 @@ def run_demo(output, force=False):
     if (root / "project.json").exists() and not force:
         raise ValueError("Demo project already exists; choose a new output or explicitly use --force")
     root.mkdir(parents=True, exist_ok=True)
+    approved_overwrites = {relative for paths in ARTIFACT_FILES.values() for relative in paths} if force else set()
+    for file_name in DELIVERY_FIXTURES:
+        (root / "models" / file_name).unlink(missing_ok=True)
     sources, segments = [], []
     for file_name, source_type, meeting_id in [
         ("demo_meeting.srt", "transcript", "MEET-DEMO-001"),
@@ -116,7 +138,7 @@ def run_demo(output, force=False):
         },
         "design_context": {"product_type": "内部业务系统", "target_devices": ["desktop"], "design_system_version": "built-in-ui-v0.1"},
         "prototype_flow": {
-            "title": "查询客户并查看跟进", "requirement_ids": ["REQ-001", "REQ-002", "REQ-003"], "owner_filter": False,
+            "title": "查询客户并查看跟进", "requirement_ids": ["REQ-001", "REQ-002", "REQ-003"], "owner_filter": False, "match_rule": "contains",
             "items": [
                 {"id": "CUS-001", "name": "星澜科技", "owner": "销售 A", "follow_ups": [{"time": "2026-11-01 10:00", "text": "示例：确认采购需求"}, {"time": "2026-11-08 14:30", "text": "示例：发送产品资料"}]},
                 {"id": "CUS-002", "name": "云川制造", "owner": "销售 B", "follow_ups": [{"time": "2026-11-03 09:20", "text": "示例：约定下次演示"}]},
@@ -145,7 +167,7 @@ def run_demo(output, force=False):
     write_jsonl(root / "sources" / "sources.jsonl", [row for row in sources if row["source_type"] != "feedback"])
     (root / "reviews").mkdir(exist_ok=True)
     atomic_write_text(root / "reviews" / "review.md", "# 固定样例评审\n\n草稿已生成。以下确认均为演示夹具动作，不是真实客户审批。\n")
-    render_project(root)
+    render_project(root, approved_overwrites=approved_overwrites, overwrite_snapshots=force)
     assert_valid(root)
 
     # Explicitly simulated demo gate: resolve the historical conflict and freeze v1.0.
@@ -171,7 +193,7 @@ def run_demo(output, force=False):
         {"action": "baseline_confirmed", "baseline_id": baseline_id, "actor": "demo-reviewer", "simulated": True, "at": utc_now()},
     ])
     write_json(root / "reviews" / "review.json", reviews)
-    render_project(root, include_prototype=True)
+    render_project(root, include_prototype=True, approved_overwrites=approved_overwrites, overwrite_snapshots=force)
     assert_valid(root)
 
     # Add real feedback Source/Segment/Evidence, then compare only baseline-confirmed REQ.
@@ -225,7 +247,18 @@ def run_demo(output, force=False):
         "- v1.1：模拟批准客户反馈，REQ-002 增加负责人筛选和空状态。\n"
         "- 以上均为可复现夹具，不是真实客户审批；未执行外部发布。\n"
     )
-    render_project(root, include_prototype=True)
+    for file_name in DELIVERY_FIXTURES:
+        delivery = read_json(FIXTURE.parent / file_name)
+        delivery["project_id"] = project_id
+        delivery["version"] = project["current_version"]
+        if "baseline_id" in delivery:
+            delivery["baseline_id"] = project["current_baseline_id"]
+        write_json(root / "models" / file_name, delivery)
+    atomic_write_text(
+        root / "artifacts" / "diagrams" / "customer-query-sequence" / "customer-query-sequence.mmd",
+        SEQUENCE_SPEC,
+    )
+    render_project(root, include_prototype=True, approved_overwrites=approved_overwrites, overwrite_snapshots=force)
     assert_valid(root)
     subprocess.run([sys.executable, str(SKILL_ROOT / "scripts" / "generate_manifest.py"), "--project", str(root)], check=True)
     return root

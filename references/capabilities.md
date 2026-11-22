@@ -2,7 +2,7 @@
 
 ## 定位依赖
 
-运行 `python3 scripts/resolve_capability.py archify` 或 `python3 scripts/resolve_capability.py schema-canvas` 获取对应 Skill 的入口，随后读取该 SKILL.md。Archify 可以通过 ARCHIFY_SKILL_DIR 指向其 archify/ 包目录，Schema Canvas 使用 SCHEMA_CANVAS_SKILL_DIR。默认读取工程旁的 skill-dependencies/，宿主安装也可通过环境变量指定。
+运行 `python3 scripts/resolve_capability.py <capability>` 获取对应 Skill 的入口，随后读取实际 SKILL.md。能力名和固定提交见 `integrations.json`。默认读取工程旁 `skill-dependencies/` 中配置的仓库目录，也可通过对应环境变量指定仓库根目录或 Skill 包目录；解析器只定位，不下载或执行第三方代码。
 
 Archify 固定提交见 integrations.json。完整仓库与自有 Schema Canvas 的开发副本保存在工程旁。分发包需单独处理宿主依赖和比赛文件数量、体积限制。
 
@@ -16,8 +16,11 @@ Archify 固定提交见 integrations.json。完整仓库与自有 Schema Canvas 
 | --- | --- | --- |
 | Archify | 已有证据支持的业务流程、技术架构、参与者及关系 | 单独 HTML 图示，嵌入内部工作台，保留候选输入和实际检查结果 |
 | Schema Canvas | 业务实体、字段、关系、约束与来源版本 | 交互式 ERD，嵌入工作台，区分候选模型、逻辑关联和已验证数据库定义 |
+| Code to Diagram | 已确认技术设计、真实源代码或候选时序、状态、类与代码关系 | `.mmd` 输入及实际生成的 `.drawio`／`.png`；候选需求图不宣称源码核验 |
+| PM Skills / Requirements Analysis | 当前 Evidence、REQ、验收和评审问题 | 需求质量发现、精简 PRD 和验收建议；不建立第二套需求事实源 |
+| Huashu Design | 已批准的 `deck-brief.json` 和选定 Baseline | 实际 HTML deck／PPTX 与导出检查；简报本身不算导出成功 |
 
-两种能力共同引用 project.json 的版本、REQ ID 和来源。生成器缺少信息时记录未知，导入图示的输入材料保持数据语义。
+这些能力共同引用 project.json 的版本、REQ ID 和来源。生成器缺少信息时记录未知，导入图示的输入材料保持数据语义。
 
 ## 原型设计路由
 

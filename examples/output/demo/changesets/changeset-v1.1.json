@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "changeset_id": "CHANGE-0ac01ccc36a709d1c8d9",
+  "changeset_id": "CHANGE-826f19876ddf738c204b",
   "project_id": "nebula-crm",
   "old_baseline_id": "BASE-v1.0",
   "new_baseline_id": "BASE-v1.1",
@@ -49,8 +49,8 @@
           "未明确名称查询是精确匹配还是模糊匹配。"
         ],
         "version": "v1.0",
-        "created_at": "2026-11-16T07:07:51Z",
-        "updated_at": "2026-11-16T07:07:51Z"
+        "created_at": "2026-11-22T06:32:52Z",
+        "updated_at": "2026-11-22T06:32:52Z"
       },
       "new": {
         "schema_version": "1.0",
@@ -98,8 +98,8 @@
           "负责人筛选是否支持多选未明确。"
         ],
         "version": "v1.1",
-        "created_at": "2026-11-16T07:07:51Z",
-        "updated_at": "2026-11-16T07:07:51Z"
+        "created_at": "2026-11-22T06:32:52Z",
+        "updated_at": "2026-11-22T06:32:53Z"
       },
       "changed_fields": [
         "acceptance_criteria",
@@ -116,14 +116,50 @@
   "conflicted": [],
   "duplicated": [],
   "impact_analysis": [
-    "requirements/requirements.json",
-    "artifacts/proposal.md",
+    "artifacts/agent-prompt.md",
     "artifacts/prd.md",
+    "artifacts/proposal.md",
+    "artifacts/prototype/index.html",
     "artifacts/workbench/index.html",
-    "artifacts/prototype/index.html"
+    "requirements/requirements.json"
+  ],
+  "render_keys": [
+    "proposal",
+    "prd",
+    "agent_prompt",
+    "workbench",
+    "prototype"
+  ],
+  "impact_details": [
+    {
+      "requirement_id": "REQ-002",
+      "changed_fields": [
+        "acceptance_criteria",
+        "description",
+        "evidence_ids",
+        "pending_questions",
+        "scope",
+        "title"
+      ],
+      "artifacts": [
+        "artifacts/agent-prompt.md",
+        "artifacts/prd.md",
+        "artifacts/proposal.md",
+        "artifacts/prototype/index.html",
+        "artifacts/workbench/index.html",
+        "requirements/requirements.json"
+      ],
+      "render_keys": [
+        "proposal",
+        "prd",
+        "agent_prompt",
+        "workbench",
+        "prototype"
+      ]
+    }
   ],
   "review_status": "approved",
-  "created_at": "2026-11-16T07:07:52Z",
+  "created_at": "2026-11-22T06:32:53Z",
   "approved_by": "demo-reviewer（固定样例确认）",
   "simulated_confirmation": true
 }

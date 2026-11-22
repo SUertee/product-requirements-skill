@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0",
+  "project_id": "nebula-crm",
+  "version": "v1.1",
+  "status": "reviewed",
+  "summary": "固定样例候选技术设计：在现有 CRM 权限边界内提供组合筛选和跟进时间线；接口、部署和性能指标均未进行真实联调验证。",
+  "decisions": [
+    {
+      "decision_id": "TD-001",
+      "title": "查询前应用数据权限",
+      "decision": "候选方案：查询服务先限定当前用户可见客户范围，再应用名称与负责人筛选。",
+      "rationale": "避免普通销售通过组合查询越权获得客户数据；仍需与现有 CRM 权限实现核对。",
+      "status": "proposed",
+      "requirement_ids": ["REQ-001", "REQ-002"]
+    },
+    {
+      "decision_id": "TD-002",
+      "title": "空集合与查询失败分离",
+      "decision": "候选方案：无匹配结果返回空集合，依赖失败返回可重试错误，不混用两种状态。",
+      "rationale": "支撑已确认空状态，同时避免把接口异常误报为无客户。",
+      "status": "proposed",
+      "requirement_ids": ["REQ-002"]
+    }
+  ],
+  "diagrams": [
+    {
+      "diagram_id": "DIA-001",
+      "diagram_type": "sequence",
+      "title": "客户组合筛选候选时序",
+      "status": "draft",
+      "requirement_ids": ["REQ-001", "REQ-002"],
+      "spec_path": "artifacts/diagrams/customer-query-sequence/customer-query-sequence.mmd",
+      "generator": "code-to-diagram（仅准备输入，未执行）",
+      "validation_results": ["未执行 code-to-diagram；没有 draw.io 或 PNG 成果，也未进行源码事实核验"]
+    }
+  ],
+  "pending_questions": [
+    "现有 CRM 权限过滤的真实接口和异常码尚未核对。",
+    "查询性能和数据量阈值尚未由客户确认。"
+  ]
+}

@@ -63,6 +63,13 @@ class NormalizeTranscriptTests(unittest.TestCase):
                     atomic_write_text(target, "new")
             self.assertEqual(target.read_text(encoding="utf-8"), "old")
             self.assertFalse(list(Path(temporary).glob("*.tmp")))
+    def test_chinese_speaker_label_is_preserved(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "meeting.txt"
+            source.write_text("销售主管：普通销售只能查看本人客户。", encoding="utf-8")
+            _, rows = normalize(source, "demo")
+            self.assertEqual(rows[0]["speaker_id"], "销售主管")
+            self.assertEqual(rows[0]["speaker"], "销售主管")
 
 
 if __name__ == "__main__":
