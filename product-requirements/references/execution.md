@@ -33,7 +33,7 @@ python3 product-requirements/scripts/workflow.py --workspace runs/demo/inbox \
 
 ## 人工评审与生成
 
-工作台“功能需求”可编辑字段与锁定选项，“评审记录”保存定义确认。应用意见会生成新版本。definition 评审绑定 project_id、artifact_version、decision_id 和 target，确认后的需求才进入原型生成。人工修改新增来源依据，分析结果中的锁定冲突写入 diff。
+工作台“功能需求”可编辑字段与锁定选项，“评审记录”保存定义确认。应用意见会生成新版本。definition 评审绑定 project_id、artifact_version、decision_id 和 target，确认后的需求才进入原型生成。人工修改新增来源依据，分析结果中的锁定冲突写入 diff。运行 `generate` 前，若选择 `modules`、`architecture` 或 `workflow`，先按 [Archify 定位与按需下载](capabilities.md#缺少-archify-时按需下载) 准备依赖。
 
 ```bash
 python3 product-requirements/scripts/workflow.py --workspace runs/demo/inbox \
