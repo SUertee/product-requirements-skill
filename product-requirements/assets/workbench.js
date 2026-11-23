@@ -303,7 +303,8 @@
     status.title = statusHelp[req.review_status] || statusHelp.draft;
     status.dataset.status = req.review_status;
     identity.append(evidence, status, element('span', req.requirement_id, 'requirement-code'));
-    card.append(identity);
+    const head = element('header', null, 'requirement-head'); head.append(card.firstElementChild, identity);
+    card.append(head);
     const body = element('div', null, 'requirement-tab-body');
     const editing = requirementTab === 'edit' && serverState;
     if (editing) body.append(requirementEditor(req));
@@ -925,14 +926,27 @@
     const excerpts = contextOnly
       ? transcriptSources.slice(Math.max(0, selectedIndex - 1), selectedIndex + 2)
       : transcriptSources.slice(materialPage * 30, (materialPage + 1) * 30);
+    // Transcript reads like a conversation: time · speaker · words on one line; the speaker shows only when it changes.
+    const speakerOrder = [];
+    let previousSpeaker = null;
     excerpts.forEach(source => {
-      const excerpt = element('section', null, 'source-excerpt');
-      if (source.source_id === selectedSource) { excerpt.classList.add('source-selected'); excerpt.tabIndex = -1; }
       const speakerPrefix = /^([\p{Script=Han}]{2,8}|说话人\s*\d+|Speaker\s*\d+)[：:]\s*/u.exec(source.text);
-      const speaker = source.speaker || speakerPrefix?.[1];
-      badges(excerpt, [locatorLabel(source.locator), speaker || '说话人待确认']);
+      const speaker = source.speaker || speakerPrefix?.[1] || '说话人待确认';
+      const words = (speakerPrefix ? source.text.slice(speakerPrefix[0].length) : source.text).trim();
+      if (!words && source.source_id !== selectedSource) return;
+      const excerpt = element('section', null, 'source-excerpt' + (contextOnly ? '' : ' transcript-line'));
+      if (source.source_id === selectedSource) { excerpt.classList.add('source-selected'); excerpt.tabIndex = -1; }
       excerpt.dataset.sourceId = source.source_id;
-      excerpt.append(element('blockquote', speakerPrefix ? source.text.slice(speakerPrefix[0].length) : source.text, 'source-quote'));
+      if (!speakerOrder.includes(speaker)) speakerOrder.push(speaker);
+      if (contextOnly) badges(excerpt, [locatorLabel(source.locator), speaker]);
+      else {
+        excerpt.append(element('span', locatorLabel(source.locator), 'line-time'));
+        const who = element('span', speaker === previousSpeaker ? '' : speaker, 'line-speaker');
+        who.dataset.tone = String(speakerOrder.indexOf(speaker) % 4);
+        excerpt.append(who);
+      }
+      previousSpeaker = speaker;
+      excerpt.append(element('blockquote', words || '（无内容）', 'source-quote'));
       const links = element('div', null, 'source-actions');
       if (player && Number.isFinite(source.locator.start_seconds)) {
         const seek = iconLabel(element('button', '定位录音 ' + locatorLabel(source.locator), 'button small'), 'clock');
@@ -1186,9 +1200,9 @@
       if (!current) { content.append(empty('暂无需求')); return; }
       selectedRequirement = current.requirement_id;
       selectedModule = choices.find(group => group.items.includes(current)).key;
-      const detail = element('section', null, 'module-detail panel requirement-card'); detail.setAttribute('aria-label', '需求列表');
-      const layout = element('div', null, 'module-requirements');
-      const picker = element('nav', null, 'requirement-picker'); picker.setAttribute('aria-label', '选择需求');
+      // Same layout as the documents: a sticky list on the left, one requirement card with a header bar on the right.
+      const detail = element('div', null, 'selection-layout document-workspace requirement-list-layout'); detail.setAttribute('aria-label', '需求列表');
+      const picker = element('nav', null, 'selection-list doc-toc requirement-picker'); picker.setAttribute('aria-label', '选择需求');
       choices.filter(group => group.items.length).forEach(group => {
         picker.append(iconLabel(element('p', group.title, 'requirement-group'), 'folder'));
         group.items.forEach(req => {
@@ -1198,7 +1212,8 @@
           }));
         });
       });
-      layout.append(picker, requirementCard(current)); detail.append(layout); content.append(detail);
+      const reader = element('div', null, 'selection-detail');
+      reader.append(requirementCard(current)); detail.append(picker, reader); content.append(detail);
       return;
     }
     const filters = element('nav', null, 'module-filters'); filters.setAttribute('aria-label', '业务模块列表');
@@ -1533,12 +1548,14 @@
     const openNfrs = nfrs.filter(item => !['confirmed', 'parked'].includes(item.review_status));
     const design = project.prototype_design;
     const rows = [
-      {done: active.length > 0 && confirmed.length === active.length, title: '确认功能需求', detail: active.length ? confirmed.length + ' / ' + active.length + ' 条已确认' : '尚无功能需求', view: 'review'},
+      {done: active.length > 0 && confirmed.length === active.length, title: '确认功能需求', detail: active.length ? confirmed.length + ' / ' + active.length + ' 条已确认' : '尚无功能需求', view: 'modules'},
       {done: confirmed.length > 0 && !noAcceptance.length, title: '补全验收标准', detail: !confirmed.length ? '确认需求后检查' : noAcceptance.length ? noAcceptance.map(req => req.title).join('、') + ' 缺验收标准' : '已确认需求都有验收标准', view: 'modules'},
-      {done: nfrs.length > 0 && !openNfrs.length, title: '确认非功能需求', detail: !nfrs.length ? '尚未整理性能、权限、设备等非功能需求' : openNfrs.length ? openNfrs.length + ' 条待确认' : nfrs.length + ' 条已处理', view: nfrs.length ? 'review' : null},
+      {done: nfrs.length > 0 && !openNfrs.length, title: '确认非功能需求', detail: !nfrs.length ? '尚未整理性能、权限、设备等非功能需求' : openNfrs.length ? openNfrs.length + ' 条待确认' : nfrs.length + ' 条已处理', view: null},
       {done: Boolean(design), title: '原型设计', detail: design ? (design.pages || []).length + ' 个页面 · ' + (design.positioning?.product_type || '') : '由 Skill 按项目定位、需求和非功能需求设计页面', view: null},
     ];
-    const card = panel('生成原型前');
+    const card = panel('生成原型');
+    const left = rows.filter(row => !row.done).length;
+    card.append(element('p', left ? '建议先完成下面 ' + left + ' 项；也可以直接生成，未确认的需求按草稿出页面。' : '准备就绪，可以生成原型。', 'inline-note'));
     const list = element('ol', null, 'prototype-checklist');
     for (const row of rows) {
       const item = element('li', null, row.done ? 'done' : '');
@@ -1549,18 +1566,17 @@
       list.append(item);
     }
     card.append(list);
-    const ready = rows.every(row => row.done);
-    if (ready && serverState) {
+    if (serverState) {
       const form = element('form', null, 'document-actions');
       const version = element('input'); version.value = nextVersion(); version.required = true; version.setAttribute('aria-label', '原型版本'); version.disabled = workflowBusy;
-      const submit = iconLabel(element('button', '生成原型', 'button primary'), 'prototype'); submit.type = 'submit'; submit.disabled = workflowBusy;
+      const submit = iconLabel(element('button', left ? '直接生成原型' : '生成原型', 'button primary'), 'prototype'); submit.type = 'submit'; submit.disabled = workflowBusy;
       form.append(version, submit);
       form.addEventListener('submit', event => { event.preventDefault(); workflowAction(() => localRequest('/api/generate', {method: 'POST', body: JSON.stringify({version: version.value, kinds: ['prototype']})})); });
       card.append(form);
       if (workflowMessage) card.append(element('p', workflowMessage, 'inline-note'));
       const task = (serverState.tasks || []).filter(item => item.kind === 'generation' && item.status === 'completed').at(-1);
       if (task) { const link = element('a', '打开 ' + task.version, 'button ghost small'); link.href = '/versions/' + task.id + '/workbench/index.html#prototype'; card.append(link); }
-    } else if (ready) card.append(element('p', '用本地服务打开工作台后可直接生成，或在 Skill 中执行原型生成。', 'inline-note'));
+    } else card.append(element('p', '用本地服务打开工作台后可在这里生成，或在 Skill 中执行原型生成。', 'inline-note'));
     content.append(card);
   }
   function designedPrototype(artifact) {
@@ -1735,29 +1751,30 @@
     if (reqs.length) { const used = element('p', '相关需求：', 'inline-note entity-reqs'); reqs.forEach(req => used.append(requirementLink(req))); detail.append(used); }
     content.append(detail);
   }
+  // One row per endpoint (method · path · name · status); click a row to see request, response and errors.
   function api() {
     const apis = (project.apis || []).filter(matches);
     if (!apis.length) { content.append(empty('暂无接口设计：本次分析没有整理接口草案。需要时让 Skill 按已确认需求补充 apis，并标为草案')); return; }
+    const list = element('section', null, 'panel api-list'); list.setAttribute('aria-label', '接口列表');
+    list.append(element('p', apis.length + ' 个接口 · 点击一行查看请求、响应和异常', 'inline-note api-count'));
     for (const item of apis) {
-      const card = panel(item.name || item.api_id, 'technical');
-      card.classList.add('api-spec');
-      const endpoint = element('div', null, 'api-endpoint');
-      const state = element('span', states[item.review_status] || item.review_status, 'api-status');
-      endpoint.append(element('span', display(item.method), 'api-method'), element('code', display(item.path)), state);
-      card.append(endpoint);
-      const parts = element('div', null, 'api-parts');
-      for (const [caption, data, marker] of [['请求', item.request, 'external'], ['响应', item.response, 'back'], ['异常', item.errors, 'pending']]) {
-        const block = element('section');
-        block.append(iconLabel(element('h3', caption), marker), valueNode(data)); parts.append(block);
+      const row = element('details', null, 'api-row');
+      const summary = element('summary');
+      const method = element('span', display(item.method), 'api-method'); method.dataset.method = String(item.method || '').toUpperCase();
+      summary.append(method, element('code', display(item.path), 'api-path'), element('span', item.name || item.api_id, 'api-name'), element('span', states[item.review_status] || item.review_status || '草稿', 'api-status'));
+      row.append(summary);
+      const body = element('div', null, 'api-body');
+      for (const [caption, value] of [['请求', item.request], ['响应', item.response], ['异常', item.errors]]) {
+        if (value === undefined || value === null || (Array.isArray(value) && !value.length)) continue;
+        const block = element('section', null, 'api-block'); block.append(element('h3', caption));
+        block.append(typeof value === 'string' ? element('pre', value, 'api-code') : element('pre', JSON.stringify(value, null, 2), 'api-code'));
+        body.append(block);
       }
-      card.append(parts);
       const related = requirements.filter(req => item.requirement_ids?.includes(req.requirement_id));
-      if (related.length) {
-        const links = element('div', null, 'api-related');
-        links.append(iconLabel(element('h3', '关联需求'), 'modules'), ...related.map(requirementLink)); card.append(links);
-      }
-      content.append(card);
+      if (related.length) { const links = element('p', '关联需求：', 'inline-note api-related'); related.forEach(req => links.append(requirementLink(req))); body.append(links); }
+      row.append(body); list.append(row);
     }
+    content.append(list);
   }
   // Delivery = send the confirmed prototype to the customer: confirm this version, then build the package.
   function releasePanel() {
