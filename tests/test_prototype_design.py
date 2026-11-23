@@ -151,5 +151,34 @@ class DesignedPrototypeEndToEnd(unittest.TestCase):
             self.assertEqual([item['capability'] for item in task['generation_results'] if item['generation_status'] == 'success'], ['prototype'])
             self.assertTrue((Path(task['result_dir']) / 'prototype/index.html').is_file())
 
+    def test_each_version_records_how_it_was_made(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            result = exercise_designed(Path(temporary))
+            history = json.loads((result['v3'] / 'history.json').read_text())
+            self.assertEqual([entry['kind'] for entry in history], ['analysis', 'review', 'generation'])
+            self.assertEqual([entry['version'] for entry in history], ['v1', 'v2', 'v3'])
+            self.assertEqual(len(history[1]['decisions']), 11)
+            self.assertEqual({item['outcome'] for item in history[1]['decisions']}, {'confirmed'})
+            self.assertEqual(history[2]['generated'], [{'capability': 'prototype', 'status': 'success'}])
+
+    def test_unchanged_diagram_is_reused_not_regenerated(self):
+        import shutil as _shutil
+        from unittest import mock
+        import workflow
+        with tempfile.TemporaryDirectory() as temporary:
+            previous = Path(temporary) / 'previous'; (previous / 'data-model').mkdir(parents=True)
+            (previous / 'data-model/index.html').write_text('<!doctype html><p>erd v1</p>')
+            (previous / 'generation.json').write_text(json.dumps({'results': [{'capability': 'erd', 'generation_status': 'success', 'path': 'data-model/index.html', 'validation_results': ['ok']}]}))
+            (previous / 'manifest.json').write_text(json.dumps({'artifacts': [{'path': 'data-model/index.html', 'generator': 'Schema Canvas', 'generator_version': '1', 'artifact_version': 'v1', 'sha256': 'x'}]}))
+            baseline = {'name': 'demo', 'artifact_version': 'v1', 'business_model': {'entities': [{'name': 'Ticket'}], 'relations': []}, 'requirements': [{'requirement_id': 'REQ-001', 'review_status': 'draft'}]}
+            project = {**baseline, 'project_id': 'demo', 'artifact_version': 'v2', 'requirements': [{'requirement_id': 'REQ-001', 'review_status': 'confirmed'}]}
+            root = Path(temporary) / 'out'; root.mkdir()
+            with mock.patch('generate_artifacts.generate', side_effect=AssertionError('should not regenerate')):
+                records, summary = workflow.build_artifacts(project, {'SRC-1': {}}, root, {'generation': ['erd'], 'baseline_dir': str(previous)}, baseline)
+            self.assertEqual((root / 'data-model/index.html').read_text(), '<!doctype html><p>erd v1</p>')
+            self.assertEqual(records[0]['reused_from'], 'v1')
+            self.assertEqual(records[0]['artifact_version'], 'v2')
+            self.assertEqual(summary['results'][0]['reused_from'], 'v1')
+
 if __name__ == '__main__':
     unittest.main()

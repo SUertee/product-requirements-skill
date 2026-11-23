@@ -95,7 +95,8 @@ meetings 可补充 date、duration_label、url 和 highlights。highlights 为�
 | data-model/index.html | Schema Canvas 交互式 ERD，记录模型来源和版本 |
 | review.json | 疑问、冲突、变更差异、影响范围与人工确认 |
 | diff.json | 新旧版本字段差异、锁定冲突与修订依据 |
-| generation.json | 实际生成项、检查及独立失败原因 |
+| generation.json | 实际生成项、检查及独立失败原因；沿用上一版的项带 reused_from |
+| history.json | 版本记录：每一版的来源版本、类型、评审结论、变化数和成果，逐版累积 |
 | manifest.json | 文件状态、版本、依赖、生成信息、受众、检查和发布结果 |
 
 `project.json` 最少包含 project_id、schema_version、artifact_version、baseline_version、context_sources、requirement_profile、requirements、business_model、pages、design_context。requirements 使用 workflow.md 的需求卡字段。模型中区分 logical 与 foreign_key 关系，外键依据真实数据库定义。

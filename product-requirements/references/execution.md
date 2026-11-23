@@ -49,7 +49,7 @@ python3 product-requirements/scripts/workflow.py --workspace runs/demo/inbox \
 - workflow 将每条已明确的业务流程分别适配到 Archify，执行 validate、render、check。浏览器复核单独记录。
 - erd 使用 Schema Canvas 模板展示实体与关系。数据库事实依据不足时保留业务模型状态。
 - prototype 优先使用 prototype_design：检查 FR／NFR 确认与覆盖后，把主 Skill 设计的页面装入 assets/prototype-shell.html，覆盖报告写入 generation.json，细则见 [原型设计与生成](prototype.md)。未提供 prototype_design 时，根据 pages 中的 fields、actions、columns、records_from 生成表单和列表交互。动作支持 submit、navigate、reset，字段支持 text、textarea、select、email、number、date、checkbox。模拟数据保存在页面内存，刷新后重置。
-- 首条流程输出 diagrams/workflow.html，后续流程按序输出 workflow-2.html 等。新增成果时同时重新生成当前基线中已成功的已知成果，保持同一目标版本。每项生成结果独立记录到 generation.json，检查各项 generation_status 和 error。旧版本产物保持原位置。
+- 首条流程输出 diagrams/workflow.html，后续流程按序输出 workflow-2.html 等。新增成果、应用评审或保存文档时，当前基线中已成功的成果会带到新版本：架构图、模块图和数据模型的生成依据没变时直接沿用上一版文件（记录 reused_from），有变化才重新生成；原型每次按新版本重新生成。每项生成结果独立记录到 generation.json，检查各项 generation_status 和 error。旧版本产物保持原位置。
 
 ## 客户包
 
