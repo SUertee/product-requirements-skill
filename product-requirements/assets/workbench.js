@@ -51,6 +51,7 @@
   let reviewTab = 'records';
   let workflowBusy = false;
   let workflowMessage = '';
+  let appliedTask = null;  // version created from the review bar this session
   let pendingChanges = [];
   let previewDevice = 'desktop';
 
@@ -382,7 +383,12 @@
     const decisions = (serverState.review.decisions || []).filter(item => (item.review_stage || 'definition') === 'definition');
     if (!decisions.length && !pendingChanges.length) return null;
     const bar = element('div', null, 'review-pending-bar');
-    bar.append(element('span', '已记录 ' + decisions.length + ' 条结论' + (pendingChanges.length ? '、' + pendingChanges.length + ' 处修改' : '') + '，生成新版本后生效'));
+    if (appliedTask) {
+      bar.append(element('span', '已生成新版本 ' + appliedTask.version + '，评审结论和修改都在新版本里'));
+      const open = element('a', '打开 ' + appliedTask.version, 'button primary small'); open.href = '/versions/' + encodeURIComponent(appliedTask.id) + '/workbench/index.html#modules';
+      bar.append(open); return bar;
+    }
+    bar.append(element('span', '已保存 ' + decisions.length + ' 条评审结论' + (pendingChanges.length ? '、' + pendingChanges.length + ' 处修改' : '') + '。当前版本保持不变，生成新版本后需求状态才更新'));
     const form = element('form', null, 'review-pending-form');
     const version = element('input'); version.id = 'review-version'; version.value = nextVersion(); version.required = true; version.setAttribute('aria-label', '新版本号');
     const submit = iconLabel(element('button', '生成新版本', 'button primary small'), 'history'); submit.type = 'submit'; submit.disabled = workflowBusy;
@@ -391,7 +397,7 @@
       event.preventDefault(); const targetVersion = version.value; const changes = pendingChanges.slice(); const revision = serverState.review.revision;
       workflowAction(async () => {
         const result = await localRequest('/api/review/apply', {method: 'POST', body: JSON.stringify({version: targetVersion, revision, changes})});
-        pendingChanges = []; return result;
+        pendingChanges = []; if (result.task?.status === 'completed') appliedTask = result.task; return result;
       });
     });
     bar.append(form);
@@ -1191,7 +1197,6 @@
     }
     tools.append(switcher, element('span', visible.length + ' / ' + requirements.length + ' 条需求', 'module-count'));
     content.append(tools);
-    if (workflowMessage) content.append(element('p', workflowMessage, 'inline-note'));
     if (!selected) { content.append(empty('暂无匹配需求，可调整搜索词或筛选条件')); return; }
     selectedModule = selected.key;
     if (moduleView === 'list') {
@@ -1741,7 +1746,7 @@
       for (const field of current.fields) {
         const row = body.insertRow();
         row.insertCell().textContent = field.name || field.field_id || '';
-        row.insertCell().textContent = field.type || '待确认';
+        row.insertCell().textContent = typeLabel(field.type);
         const {name, field_id, type, ...rest} = field;
         row.insertCell().textContent = field.description || field.note || (Object.keys(rest).length ? Object.entries(rest).map(([key, value]) => key + '：' + display(value)).join('；') : '—');
       }
@@ -1751,29 +1756,47 @@
     if (reqs.length) { const used = element('p', '相关需求：', 'inline-note entity-reqs'); reqs.forEach(req => used.append(requirementLink(req))); detail.append(used); }
     content.append(detail);
   }
-  // One row per endpoint (method · path · name · status); click a row to see request, response and errors.
+  // ParTrace-style API table: header row, one group per business module, one row per endpoint; click a row for request / response / errors.
+  function apiModule(item) {
+    const modules = project.modules || [];
+    return modules.find(module => module.module_id === item.module_id) || modules.find(module => (module.requirement_ids || []).some(id => item.requirement_ids?.includes(id)));
+  }
+  const typeLabels = {string: '文本', text: '长文本', varchar: '文本', char: '文本', int: '整数', integer: '整数', bigint: '整数', number: '数字', float: '小数', double: '小数', decimal: '小数', boolean: '布尔', bool: '布尔', date: '日期', datetime: '日期时间', timestamp: '时间戳', time: '时间', json: 'JSON', object: '对象', array: '列表', list: '列表', enum: '枚举', uuid: 'UUID', file: '文件', url: '链接'};
+  function typeLabel(value) { return value ? typeLabels[String(value).trim().toLowerCase()] || value : '待确认'; }
   function api() {
     const apis = (project.apis || []).filter(matches);
     if (!apis.length) { content.append(empty('暂无接口设计：本次分析没有整理接口草案。需要时让 Skill 按已确认需求补充 apis，并标为草案')); return; }
     const list = element('section', null, 'panel api-list'); list.setAttribute('aria-label', '接口列表');
-    list.append(element('p', apis.length + ' 个接口 · 点击一行查看请求、响应和异常', 'inline-note api-count'));
-    for (const item of apis) {
-      const row = element('details', null, 'api-row');
-      const summary = element('summary');
-      const method = element('span', display(item.method), 'api-method'); method.dataset.method = String(item.method || '').toUpperCase();
-      summary.append(method, element('code', display(item.path), 'api-path'), element('span', item.name || item.api_id, 'api-name'), element('span', states[item.review_status] || item.review_status || '草稿', 'api-status'));
-      row.append(summary);
-      const body = element('div', null, 'api-body');
-      for (const [caption, value] of [['请求', item.request], ['响应', item.response], ['异常', item.errors]]) {
-        if (value === undefined || value === null || (Array.isArray(value) && !value.length)) continue;
-        const block = element('section', null, 'api-block'); block.append(element('h3', caption));
-        block.append(typeof value === 'string' ? element('pre', value, 'api-code') : element('pre', JSON.stringify(value, null, 2), 'api-code'));
-        body.append(block);
+    list.append(element('p', apis.length + ' 个接口 · 按业务模块分组，点击一行查看请求、响应和异常', 'inline-note api-count'));
+    const head = element('div', null, 'api-head');
+    for (const label of ['方法', '路径', '用途', '状态']) head.append(element('span', label));
+    list.append(head);
+    const groups = new Map();
+    for (const item of apis) { const module = apiModule(item); const key = module?.module_id || ''; if (!groups.has(key)) groups.set(key, {module, items: []}); groups.get(key).items.push(item); }
+    const modules = project.modules || [];
+    const ordered = [...groups.values()].sort((a, b) => (a.module ? modules.indexOf(a.module) : 1e9) - (b.module ? modules.indexOf(b.module) : 1e9));
+    ordered.forEach((group, index) => {
+      const title = element('div', null, 'api-group');
+      title.append(element('strong', (index + 1) + '. ' + (group.module?.name || '未归属模块')), element('span', group.items.length + ' 个接口'));
+      list.append(title);
+      for (const item of group.items) {
+        const row = element('details', null, 'api-row');
+        const summary = element('summary');
+        const method = element('span', String(item.method || '—').toUpperCase(), 'api-method'); method.dataset.method = String(item.method || '').toUpperCase();
+        summary.append(method, element('code', display(item.path), 'api-path'), element('span', item.name || item.api_id, 'api-name'), element('span', states[item.review_status] || item.review_status || '草稿', 'api-status'));
+        row.append(summary);
+        const body = element('div', null, 'api-body');
+        for (const [caption, value] of [['请求', item.request], ['响应', item.response], ['异常', item.errors]]) {
+          if (value === undefined || value === null || (Array.isArray(value) && !value.length)) continue;
+          const block = element('section', null, 'api-block'); block.append(element('h3', caption));
+          block.append(element('pre', typeof value === 'string' ? value : JSON.stringify(value, null, 2), 'api-code'));
+          body.append(block);
+        }
+        const related = requirements.filter(req => item.requirement_ids?.includes(req.requirement_id));
+        if (related.length) { const links = element('p', '关联需求：', 'inline-note api-related'); related.forEach(req => links.append(requirementLink(req))); body.append(links); }
+        row.append(body); list.append(row);
       }
-      const related = requirements.filter(req => item.requirement_ids?.includes(req.requirement_id));
-      if (related.length) { const links = element('p', '关联需求：', 'inline-note api-related'); related.forEach(req => links.append(requirementLink(req))); body.append(links); }
-      row.append(body); list.append(row);
-    }
+    });
     content.append(list);
   }
   // Delivery = send the confirmed prototype to the customer: confirm this version, then build the package.

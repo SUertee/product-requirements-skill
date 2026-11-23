@@ -168,6 +168,19 @@ def archify_workflow(project, root, flow_index=0):
     return {'path': output_path, 'generator': 'Archify', 'generator_version': hashlib.sha256((package / 'SKILL.md').read_bytes()).hexdigest(), 'validation_results': ['Upstream workflow validate, render and artifact check passed', 'Browser visual review pending']}
 
 
+# Column types shown in Chinese; table and field names stay as written (English identifiers).
+TYPE_LABELS = {'string': '文本', 'text': '长文本', 'varchar': '文本', 'char': '文本', 'int': '整数', 'integer': '整数', 'bigint': '整数',
+               'number': '数字', 'float': '小数', 'double': '小数', 'decimal': '小数', 'boolean': '布尔', 'bool': '布尔',
+               'date': '日期', 'datetime': '日期时间', 'timestamp': '时间戳', 'time': '时间', 'json': 'JSON', 'object': '对象',
+               'array': '列表', 'list': '列表', 'enum': '枚举', 'uuid': 'UUID', 'file': '文件', 'url': '链接'}
+
+
+def type_label(value):
+    if not value:
+        return '待确认'
+    return TYPE_LABELS.get(str(value).strip().lower(), value)
+
+
 def schema_canvas(project, root):
     package = resolve('schema-canvas')
     template = (package / 'assets/reference-erd.html').read_text(encoding='utf-8')
@@ -181,7 +194,7 @@ def schema_canvas(project, root):
         if not isinstance(identity, str) or not identity or any(item['id'] == identity for item in tables):
             raise ValueError('Entity identities must be unique nonempty strings.')
         domain = entity.get('domain') or 'business'
-        domains[domain] = entity.get('domain_label') or domain
+        domains[domain] = entity.get('domain_label') or ('业务数据' if domain == 'business' else domain)
         columns = []
         entity_fields = entity.get('fields', [])
         if not isinstance(entity_fields, list) or not all(isinstance(field, dict) for field in entity_fields):
@@ -193,7 +206,7 @@ def schema_canvas(project, root):
             markers = [label for key, label in [('primary_key', 'PK'), ('unique', 'UQ'), ('indexed', 'INDEX')] if field.get(key) is True]
             if field.get('nullable') is None:
                 markers.append('可空性待确认')
-            columns.append({'name': name, 'type': field.get('type') or '待确认', 'nullable': field.get('nullable'), 'markers': markers, 'default': field.get('default') if field.get('default') is not None else '', 'description': field.get('description', '')})
+            columns.append({'name': name, 'type': type_label(field.get('type')), 'nullable': field.get('nullable'), 'markers': markers, 'default': field.get('default') if field.get('default') is not None else '', 'description': field.get('description', '')})
         tables.append({'id': identity, 'domain': domain, 'description': entity.get('description') or '候选业务实体，依据当前需求模型', 'columns': columns, 'compositeUnique': entity.get('composite_unique', [])})
     ids = {table['id']: table for table in tables}
     relations = []
