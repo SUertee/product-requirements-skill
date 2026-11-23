@@ -293,10 +293,14 @@
     const card = panel(req.title);
     card.classList.add('requirement-inspector');
     const identity = element('div', null, 'requirement-identity');
-    const evidence = iconLabel(element('span', evidenceNames[req.evidence_type] || '待确认', 'evidence-tag'), 'quote');
+    // Two facts about a requirement, each with its label: where it came from, and whether a person has confirmed it.
+    const evidenceHelp = {explicit: '客户在会上直接说过', inferred: 'AI 根据会议推断，需人核对', suggested: '产品建议，客户没提过', unknown: '依据待补充'};
+    const statusHelp = {draft: '还没人确认', confirmed: '负责人已确认', disputed: '前后说法冲突，待裁决', parked: '本期不做'};
+    const evidence = element('span', '来源：' + (evidenceNames[req.evidence_type] || '待确认'), 'evidence-tag');
+    evidence.title = evidenceHelp[req.evidence_type] || evidenceHelp.unknown;
     evidence.dataset.evidence = req.evidence_type || 'unknown';
-    const statusMarker = {confirmed: 'decided', draft: 'clock', disputed: 'pending', parked: 'pause'};
-    const status = iconLabel(element('span', states[req.review_status] || '草稿', 'status-tag'), statusMarker[req.review_status] || 'clock');
+    const status = element('span', '状态：' + (states[req.review_status] || '草稿'), 'status-tag');
+    status.title = statusHelp[req.review_status] || statusHelp.draft;
     status.dataset.status = req.review_status;
     identity.append(evidence, status, element('span', req.requirement_id, 'requirement-code'));
     card.append(identity);
@@ -309,24 +313,20 @@
         entry.append(iconLabel(element('h3', label), marker));
         return entry;
       };
-      const summary = element('div', null, 'requirement-summary');
       const behavior = section('功能内容', 'documents', 'requirement-behavior');
-      behavior.append(valueNode(req.behavior));
+      behavior.append(valueNode(req.behavior)); body.append(behavior);
       const acceptance = section('验收标准', 'decided', 'requirement-acceptance');
-      acceptance.append(valueNode(req.acceptance_criteria));
-      summary.append(behavior, acceptance); body.append(summary);
-
+      acceptance.append(valueNode(req.acceptance_criteria)); body.append(acceptance);
       if (req.open_questions?.length) {
         const questions = section('需要确认', 'pending', 'requirement-questions');
         questions.append(valueNode(req.open_questions)); body.append(questions);
       }
-      const known = [['使用者', req.role], ['触发条件', req.trigger], ['输入', req.inputs], ['输出', req.outputs], ['业务规则', req.rules], ['出错时', req.exceptions]].filter(([, value]) => display(value) !== '待确认');
+      const known = [['使用者', req.role], ['什么时候用', req.trigger], ['输入', req.inputs], ['输出', req.outputs], ['业务规则', req.rules], ['出错时', req.exceptions]].filter(([, value]) => display(value) !== '待确认');
       if (known.length) {
-        const more = element('button', (requirementMore ? '收起' : '展开') + '使用者、规则等 ' + known.length + ' 项', 'button ghost small requirement-more'); more.type = 'button';
-        more.setAttribute('aria-expanded', String(requirementMore));
-        more.addEventListener('click', () => { requirementMore = !requirementMore; card.replaceWith(requirementCard(req)); });
-        body.append(more);
-        if (requirementMore) { const rules = section('细节', 'modules', 'requirement-rules'); fields(rules, known); body.append(rules); }
+        const facts = section('细节', 'modules', 'requirement-facts');
+        const list = element('dl', null, 'fact-list');
+        for (const [label, value] of known) list.append(element('dt', label), element('dd', display(value)));
+        facts.append(list); body.append(facts);
       }
       const refs = req.source_refs || [];
       const sources = section('会议原话' + (refs.length ? '（' + refs.length + '）' : ''), 'quote', 'requirement-sources');
@@ -1050,9 +1050,7 @@
     if (data.architecture_diagram) {
       const card = element('section', null, 'panel diagram-card'); card.setAttribute('aria-label', '技术架构');
       // The diagram speaks for itself: no title bar, just an icon to open it on its own page.
-      const open = element('a', null, 'diagram-open'); open.href = '../diagrams/architecture.html'; open.target = '_blank'; open.rel = 'noopener';
-      open.setAttribute('aria-label', '在新页面打开技术架构图'); open.title = '独立打开'; open.append(icon('external'));
-      card.append(open);
+      card.append(diagramOpenIcon('diagrams/architecture.html', '在新页面打开技术架构图'));
       const frame = element('iframe', null, 'architecture-preview'); frame.title = 'Archify 技术架构'; frame.setAttribute('sandbox', 'allow-scripts');
       const details = architectureDetails(architecture, frame);
       const bridge = `(() => {
@@ -1627,9 +1625,27 @@
     prototypeChecklist();
   }
   // Entities and fields render directly in the page; the Schema Canvas ERD opens as its own page when generated.
+  function diagramOpenIcon(path, label) {
+    const open = element('a', null, 'diagram-open'); open.href = '../' + path; open.target = '_blank'; open.rel = 'noopener';
+    open.setAttribute('aria-label', label); open.title = '独立打开'; open.append(icon('external'));
+    return open;
+  }
   function database() {
-    const erd = data.artifacts.find(item => item.path.startsWith('data-model/') && item.path.endsWith('.html'));
-    if (erd) { const bar = element('div', null, 'document-actions database-actions'); bar.append(fileLink(erd.path, '打开交互式 ERD')); content.append(bar); }
+    // Same card as the architecture: the Schema Canvas diagram with its relation lines, open icon in the corner.
+    if (data.data_model_diagram) {
+      const card = element('section', null, 'panel diagram-card'); card.setAttribute('aria-label', '数据模型');
+      card.append(diagramOpenIcon('data-model/index.html', '在新页面打开数据模型'));
+      const frame = element('iframe', null, 'architecture-preview data-model-frame'); frame.title = 'Schema Canvas 数据模型'; frame.setAttribute('sandbox', 'allow-scripts');
+      const resize = event => {
+        if (!frame.isConnected) { window.removeEventListener('message', resize); return; }
+        if (event.source !== frame.contentWindow || event.data?.type !== 'schema-canvas:size' || !Number.isFinite(event.data.height)) return;
+        frame.style.height = Math.max(320, Math.min(1800, event.data.height)) + 'px';
+      };
+      window.addEventListener('message', resize);
+      frame.srcdoc = data.data_model_diagram.replace('</head>', '<scr' + 'ipt>document.documentElement.dataset.embedded="true";</scr' + 'ipt></head>');
+      card.append(frame); content.append(card);
+      return;
+    }
     const model = project.business_model;
     const entities = Array.isArray(model.entities) ? model.entities : [];
     if (!entities.length) { content.append(empty('业务数据模型待整理')); return; }

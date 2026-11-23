@@ -914,3 +914,14 @@ video { width: 100%; max-height: 520px; margin-top: 20px; background: var(--ui-n
 .nav-button { height: 44px; min-height: 44px; padding-block: 0; }
 .page-header .workbench-toolbar .button, .page-header .compact-search input { height: 38px; min-height: 38px; }
 .page-header .workbench-toolbar .button { padding-block: 0; }
+
+/* Requirement detail: flat sections separated by space, no boxes inside the card. */
+.requirement-tab-body .requirement-section { padding: 0; border: 0; background: transparent; margin-top: 18px; }
+.requirement-tab-body .requirement-section:first-child { margin-top: 4px; }
+.requirement-tab-body .requirement-section h3 { margin: 0 0 6px; font-size: var(--ui-text-sm); color: var(--ui-muted); }
+.requirement-tab-body .requirement-section .label-icon { color: var(--ui-muted); }
+.requirement-tab-body .requirement-questions h3, .requirement-tab-body .requirement-questions .label-icon { color: var(--ui-warning); }
+.fact-list { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; margin: 0; }
+.fact-list dt { color: var(--ui-muted); font-size: var(--ui-text-sm); }
+.fact-list dd { margin: 0; color: var(--ui-ink-2); }
+.requirement-identity .evidence-tag, .requirement-identity .status-tag { cursor: help; }
