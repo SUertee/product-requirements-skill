@@ -48,7 +48,7 @@
   let intakeMessage = '';
   let reviewMessage = '';
   let reviewTarget = null;
-  let reviewTab = 'questions';
+  let reviewTab = 'records';
   let workflowBusy = false;
   let workflowMessage = '';
   let pendingChanges = [];
@@ -255,7 +255,7 @@
         if (lock.checked) current.add(key); else current.delete(key);
         pendingChanges = pendingChanges.filter(item => !(item.target === req.requirement_id && item.field === 'locked_fields'));
         if (JSON.stringify([...current].sort()) !== JSON.stringify([...original].sort())) pendingChanges.push({target: req.requirement_id, field: 'locked_fields', value: [...current].sort()});
-        message.textContent = '已保存为草稿。到“评审记录”确认后生成新版本';
+        message.textContent = '已暂存。页面顶部“生成新版本”后生效';
       } catch (error) { message.textContent = error.message; }
     });
     detail.append(form); return detail;
@@ -346,18 +346,56 @@
       body.append(sources);
       appendCustomerFeedback(body, req.requirement_id);
     }
+    // Review happens here, on the requirement: give a verdict (with an optional note) or edit it.
+    // The 评审记录 page only keeps the log of these decisions.
     const actions = element('div', null, 'requirement-actions');
-    const reviewButton = iconLabel(element('button', '提意见', 'button ghost small'), 'review');
-    reviewButton.type = 'button';
-    reviewButton.addEventListener('click', () => { reviewTarget = req.requirement_id; reviewTab = 'questions'; navigate('review'); });
-    actions.append(reviewButton);
     if (serverState) {
-      const edit = iconLabel(element('button', editing ? '返回需求' : '修改', 'button small'), editing ? 'back' : 'edit'); edit.type = 'button';
+      const decided = (serverState.review.decisions || []).filter(item => item.target === req.requirement_id && (item.review_stage || 'definition') === 'definition').at(-1);
+      const labels = {confirmed: '确认', needs_changes: '需要修改', parked: '暂缓'};
+      if (decided) actions.append(element('p', '已记录：' + labels[decided.outcome] + (decided.comment ? ' · ' + decided.comment : ''), 'inline-note decision-note'));
+      const note = element('input'); note.id = 'review-comment'; note.placeholder = '意见（选填）'; note.maxLength = 10000; note.setAttribute('aria-label', '意见（选填）');
+      const verdicts = element('div', null, 'outcome-choices'); verdicts.setAttribute('role', 'group'); verdicts.setAttribute('aria-label', '评审结论');
+      for (const [value, label] of [['confirmed', '确认'], ['needs_changes', '需要修改'], ['parked', '暂缓']]) {
+        const button = element('button', label, 'button small'); button.type = 'button'; button.dataset.outcome = value;
+        button.setAttribute('aria-pressed', String(decided?.outcome === value));
+        button.addEventListener('click', async () => {
+          try {
+            const result = await localRequest('/api/review', {method: 'POST', body: JSON.stringify({revision: serverState.review.revision, review_stage: 'definition', target: req.requirement_id, outcome: value, comment: note.value, reviewer: ''})});
+            serverState.review = result.review; reviewMessage = '';
+          } catch (error) { reviewMessage = error.message; }
+          render();
+        });
+        verdicts.append(button);
+      }
+      const edit = iconLabel(element('button', editing ? '返回需求' : '修改内容', 'button small'), editing ? 'back' : 'edit'); edit.type = 'button';
       edit.addEventListener('click', () => { requirementTab = editing ? 'detail' : 'edit'; card.replaceWith(requirementCard(req)); });
-      actions.append(edit);
+      actions.append(note, verdicts, edit);
+      if (reviewMessage) actions.append(element('p', reviewMessage, 'inline-note'));
     }
     card.append(body, actions);
     return card;
+  }
+  // When verdicts or edits are waiting, one bar on the requirement page turns them into the next version.
+  function pendingReviewBar() {
+    if (!serverState) return null;
+    const decisions = (serverState.review.decisions || []).filter(item => (item.review_stage || 'definition') === 'definition');
+    if (!decisions.length && !pendingChanges.length) return null;
+    const bar = element('div', null, 'review-pending-bar');
+    bar.append(element('span', '已记录 ' + decisions.length + ' 条结论' + (pendingChanges.length ? '、' + pendingChanges.length + ' 处修改' : '') + '，生成新版本后生效'));
+    const form = element('form', null, 'review-pending-form');
+    const version = element('input'); version.id = 'review-version'; version.value = nextVersion(); version.required = true; version.setAttribute('aria-label', '新版本号');
+    const submit = iconLabel(element('button', '生成新版本', 'button primary small'), 'history'); submit.type = 'submit'; submit.disabled = workflowBusy;
+    form.append(version, submit);
+    form.addEventListener('submit', event => {
+      event.preventDefault(); const targetVersion = version.value; const changes = pendingChanges.slice(); const revision = serverState.review.revision;
+      workflowAction(async () => {
+        const result = await localRequest('/api/review/apply', {method: 'POST', body: JSON.stringify({version: targetVersion, revision, changes})});
+        pendingChanges = []; return result;
+      });
+    });
+    bar.append(form);
+    if (workflowMessage) bar.append(element('p', workflowMessage, 'inline-note'));
+    return bar;
   }
   function needsDefinitionReview() {
     const activeRequirements = requirements.filter(req => req.review_status !== 'parked' && req.lifecycle_status !== 'cancelled');
@@ -447,7 +485,7 @@
       if (view === 'handoff') {
         row.disabled = !ready; row.setAttribute('aria-expanded', String(handoffOpen && ready));
         row.addEventListener('click', () => { handoffOpen = !handoffOpen; handoffMessage = ''; render(); });
-      } else row.addEventListener('click', () => { if (view === 'review') reviewTab = 'questions'; navigate(view); });
+      } else row.addEventListener('click', () => { if (view === 'review') reviewTab = 'records'; navigate(view); });
       outputs.append(row);
     }
     if (handoffOpen && handoffReady) outputs.append(handoffPreview());
@@ -465,7 +503,7 @@
       const owner = requirements.find(req => req.requirement_id === question.target);
       text.append(element('span', question.reason), element('small', question.origin + (owner ? ' · 需求「' + owner.title + '」' : ''), 'question-origin'));
       item.append(text, element('span', '→'));
-      item.addEventListener('click', () => { reviewTarget = question.target; reviewTab = 'questions'; navigate('review'); });
+      item.addEventListener('click', () => { const req = requirements.find(entry => entry.requirement_id === question.target); if (req) openRequirement(req); else { reviewTab = 'records'; navigate('review'); } });
       followUp.append(item);
     }
     if (!unique.length) followUp.append(element('p', '暂无待确认事项', 'inline-note'));
@@ -1118,6 +1156,7 @@
     const wrapper = element('div', null, 'content-diagram'); wrapper.append(svg); card.append(wrapper); content.append(card, details.host);
   }
   function modules() {
+    const bar = pendingReviewBar(); if (bar) content.append(bar);
     const visible = filteredRequirements();
     const groups = (project.modules || []).map(module => ({
       key: 'module:' + module.module_id, module, title: module.name || module.module_id,
@@ -1971,11 +2010,12 @@
   function review() {
     // Three steps people actually take: answer open questions, look back at what was decided, deliver.
     // The on-site customer questionnaire is optional and appears only when its server is running.
-    if (reviewTab === 'changes') reviewTab = 'records';
-    if (reviewTab === 'customer' && !serverState?.customer_review_enabled) reviewTab = 'questions';
+    // Decisions are made on each page (requirements, documents); this page is the log plus delivery.
+    if (['changes', 'questions'].includes(reviewTab)) reviewTab = 'records';
+    if (reviewTab === 'customer' && !serverState?.customer_review_enabled) reviewTab = 'records';
     const tabs = sectionTabs([
-      ['questions', '待确认', 'pending'], ...(serverState?.customer_review_enabled ? [['customer', '客户复核', 'actors']] : []),
-      ['records', '已记录', 'review'], ['delivery', '交付', 'package'],
+      ['records', '评审记录', 'review'], ...(serverState?.customer_review_enabled ? [['customer', '客户复核', 'actors']] : []),
+      ['delivery', '交付', 'package'],
     ], reviewTab, '评审内容', key => { reviewTab = key; render(); });
     tabs.classList.add('review-tabs');
     content.append(tabs);
@@ -2010,50 +2050,6 @@
       if (!seen.size) content.append(empty('暂无评审记录'));
       return;
     }
-    if (reviewTab === 'changes') {
-      const card = panel('版本变更');
-      fields(card, [['当前版本', project.artifact_version], ['上一版本', project.baseline_version]]);
-      const changes = data.diff?.changes || [];
-      for (const change of changes) {
-        const req = requirements.find(item => item.requirement_id === change.target);
-        const row = element('section', null, 'inbox-row'); row.append(element('h3', req?.title || change.target));
-        fields(row, [['字段', change.field], ['修改前', change.old], ['修改后', change.new]]); card.append(row);
-      }
-      for (const conflict of data.diff?.conflicts || []) {
-        const row = element('section', null, 'inbox-row'); row.append(element('h3', '需要核对的修改'));
-        fields(row, [['对象', conflict.target], ['字段', conflict.field], ['保留内容', conflict.retained], ['建议内容', conflict.proposed]]); card.append(row);
-      }
-      if (!changes.length && !data.diff?.conflicts?.length) card.append(element('p', '本版没有内容变更', 'inline-note'));
-      content.append(card); return;
-    }
-    const targets = [...new Set([...requirements.map(req => req.requirement_id), ...data.review.questions.map(question => question.target)])];
-    const groups = targets.map(target => {
-      const req = requirements.find(item => item.requirement_id === target);
-      const issues = data.review.questions.filter(question => question.target === target);
-      const specific = [...new Set(issues.map(issue => issue.reason))].filter(reason => reason !== '核对依据、范围与确认状态');
-      return {key: target, marker: req ? 'modules' : 'documents', title: req?.title || nfrTitle(target) || ({business_model: '业务模型', pages: '页面定义', requirements: '功能需求'}[target] || (target.startsWith('requirement_profile.') ? '项目背景与范围' : target)), meta: specific.length ? specific.length + ' 个问题' : '', req, issues, specific};
-    }).filter(group => (group.specific.length || group.key === reviewTarget) && matches([group.title, group.key, group.issues]));
-    const current = groups.find(group => group.key === reviewTarget) || groups[0];
-    if (!current) { content.append(empty(queryInput.value.trim() ? '没有匹配的评审事项' : '没有需要确认的问题')); return; }
-    reviewTarget = current.key;
-    const detail = selectionLayout(groups, current.key, '评审事项', key => { reviewTarget = key; reviewMessage = ''; });
-    detail.parentElement.classList.add('review-workspace');
-    const card = panel(current.title, 'pending');
-    card.classList.add('review-pending-card');
-    const reasons = [...new Set(current.issues.map(issue => issue.reason))];
-    const specific = reasons.filter(reason => reason !== '核对依据、范围与确认状态');
-    const shown = specific.length ? specific : reasons;
-    if (shown.length) {
-      const list = element('ul', null, 'review-issues');
-      shown.forEach(reason => list.append(iconLabel(element('li', reason), 'pending')));
-      card.append(list);
-    }
-    else card.append(element('p', '核对功能、范围与验收标准', 'inline-note'));
-    if (current.req) {
-      const button = iconLabel(element('button', '查看需求和原话 →', 'source-link'), 'quote'); button.type = 'button';
-      button.addEventListener('click', () => openRequirement(current.req)); card.append(button);
-    }
-    detail.append(card); reviewForm(detail);
   }
   function technical() {
     const tabs = {diagrams: '技术架构', database: '数据模型', api: '接口'};
