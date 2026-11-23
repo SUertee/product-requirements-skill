@@ -33,7 +33,7 @@ npx skills add SUertee/product-requirements-skill
 
 也可以手动把 `product-requirements/` 目录复制到所用工具的 Skill 目录，例如 Claude Code 的 `~/.claude/skills/product-requirements`。
 
-运行需要 `python3`（3.10 及以上，只用标准库）。可选：`lark-cli` 用于读取飞书妙记，`ffmpeg` 用于处理录音录屏。
+运行需要 Python 3.10 及以上（只用标准库）。macOS／Linux 用 `python3`，Windows 用 `python` 或 `py -3`。可选：`lark-cli` 用于读取飞书妙记，`ffmpeg` 用于处理录音录屏，Archify 图示需要 Node.js。`npx skills add` 需要 Node.js 22.20 及以上。
 
 **2. 在 Claude Code、码道等工具里直接说**
 

@@ -41,9 +41,14 @@ def minute_token(value):
     return value
 
 
+def lark_cli():
+    """The lark-cli executable. On Windows npm installs it as lark-cli.cmd, which only PATH lookup with PATHEXT finds."""
+    return shutil.which('lark-cli') or 'lark-cli'
+
+
 def call_cli(arguments, cwd=None):
     try:
-        result = subprocess.run(['lark-cli', *arguments, '--as', 'user', '--format', 'json'], capture_output=True, text=True, timeout=600, cwd=cwd)
+        result = subprocess.run([lark_cli(), *arguments, '--as', 'user', '--format', 'json'], capture_output=True, text=True, timeout=600, cwd=cwd)
     except FileNotFoundError as error:
         raise ConnectorError('lark-cli is unavailable. Install it and authorize your Feishu user account.') from error
     raw = result.stdout if result.returncode == 0 else result.stderr or result.stdout
@@ -85,7 +90,7 @@ OPTIONAL_SCOPES = ['minutes:minutes.search:read', 'minutes:minutes.media:export'
 
 
 def _json_command(arguments):
-    result = subprocess.run(['lark-cli', *arguments, '--json'], capture_output=True, text=True, timeout=60)
+    result = subprocess.run([lark_cli(), *arguments, '--json'], capture_output=True, text=True, timeout=60)
     try:
         return json.loads(result.stdout or result.stderr)
     except ValueError:
