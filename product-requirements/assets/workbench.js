@@ -29,6 +29,7 @@
   let selectedDocument = ['proposal.md', 'prd.md', 'schedule'].includes(requestedDocument) ? requestedDocument : 'proposal.md';
   let handoffOpen = requestedDocument === 'agent-prompt.md';
   let handoffMessage = '';
+  let intakeSource = 'file';
   const documentDrafts = {};
   let documentEditing = false;
   let documentSaving = false;
@@ -456,36 +457,7 @@
       followUp.append(item);
     }
     if (!unique.length) followUp.append(element('p', '暂无待确认事项', 'inline-note'));
-    const meeting = meetings.at(-1);
-    if (meeting) {
-      const open = element('button', null, 'output-row'); open.type = 'button';
-      open.append(element('strong', meeting.title), element('span', meeting.date || '查看素材'));
-      open.addEventListener('click', () => {
-        const material = (project.materials || []).find(item => meeting.material_ids?.includes(item.material_id));
-        if (material) selectedMaterial = 'material:' + material.material_id;
-        selectedSource = null; materialTab = 'library'; materialReader = 'highlights'; materialQuery = ''; materialPage = 0;
-        navigate('materials');
-      });
-      followUp.append(iconLabel(element('h3', '最近会议', 'overview-recent'), 'materials'), open);
-    }
     columns.append(followUp); content.append(columns);
-    const flow = project.business_model.flows?.[0];
-    if (flow?.steps?.length) {
-      const flowCard = panel(flow.name || '业务流程', 'technical');
-      const items = element('ol', null, 'overview-flow');
-      for (const step of flow.steps) {
-        const item = element('li');
-        const req = requirements.find(requirement => step.requirement_ids?.includes(requirement.requirement_id));
-        if (req) {
-          const label = requirementLink(req); label.textContent = step.label || req.title; item.append(label);
-        } else item.append(element('span', step.label || step.id));
-        items.append(item);
-      }
-      const file = data.artifacts.find(item => item.path === 'diagrams/workflow.html');
-      flowCard.append(items);
-      if (file) flowCard.append(fileLink(file.path, '打开流程图'));
-      content.append(flowCard);
-    }
   }
   async function localRequest(path, options = {}) {
     const response = await fetch(path, {...options, headers: {'X-Workbench-Request': '1', 'X-Workbench-Run': location.pathname.match(/^\/versions\/(AN-[a-f0-9]{24})\//)?.[1] || '', ...options.headers}});
@@ -527,68 +499,60 @@
       content.append(card);
       return;
     }
-    // One drop zone for files, one line for Feishu Minutes; rarely used options stay folded.
+    // Pick a source, then import: local files or a Feishu Minutes link, one button.
+    const feishuReady = Boolean(serverState.lark_cli_available);
+    if (intakeSource === 'feishu' && !feishuReady) intakeSource = 'file';
+    const sources = sectionTabs([['file', '本地文件'], ['feishu', '飞书妙记']], intakeSource, '素材来源', key => { intakeSource = key; intakeMessage = ''; render(); });
+    sources.classList.add('intake-sources');
+    if (!feishuReady) { const option = [...sources.querySelectorAll('button')].find(item => item.textContent === '飞书妙记'); if (option) { option.disabled = true; option.title = '本机未连接飞书（lark-cli 未就绪）'; } }
     const form = element('form', null, 'intake-form');
-    const files = element('input');
-    files.id = 'material-file'; files.type = 'file'; files.multiple = true; files.className = 'sr-only';
-    files.accept = '.txt,.md,.srt,.vtt,.mp3,.wav,.m4a,.aac,.ogg,.flac,.mp4,.mov,.webm,.mkv';
-    files.disabled = intakeBusy;
-    const drop = element('label', null, 'intake-drop'); drop.htmlFor = files.id;
-    const dropTitle = iconLabel(element('strong', '拖入录音、录屏或逐字稿，或点击选择'), 'upload');
-    const dropHint = element('span', 'TXT／MD／SRT／VTT 逐字稿，或常见音视频；每个文件最大 256 MB');
-    drop.append(dropTitle, dropHint);
-    const submit = iconLabel(element('button', '导入', 'button primary'), 'upload');
-    submit.type = 'submit'; submit.disabled = true;
-    const chosen = () => {
-      const names = Array.from(files.files).map(file => file.name);
-      dropHint.textContent = names.length ? names.join('、') : 'TXT／MD／SRT／VTT 逐字稿，或常见音视频；每个文件最大 256 MB';
-      drop.classList.toggle('has-files', names.length > 0);
-      submit.disabled = intakeBusy || !names.length;
-      submit.lastChild.textContent = names.length ? '导入 ' + names.length + ' 个文件' : '导入';
-    };
-    files.addEventListener('change', chosen);
-    for (const type of ['dragenter', 'dragover']) drop.addEventListener(type, event => { event.preventDefault(); drop.classList.add('dragging'); });
-    for (const type of ['dragleave', 'drop']) drop.addEventListener(type, () => drop.classList.remove('dragging'));
-    drop.addEventListener('drop', event => { event.preventDefault(); if (event.dataTransfer?.files?.length) { files.files = event.dataTransfer.files; chosen(); } });
-    const recording = element('select'); recording.id = 'related-recording';
-    const independent = element('option', '不关联'); independent.value = ''; recording.append(independent);
-    serverState.jobs.filter(job => job.kind === 'recording').forEach(job => { const option = element('option', job.name); option.value = job.job_id; recording.append(option); });
-    recording.disabled = intakeBusy;
-    form.append(files, drop, submit);
-    form.addEventListener('submit', event => {
-      event.preventDefault();
-      const selected = Array.from(files.files);
-      if (!selected.length) { intakeMessage = '请先选择文件'; render(); return; }
-      const relatedJob = recording.value;
-      importAction(async () => {
-        for (const file of selected) {
-          if (file.size > serverState.max_upload_bytes) throw new Error(file.name + ' 超过文件大小限制');
-          const result = await localRequest('/api/import?filename=' + encodeURIComponent(file.name) + (relatedJob ? '&related_job=' + encodeURIComponent(relatedJob) : ''), {method: 'POST', body: file});
-          if (result.job.status === 'failed') throw new Error(result.job.error || '预处理失败，原始材料已保留');
-        }
+    const submit = iconLabel(element('button', '导入', 'button primary'), 'upload'); submit.type = 'submit';
+    if (intakeSource === 'file') {
+      const files = element('input');
+      files.id = 'material-file'; files.type = 'file'; files.multiple = true; files.className = 'sr-only';
+      files.accept = '.txt,.md,.srt,.vtt,.mp3,.wav,.m4a,.aac,.ogg,.flac,.mp4,.mov,.webm,.mkv';
+      files.disabled = intakeBusy;
+      const drop = element('label', null, 'intake-drop'); drop.htmlFor = files.id;
+      const hint = element('span', '逐字稿 TXT／MD／SRT／VTT，或录音、录屏；每个文件最大 256 MB');
+      drop.append(iconLabel(element('strong', '选择文件，或拖到这里'), 'upload'), hint);
+      submit.disabled = true;
+      const chosen = () => {
+        const names = Array.from(files.files).map(file => file.name);
+        hint.textContent = names.length ? names.join('、') : '逐字稿 TXT／MD／SRT／VTT，或录音、录屏；每个文件最大 256 MB';
+        drop.classList.toggle('has-files', names.length > 0);
+        submit.disabled = intakeBusy || !names.length;
+      };
+      files.addEventListener('change', chosen);
+      for (const type of ['dragenter', 'dragover']) drop.addEventListener(type, event => { event.preventDefault(); drop.classList.add('dragging'); });
+      for (const type of ['dragleave', 'drop']) drop.addEventListener(type, () => drop.classList.remove('dragging'));
+      drop.addEventListener('drop', event => { event.preventDefault(); if (event.dataTransfer?.files?.length) { files.files = event.dataTransfer.files; chosen(); } });
+      form.append(files, drop, submit);
+      form.addEventListener('submit', event => {
+        event.preventDefault();
+        const selected = Array.from(files.files);
+        if (!selected.length) return;
+        importAction(async () => {
+          for (const file of selected) {
+            if (file.size > serverState.max_upload_bytes) throw new Error(file.name + ' 超过文件大小限制');
+            const result = await localRequest('/api/import?filename=' + encodeURIComponent(file.name), {method: 'POST', body: file});
+            if (result.job.status === 'failed') throw new Error(result.job.error || '预处理失败，原始材料已保留');
+          }
+        });
       });
-    });
-    const feishu = element('form', null, 'intake-inline');
-    const url = element('input');
-    url.id = 'minutes-url'; url.type = 'url'; url.required = true; url.placeholder = '或粘贴飞书妙记链接 https://…feishu.cn/minutes/…';
-    url.setAttribute('aria-label', '飞书妙记链接'); url.disabled = intakeBusy || !serverState.lark_cli_available;
-    const mode = element('select'); mode.id = 'minutes-mode';
-    for (const [value, text] of [['transcript', '逐字稿'], ['media', '原始音视频']]) { const option = element('option', text); option.value = value; mode.append(option); }
-    const connect = iconLabel(element('button', '获取', 'button'), 'link');
-    connect.type = 'submit'; connect.disabled = intakeBusy || !serverState.lark_cli_available;
-    feishu.append(url, connect);
-    feishu.addEventListener('submit', event => {
-      event.preventDefault();
-      const minutes = url.value;
-      const media = mode.value === 'media';
-      importAction(() => localRequest('/api/feishu', {method: 'POST', body: JSON.stringify({minutes, media})}));
-    });
-    const advanced = element('details', null, 'intake-advanced');
-    advanced.append(element('summary', '更多选项'));
-    for (const [text, control] of [['逐字稿关联已有录音', recording], ['飞书妙记获取内容', mode]]) { const label = element('label', text); label.htmlFor = control.id; advanced.append(label, control); }
-    card.append(form, feishu);
-    if (!serverState.lark_cli_available) card.append(element('p', '本机未连接飞书（lark-cli 未就绪），可改为导入妙记导出的逐字稿文件。', 'inline-note'));
-    card.append(advanced);
+    } else {
+      const url = element('input');
+      url.id = 'minutes-url'; url.type = 'url'; url.required = true; url.placeholder = 'https://…feishu.cn/minutes/…';
+      url.setAttribute('aria-label', '飞书妙记链接'); url.disabled = intakeBusy;
+      const row = element('div', null, 'intake-inline'); row.append(url, submit);
+      form.append(row, element('p', '用本机飞书账号读取这场妙记的逐字稿，需要你对它有查看和导出权限。', 'inline-note'));
+      form.addEventListener('submit', event => {
+        event.preventDefault();
+        const minutes = url.value;
+        importAction(() => localRequest('/api/feishu', {method: 'POST', body: JSON.stringify({minutes, media: false})}));
+      });
+    }
+    submit.disabled = submit.disabled || intakeBusy;
+    card.append(sources, form);
     if (intakeBusy) { const progress = element('progress'); progress.setAttribute('aria-label', '素材预处理中'); card.append(progress); }
     if (intakeMessage) { const message = element('p', intakeMessage, 'inline-note'); message.setAttribute('role', 'status'); card.append(message); }
     content.append(card);
@@ -822,7 +786,9 @@
       render(); document.getElementById('meeting-material').focus();
     });
     const metadata = [meeting?.date, meeting?.duration_label, selected.meta].filter(Boolean);
-    toolbar.append(selector, iconLabel(element('span', metadata.join(' · '), 'material-metadata'), 'clock'));
+    // A single meeting needs no picker; show its name as plain text.
+    const picker = entries.length > 1 ? selector : element('strong', selected.title, 'meeting-name');
+    toolbar.append(picker, iconLabel(element('span', metadata.join(' · '), 'material-metadata'), 'clock'));
     const attached = data.attachments.find(item => item.material_id === selected.material?.material_id);
     const actions = element('div', null, 'document-actions');
     if (attached) {
@@ -873,7 +839,11 @@
     const list = element('table', null, 'meeting-highlights');
     list.setAttribute('aria-label', '会议重点');
     const head = list.createTHead().insertRow();
-    for (const label of ['状态', '会议结论', '原话']) {
+    // The status column (已明确／条件答复／提议／待确认) only appears when the analysis recorded a status.
+    const statusOf = highlight => Object.hasOwn(statuses, highlight.status) ? highlight.status : {明确行动: 'decided', 已明确: 'decided', 条件答复: 'conditional', 提议: 'proposal', 待确认: 'pending'}[/^【(明确行动|已明确|条件答复|提议|待确认)】/.exec(highlight.text)?.[1]];
+    const showStatus = highlights.some(statusOf);
+    list.classList.toggle('without-status', !showStatus);
+    for (const label of [...(showStatus ? ['状态'] : []), '会议结论', '原话']) {
       const cell = element('th', label); cell.scope = 'col';
       if (label === '原话') cell.replaceChildren(iconLabel(element('span', label), 'quote'));
       head.append(cell);
@@ -886,9 +856,11 @@
       const prefix = /^【(明确行动|已明确|条件答复|提议|待确认)】/.exec(highlight.text);
       const legacy = {明确行动: 'decided', 已明确: 'decided', 条件答复: 'conditional', 提议: 'proposal', 待确认: 'pending'};
       const status = Object.hasOwn(statuses, highlight.status) ? highlight.status : legacy[prefix?.[1]];
-      const marker = element('span', statuses[status] || '—', 'meeting-status' + (status ? ' status-' + status : ''));
-      if (status) iconLabel(marker, status);
-      row.insertCell().append(marker);
+      if (showStatus) {
+        const marker = element('span', statuses[status] || '未标注', 'meeting-status' + (status ? ' status-' + status : ''));
+        if (status) iconLabel(marker, status);
+        row.insertCell().append(marker);
+      }
       row.insertCell().textContent = prefix ? highlight.text.slice(prefix[0].length).trim() : highlight.text;
       const citations = row.insertCell();
       for (const id of highlight.source_refs) {
@@ -2354,7 +2326,7 @@
   searchInput.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); searchResults.querySelector('.search-result')?.click(); } });
   searchDialog.addEventListener('click', event => { if (event.target === searchDialog) searchDialog.close(); });
   const searchButton = document.getElementById('open-search');
-  searchButton.append(icon('search'), element('span', '搜索', 'nav-label')); searchButton.addEventListener('click', openSearch);
+  searchButton.append(icon('search')); searchButton.addEventListener('click', openSearch);
   document.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); openSearch(); } });
 
   for (const [view, title] of Object.entries(views)) {
