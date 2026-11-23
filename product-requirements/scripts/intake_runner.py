@@ -15,7 +15,7 @@ import time
 from ingest_material import ingest, read_job, TEXT, MEDIA
 from feishu_connector import call_cli, import_minutes, ConnectorError
 from project_revision import digest
-from workflow import Workflow, WorkflowConflict, read_json, now
+from workflow import Workflow, WorkflowConflict, read_json, now, process_alive
 
 
 def transcribe(workspace, job_id, configuration):
@@ -40,11 +40,7 @@ def transcribe(workspace, job_id, configuration):
         if row and row[0] == 'completed' and (workflow.workspace / 'jobs' / row[2] / 'job.json').is_file():
             return read_job(workflow.workspace / 'jobs' / row[2])
         if row and row[0] == 'running':
-            try:
-                os.kill(row[1], 0)
-            except ProcessLookupError:
-                pass
-            else:
+            if process_alive(row[1]):
                 raise WorkflowConflict('This recording already has an active ASR attempt.')
         if row:
             db.execute('UPDATE asr_runs SET status=?,pid=?,attempt=attempt+1,error=NULL,updated=? WHERE id=?', ('running', os.getpid(), now(), identity))
@@ -164,11 +160,7 @@ class IntakeRunner:
                         if row and row[0] in {'completed', 'failed'}:
                             continue
                         if row and row[0] == 'running' and row[2]:
-                            try:
-                                os.kill(row[2], 0)
-                            except ProcessLookupError:
-                                pass
-                            else:
+                            if process_alive(row[2]):
                                 continue
                         attempt = (row[1] if row else 0) + 1
                         db.execute('INSERT OR REPLACE INTO observed_minutes (project,token,status,attempt,job,error,pid) VALUES (?,?,?,?,?,?,?)', (self.project['project_id'], token, 'running', attempt, None, None, os.getpid()))

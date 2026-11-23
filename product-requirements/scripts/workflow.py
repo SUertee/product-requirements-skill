@@ -18,6 +18,34 @@ from ingest_material import file_sha256, read_job
 from project_revision import apply_review, differences, digest, reconcile
 
 
+def process_alive(pid):
+    """Whether a recorded worker process still exists, without disturbing it.
+
+    os.kill(pid, 0) only probes on POSIX; on Windows it terminates the process, so Windows asks the kernel instead.
+    """
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    if os.name == 'nt':
+        import ctypes
+        from ctypes import wintypes
+        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return ctypes.get_last_error() == 5  # ERROR_ACCESS_DENIED: exists, owned by someone else
+        try:
+            code = wintypes.DWORD()
+            return bool(kernel32.GetExitCodeProcess(handle, ctypes.byref(code))) and code.value == 259  # STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -269,11 +297,7 @@ class Workflow:
                 return self.task(request_id)
             owns_execution = execution_token is not None and row[3] == execution_token
             if row[0] == 'running' and not owns_execution:
-                try:
-                    os.kill(row[1], 0)
-                except ProcessLookupError:
-                    pass
-                else:
+                if process_alive(row[1]):
                     raise WorkflowConflict('This analysis result is being published.')
             if not owns_execution:
                 db.execute('UPDATE tasks SET status=?, attempt=attempt+1, pid=?, error=NULL, updated=? WHERE id=?', ('running', os.getpid(), now(), request_id))
@@ -325,11 +349,7 @@ class Workflow:
             if row[0] == 'completed':
                 return self.task(request_id)
             if row[0] == 'running':
-                try:
-                    os.kill(row[1], 0)
-                except ProcessLookupError:
-                    pass
-                else:
+                if process_alive(row[1]):
                     raise WorkflowConflict('This task already has a running host.')
             db.execute('UPDATE tasks SET status=?, attempt=attempt+1, pid=?, execution_token=?, error=NULL, updated=? WHERE id=?', ('running', os.getpid(), token, now(), request_id))
         folder = Path(task['request_path']).parent

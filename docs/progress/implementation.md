@@ -464,3 +464,10 @@
 - 每个版本新增 `history.json`，逐版累积：类型（分析会议／评审生效／生成成果／修改文档）、基于哪一版、评审结论（目标、结论、意见、记录人）、变化数和成果；工作台数据带上 history。
 - 评审记录页顶部新增「版本记录」：从新到旧，评审生效的版本直接列出每条结论，成果标「沿用 vX」。新版本不再出现“还没有评审记录”的空页。
 - 新增用例：版本记录逐版累积（分析→评审→生成）、依据未变的数据模型沿用而不重新生成。Python 回归 120 项与四个 DOM 检查通过；试跑 v39-full → v40-reviewed：三张图沿用 v39-full，原型重建，评审记录页显示版本记录，数据模型为嵌入的 Schema Canvas。
+
+## 2026-11-23 Windows 兼容
+
+- 进程存活检查改为 `workflow.process_alive()`：POSIX 仍用 `os.kill(pid, 0)` 探测（权限不足视为存活）；Windows 用 `OpenProcess` + `GetExitCodeProcess` 查询。原先四处 `os.kill(pid, 0)`（分析任务、宿主执行、ASR、妙记轮询）在 Windows 上会直接结束对应进程。
+- `lark-cli` 改为通过 `shutil.which` 解析路径，Windows 上 npm 安装的 `lark-cli.cmd` 可以被调用。
+- SKILL.md、运行流程和 README 注明 Windows 用 `python` 或 `py -3`，PowerShell 续行符用反引号；README 注明 `npx skills add` 需要 Node.js 22.20+、Archify 需要 Node.js。
+- 新增 tests/test_platform.py：模拟 Windows 时只查询不发信号、拒绝访问视为存活、lark-cli 使用解析后的路径。Python 回归 124 项通过；未在 Windows 实机验证。

@@ -12,6 +12,8 @@ metadata:
 
 以录音为核心输入，结合客户背景与历史项目形成项目定义。先生成内部讨论材料，经确认后再生成客户原型。
 
+文中命令写作 `python3`；Windows 上没有 `python3` 时改用 `python` 或 `py -3`，路径分隔符按系统处理。
+
 ## 任务路由
 
 - 新会议或后台接收材料，读取 [输入与预处理](references/ingestion.md)。本地文件使用 `scripts/ingest_material.py`。飞书妙记先读 [外部接入](references/ingestion.md)，运行 `scripts/feishu_connector.py --check` 确认可用后再导入。运行前查看 `--help`。纯文本标准化可直接运行 `scripts/normalize_transcript.py`。
