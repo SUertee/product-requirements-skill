@@ -1,22 +1,60 @@
-/* Product requirements skill, built-in UI system v0.1 */
+/* Product requirements skill · built-in UI system v1.0
+   Single source of design tokens for the workbench, prototype shell and project prototypes.
+   Other style files use these variables only; tests/test_ui_tokens.py enforces it. */
 :root {
   color-scheme: light;
-  --ui-page: #f4f6f9;
+  /* surfaces */
+  --ui-page: #f3f5f8;
   --ui-surface: #ffffff;
-  --ui-muted-surface: #e7f0f9;
+  --ui-surface-subtle: #f7f9fc;
+  --ui-surface-muted: #edf1f6;
+  /* text */
   --ui-ink: #202d40;
-  --ui-muted: #485d76;
-  --ui-border: #cbd5e1;
+  --ui-ink-2: #36465c;
+  --ui-muted: #5f6e83;
+  --ui-on-accent: #ffffff;
+  /* lines */
+  --ui-border: #dfe5ed;
+  --ui-border-strong: #b8c4d3;
+  /* accent */
   --ui-accent: #2863d6;
-  --ui-accent-hover: #2459bd;
+  --ui-accent-ink: #2459bd;
+  --ui-accent-soft: #edf3ff;
+  --ui-accent-soft-strong: #dce9ff;
+  --ui-accent-border: #b2c7eb;
+  /* navigation */
   --ui-nav: #172438;
-  --ui-nav-ink: #edf6ff;
-  --ui-success: #166534;
-  --ui-warning: #92400e;
+  --ui-nav-ink: #e6edf7;
+  --ui-nav-muted: #abbad0;
+  --ui-nav-hover: #22334b;
+  --ui-nav-active: #2c4160;
+  --ui-nav-line: #3c5271;
+  /* status */
+  --ui-success: #17643f;
+  --ui-success-soft: #e6f5ec;
+  --ui-success-mark: #1f8a5b;
+  --ui-warning: #8a5300;
+  --ui-warning-soft: #fdf1dc;
+  --ui-warning-mark: #b45309;
   --ui-danger: #b91c1c;
-  --ui-radius: 12px;
+  --ui-danger-soft: #fdecec;
+  /* diagrams */
+  --ui-diagram-line: #8293a9;
+  --ui-diagram-node: #7397da;
+  /* type: 12 label · 13 secondary · 15 body · 18 heading · 24 page title */
+  --ui-text-xs: 12px;
+  --ui-text-sm: 13px;
+  --ui-text-md: 15px;
+  --ui-text-lg: 18px;
+  --ui-text-xl: 24px;
+  /* shape and depth */
+  --ui-radius-sm: 8px;
+  --ui-radius: 10px;
+  --ui-radius-pill: 999px;
+  --ui-shadow-overlay: 0 18px 48px rgb(23 36 56 / .18);
+  --ui-backdrop: rgb(23 36 56 / .28);
   font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
-  font-size: 15px;
+  font-size: var(--ui-text-md);
   line-height: 1.6;
   color: var(--ui-ink);
   background: var(--ui-page);
@@ -25,40 +63,40 @@
 body { margin: 0; }
 button, input, select, textarea { font: inherit; }
 button, a, input, select, textarea { touch-action: manipulation; }
-a { color: var(--ui-accent-hover); text-underline-offset: 3px; }
+a { color: var(--ui-accent-ink); text-underline-offset: 3px; }
 :focus-visible { outline: 3px solid var(--ui-accent); outline-offset: 3px; }
 [hidden] { display: none !important; }
 .ui-shell { display: grid; grid-template-columns: 224px minmax(0, 1fr); min-height: 100dvh; }
 .ui-nav { padding: 24px 16px; background: var(--ui-nav); color: var(--ui-nav-ink); }
-.ui-nav a { display: block; padding: 10px 12px; border-radius: 8px; color: inherit; text-decoration: none; }
-.ui-nav a:hover, .ui-nav a[aria-current="page"] { background: #26374c; }
+.ui-nav a { display: block; padding: 10px 12px; border-radius: var(--ui-radius-sm); color: inherit; text-decoration: none; }
+.ui-nav a:hover, .ui-nav a[aria-current="page"] { background: var(--ui-nav-hover); }
 .ui-main { width: 100%; max-width: 1440px; min-width: 0; padding: 32px; margin-inline: auto; }
-.ui-title { margin: 0 0 24px; font-size: 28px; line-height: 1.3; overflow-wrap: anywhere; }
+.ui-title { margin: 0 0 24px; font-size: var(--ui-text-xl); line-height: 1.3; overflow-wrap: anywhere; }
 .ui-card { min-width: 0; padding: 24px; background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); }
 .ui-stack { display: grid; gap: 24px; }
 .ui-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-.ui-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 8px 16px; border: 1px solid var(--ui-border); border-radius: 8px; color: var(--ui-ink); background: var(--ui-surface); cursor: pointer; text-decoration: none; }
-.ui-button:hover { background: var(--ui-muted-surface); }
-.ui-button.primary { color: #ffffff; background: var(--ui-accent); border-color: var(--ui-accent); }
-.ui-button.primary:hover { background: var(--ui-accent-hover); }
+.ui-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 8px 16px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius-sm); color: var(--ui-ink); background: var(--ui-surface); cursor: pointer; text-decoration: none; }
+.ui-button:hover { background: var(--ui-surface-muted); }
+.ui-button.primary { color: var(--ui-on-accent); background: var(--ui-accent); border-color: var(--ui-accent); }
+.ui-button.primary:hover { background: var(--ui-accent-ink); }
 .ui-button.danger { color: var(--ui-danger); }
 .ui-button:disabled { opacity: .55; cursor: default; }
 .ui-field { display: grid; gap: 8px; }
-.ui-field input, .ui-field select, .ui-field textarea { width: 100%; min-height: 44px; padding: 8px 12px; color: var(--ui-ink); background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: 8px; }
+.ui-field input, .ui-field select, .ui-field textarea { width: 100%; min-height: 44px; padding: 8px 12px; color: var(--ui-ink); background: var(--ui-surface); border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius-sm); }
 .ui-field [aria-invalid="true"] { border-color: var(--ui-danger); }
-.ui-muted { color: var(--ui-muted); font-size: 13px; }
+.ui-muted { color: var(--ui-muted); font-size: var(--ui-text-sm); }
 .ui-error { color: var(--ui-danger); }
 .ui-table-scroll { min-width: 0; overflow-x: auto; }
 .ui-table-scroll table { width: 100%; border-collapse: collapse; }
 .ui-table-scroll th, .ui-table-scroll td { padding: 12px 16px; border-bottom: 1px solid var(--ui-border); text-align: left; vertical-align: top; }
-.ui-table-scroll th { background: var(--ui-muted-surface); }
+.ui-table-scroll th { background: var(--ui-surface-muted); }
 .ui-table-scroll th, .ui-table-scroll td { white-space: nowrap; }
 .ui-preview { display: block; width: 100%; min-height: 65dvh; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-surface); }
 @media (max-width: 899px) {
   .ui-shell { grid-template-columns: minmax(0, 1fr); }
   .ui-main { padding: 16px; }
   .ui-card { padding: 16px; }
-  .ui-title { font-size: 24px; }
+  .ui-title { font-size: var(--ui-text-xl); }
   .ui-nav { padding: 12px 16px; }
   .ui-nav .ui-nav-links { display: none; }
   .ui-nav[data-open="true"] .ui-nav-links { display: block; }

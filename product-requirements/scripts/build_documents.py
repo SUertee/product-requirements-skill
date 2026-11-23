@@ -458,7 +458,7 @@ def render_workbench(project, sources, review, documents, artifacts, extra=None,
     payload = json.dumps({'project': project, 'sources': list(sources.values()), 'review': review, 'documents': documents, 'artifacts': artifacts, 'attachments': attachments, 'module_diagram': module_diagram, 'architecture_diagram': architecture_diagram, 'diff': (extra or {}).get('diff.json'), 'generation': (extra or {}).get('generation.json'), 'generated_at': generated_at}, ensure_ascii=False)
     payload = payload.replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
     values = {
-        '__WORKBENCH_STYLE__': (PACKAGE / 'assets/workbench.css').read_text(),
+        '__WORKBENCH_STYLE__': (PACKAGE / 'assets/ui.css').read_text() + '\n' + (PACKAGE / 'assets/workbench.css').read_text(),
         '__WORKBENCH_DATA__': payload,
         '__WORKBENCH_SCRIPT__': (PACKAGE / 'assets/workbench.js').read_text(),
     }

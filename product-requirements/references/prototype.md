@@ -58,7 +58,7 @@
 - `data-state="error"` 的元素默认隐藏，`P.setState('error')` 或带 `data-show-state="error"` 的按钮显示它。页面声明的每个状态都要有对应元素。
 - 表单提交已被外壳拦截，页面脚本自行监听 submit 并调用 `reportValidity()` 校验。
 - `script` 以 `page`（本页根元素）和 `P` 为参数执行一次。`P` 提供 `h(tag, attrs, ...children)` 安全创建元素、`data`、`params`、`role`、`go(pageId, params)`、`onShow(pageId, fn)`、`onRole(fn)`、`setState(name)`、`loading(ms, then)`、`notify(text, kind)`。用户输入与示例数据用 textContent 或 `P.h` 输出。
-- `css` 只写本项目需要的补充规则，类名加项目前缀，不使用 url() 和 @import。
+- `css` 只写本项目需要的补充规则，类名加项目前缀，颜色、字号、圆角使用 ui.css 的 `--ui-*` 变量（见 [内置 UI 规范](ui-design.md)），不使用 url() 和 @import。
 
 ## 检查与生成
 
