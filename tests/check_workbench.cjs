@@ -82,10 +82,7 @@ async function settle() {
   await settle();
   assert.equal(document.querySelectorAll('[data-view]').length, 7);
   navigate('materials');
-  button('处理流程').click();
-  assert(document.querySelector('.processing-flow'));
-  assert.match(document.querySelector('.processing-flow').textContent, /接收.*转写.*需求分析.*工作台/);
-  button('素材').click();
+  assert(![...document.querySelectorAll('button')].some(item => item.textContent === '处理流程'), 'processing tab removed');
   navigate('overview');
   assert.equal(document.querySelectorAll('.overview-stat').length, 4);
   assert.match(document.querySelector('.overview-stats').textContent, /当前版本.*已迭代.*会议.*当前进度/);
@@ -97,10 +94,6 @@ async function settle() {
   navigate('documents');
   assert(![...document.querySelectorAll('button')].some(item => item.textContent === '开发提示词'), 'agent prompt left the documents tabs');
   assert(![...document.querySelectorAll('button')].some(item => item.textContent === '排期'), 'schedule tab removed');
-  navigate('materials');
-  button('处理流程').click();
-  assert.match(document.getElementById('page-content').textContent, /生成新版本/);
-  button('素材').click();
   navigate('overview');
   document.querySelector('.output-row[data-target="prototype"]').click();
   assert(document.querySelector('.workbench-preview'));
@@ -113,7 +106,8 @@ async function settle() {
   assert.equal(document.querySelectorAll('details').length, 0);
   assert.equal(document.getElementById('material-file'), null);
   button('导入').click();
-  assert.match(document.getElementById('page-content').textContent, /已生成分析版本/);
+  assert.match(document.getElementById('page-content').textContent, /最近导入[\s\S]*(已在当前版本|待生成新版本|分析中)/);
+  assert.equal(document.querySelectorAll('details').length, 0, 'import rows have no folded file lists');
   button('素材').click();
   assert.match(document.querySelector('.meeting-highlights').textContent, /测试会议重点/);
   assert.equal(document.querySelector('.workbench-toolbar').hidden, true);
@@ -160,6 +154,7 @@ async function settle() {
   choices.find(choice => choice.dataset.requirementId !== 'REQ-001').click();
   assert.equal(document.querySelector('.requirement-feedback'), null);
   document.querySelector('.requirement-choice[data-requirement-id="REQ-001"]').click();
+  [...document.querySelectorAll('button')].find(item => /查看其余 \d+ 条原话/.test(item.textContent))?.click();
   const citation = [...document.querySelectorAll('[data-source-ref]')].find(node => node.dataset.sourceRef === lastSourceId);
   assert.match(citation.textContent, /查看原话/);
   citation.click();
@@ -191,9 +186,8 @@ async function settle() {
   assert.equal(JSON.parse(requests.find(item => item.url === '/api/review').options.body).target, 'REQ-001');
   button('已记录').click();
   assert.match(document.getElementById('page-content').textContent, /合成评审：需要核对验收/);
-  button('版本变更').click();
-  assert.match(document.getElementById('page-content').textContent, /当前版本/);
-  button('负责人复核').click();
+  assert.match(document.getElementById('page-content').textContent, /本版相对.*的变化/);
+  button('待确认').click();
   submit(document.getElementById('review-version').closest('form'));
   await settle();
   const applied = requests.find(item => item.url === '/api/review/apply');
