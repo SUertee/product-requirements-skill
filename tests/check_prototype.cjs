@@ -103,11 +103,12 @@ if (process.argv[3]) {
   const empty = new JSDOM(fs.readFileSync(path.join(other, 'workbench/index.html'), 'utf8'), {url: 'http://127.0.0.1:8765/workbench/index.html#prototype', runScripts: 'outside-only', virtualConsole: quiet});
   empty.window.eval(fs.readFileSync(path.join(__dirname, '../product-requirements/assets/workbench.js'), 'utf8'));
   const items = [...empty.window.document.querySelectorAll('.prototype-checklist li strong')].map(node => node.textContent);
-  assert.deepEqual(items, ['确认功能需求', '验收标准', '确认非功能需求']);
+  assert.deepEqual(items, ['确认功能需求', '补全验收标准', '确认非功能需求']);
   assert.equal(empty.window.document.querySelector('.prototype-frame'), null);
-  // One next step and no in-page generate button: drafting and generation run in the Skill.
-  const next = empty.window.document.querySelectorAll('.prototype-next button');
-  assert.equal(next.length, 1, 'exactly one next step');
+  // No in-page generate button: the page hands a ready-to-paste instruction to the Skill.
+  const handoff = empty.window.document.querySelector('.prototype-handoff');
+  assert.ok(handoff, 'hand-off to the Skill is shown');
+  assert.match(handoff.querySelector('.handoff-text').textContent, /产品需求落地」Skill.*生成可交互原型/);
   assert.equal([...empty.window.document.querySelectorAll('#page-content button')].some(node => /生成原型/.test(node.textContent)), false);
 }
 // 4. Non-functional requirements are reviewed on the 功能需求 page, in their own group.
