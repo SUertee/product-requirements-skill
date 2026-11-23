@@ -29,7 +29,8 @@ select('component_999',frame.contentWindow); assert.equal(detail().dataset.compo
 select('component_'+(payload.project.technical_architecture.components.length-1),frame.contentWindow);
 assert.equal(detail().dataset.componentId,last.id);
 assert.match(detail().textContent,/开发内容/); assert.match(detail().textContent,/交付标准/);
-d.querySelector('button[data-component-id="'+first.id+'"]').click();
+assert.equal(d.querySelector('button[data-component-id]'), null, 'no chip row under the live diagram');
+select('component_0',frame.contentWindow);
 assert.equal(detail().dataset.componentId,first.id);
 
 dom.window.close();

@@ -1078,7 +1078,8 @@
       frame?.contentWindow?.postMessage({type: 'product-requirements:architecture-state', selected: nodes.indexOf(node)}, '*');
       if (reveal) detail.querySelector('h2')?.scrollIntoView?.({block: 'nearest'});
     }
-    host.append(picker, detail);
+    // With the live diagram, nodes are clicked in the diagram itself; the chip row is only kept for the plain SVG fallback.
+    host.append(...(frame ? [] : [picker]), detail);
     select(nodes.some(node => node.id === selectedArchitecture) ? selectedArchitecture : nodes[0].id);
     return {host, select};
   }
@@ -1170,7 +1171,7 @@
     let selected = choices.find(group => group.key === selectedModule) || choices[0];
     const tools = element('div', null, 'module-toolbar');
     const switcher = element('div', null, 'view-switcher'); switcher.setAttribute('role', 'group'); switcher.setAttribute('aria-label', '需求视图');
-    for (const [view, label, marker] of [['list', '需求列表', 'modules'], ['map', '功能模块', 'technical'], ['usecases', '用例图', 'actors']]) {
+    for (const [view, label, marker] of [['list', '需求列表', 'modules'], ['map', '业务模块', 'technical'], ['usecases', '用例图', 'actors']]) {
       const button = iconLabel(element('button', label), marker); button.type = 'button'; button.setAttribute('aria-pressed', String(moduleView === view));
       button.addEventListener('click', () => { moduleView = view; render(); content.querySelector('.view-switcher [aria-pressed="true"]')?.focus(); }); switcher.append(button);
     }
@@ -1202,7 +1203,7 @@
     }
     const filters = element('nav', null, 'module-filters'); filters.setAttribute('aria-label', '业务模块列表');
     const workspace = element('div', null, 'module-workspace');
-    const surface = element('section', null, 'module-surface'); surface.setAttribute('aria-label', {map: '功能模块', usecases: '用例图', list: '需求列表'}[moduleView]);
+    const surface = element('section', null, 'module-surface'); surface.setAttribute('aria-label', {map: '业务模块', usecases: '用例图', list: '需求列表'}[moduleView]);
     const detail = element('aside', null, 'module-detail panel requirement-card'); detail.setAttribute('aria-label', '模块详情');
     function select(key, reveal = false) {
       const next = choices.find(group => group.key === key);
@@ -1225,8 +1226,7 @@
     if (moduleView === 'usecases') {
       surface.append(useCaseDiagram(choices, (key, requirement) => { selectedRequirement = requirement; select(key, true); }));
     } else if (moduleView === 'map' && data.module_diagram) {
-      const head = element('div', null, 'module-surface-head'); head.append(iconLabel(element('h2', '业务模块'), 'modules'));
-      head.append(fileLink('diagrams/modules.html', '独立打开')); surface.append(head);
+      surface.classList.add('diagram-card'); surface.append(diagramOpenIcon('diagrams/modules.html', '在新页面打开业务模块图'));
       const frame = element('iframe', null, 'module-map'); frame.title = 'Archify 业务模块图'; frame.setAttribute('sandbox', 'allow-scripts');
       frame.style.height = Math.max(300, Math.ceil(project.modules.length / 3) * 160 + 120) + 'px';
       const bridge = `(() => {

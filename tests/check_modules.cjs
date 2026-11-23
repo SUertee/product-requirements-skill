@@ -15,7 +15,7 @@ function event(id, source) { w.dispatchEvent(new w.MessageEvent('message',{data:
 assert.equal(d.querySelector('.module-map'), null);
 assert(d.querySelector('.requirement-group'));
 assert.equal(d.querySelector('.module-filters'), null);
-button('功能模块').click();
+button('业务模块').click();
 let frame = d.querySelector('.module-map');
 assert(frame);
 assert.equal(d.querySelector('.module-filters'), null);
@@ -54,7 +54,7 @@ assert(d.querySelector('.requirement-inspector [data-source-ref]'));
 const search = d.getElementById('search');
 search.value = '工单处理'; search.dispatchEvent(new w.Event('input'));
 assert.match(d.getElementById('page-content').textContent,/2 \/ 6 条需求/);
-button('功能模块').click();
+button('业务模块').click();
 assert.equal(search.value,'工单处理');
 event('module_0',d.querySelector('.module-map').contentWindow);
 assert.match(detail(), /状态流转待客户确认/);
