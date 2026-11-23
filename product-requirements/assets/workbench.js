@@ -26,7 +26,9 @@
   let moduleFrame = null;
   let selectDiagramModule = null;
   const requestedDocument = new URLSearchParams(location.search).get('document');
-  let selectedDocument = ['proposal.md', 'prd.md', 'agent-prompt.md'].includes(requestedDocument) ? requestedDocument : 'proposal.md';
+  let selectedDocument = ['proposal.md', 'prd.md', 'schedule'].includes(requestedDocument) ? requestedDocument : 'proposal.md';
+  let handoffOpen = requestedDocument === 'agent-prompt.md';
+  let handoffMessage = '';
   const documentDrafts = {};
   let documentEditing = false;
   let documentSaving = false;
@@ -354,6 +356,31 @@
     const activeRequirements = requirements.filter(req => req.review_status !== 'parked' && req.lifecycle_status !== 'cancelled');
     return !activeRequirements.length || activeRequirements.some(req => req.review_status !== 'confirmed' || !req.acceptance_criteria);
   }
+  function handoffPreview() {
+    const box = element('section', null, 'handoff-preview');
+    box.setAttribute('aria-label', '开发提示词');
+    const head = element('div', null, 'handoff-head');
+    head.append(element('p', '只包含已确认的需求与边界，复制后粘贴给 Claude Code、Cursor 等 Coding Agent。', 'inline-note'));
+    const actions = element('div', null, 'document-actions');
+    const text = data.documents['agent-prompt.md'];
+    const copy = iconLabel(element('button', '复制全文', 'button primary small'), 'copy'); copy.type = 'button';
+    copy.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(text); handoffMessage = '已复制'; } catch { handoffMessage = '浏览器未允许复制，请下载'; }
+      render();
+    });
+    const download = iconLabel(element('button', '下载', 'button small'), 'download'); download.type = 'button';
+    download.addEventListener('click', () => {
+      const url = URL.createObjectURL(new Blob([text], {type: 'text/markdown;charset=utf-8'}));
+      const link = element('a'); link.href = url; link.download = 'agent-prompt.md'; document.body.append(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+    actions.append(copy, download);
+    head.append(actions);
+    box.append(head);
+    if (handoffMessage) { const status = element('p', handoffMessage, 'inline-note'); status.setAttribute('role', 'status'); box.append(status); }
+    box.append(element('pre', text, 'handoff-text'));
+    return box;
+  }
   function overview() {
     const needsReview = needsDefinitionReview();
     const hasArtifact = prefixes => data.artifacts.some(item => prefixes.some(prefix => item.path.startsWith(prefix)) && item.path.endsWith('.html'));
@@ -403,13 +430,20 @@
       ['technical', '技术设计', [project.technical_architecture?.components?.length ? '架构' : '', project.business_model?.entities?.length ? '数据模型' : ''].filter(Boolean).join(' · '), Boolean(project.technical_architecture?.components?.length) || hasArtifact(['diagrams/', 'data-model/'])],
       ['review', '评审记录', pending ? pending + ' 个问题待确认' : '暂无待确认问题', true],
     ];
+    // Hand-off to development: the generated agent prompt, usable once at least one requirement is confirmed.
+    const handoffReady = confirmed > 0 && Boolean(data.documents?.['agent-prompt.md']);
+    stages.push(['handoff', '交给开发', '复制给 Coding Agent', handoffReady]);
     for (const [view, label, summary, ready] of stages) {
       const row = element('button', null, 'output-row'); row.type = 'button'; row.dataset.ready = String(ready); row.dataset.target = view;
       const name = element('strong'); name.append(element('i', null, 'stage-dot'), element('span', label));
-      row.append(name, element('span', ready ? summary : '暂无'));
-      row.addEventListener('click', () => { if (view === 'review') reviewTab = 'questions'; navigate(view); });
+      row.append(name, element('span', ready ? summary : view === 'handoff' ? '确认需求后可生成' : '暂无'));
+      if (view === 'handoff') {
+        row.disabled = !ready; row.setAttribute('aria-expanded', String(handoffOpen && ready));
+        row.addEventListener('click', () => { handoffOpen = !handoffOpen; handoffMessage = ''; render(); });
+      } else row.addEventListener('click', () => { if (view === 'review') reviewTab = 'questions'; navigate(view); });
       outputs.append(row);
     }
+    if (handoffOpen && handoffReady) outputs.append(handoffPreview());
     const columns = element('div', null, 'overview-sections');
     columns.append(outputs);
     const followUp = panel('待确认事项', 'pending');
@@ -486,32 +520,41 @@
     }
   }
   function intakePanel() {
-    const card = panel('导入素材');
+    const card = panel('导入会议');
     if (!serverState) {
       card.append(element('p', '当前为只读分享版，导入素材请在本机工作台中进行。当前版本的资料可继续浏览。', 'inline-note'));
       if (intakeMessage) card.append(element('p', intakeMessage, 'inline-note'));
       content.append(card);
       return;
     }
+    // One drop zone for files, one line for Feishu Minutes; rarely used options stay folded.
     const form = element('form', null, 'intake-form');
-    const label = element('label', '录音、录屏或逐字稿');
-    label.htmlFor = 'material-file';
     const files = element('input');
-    files.id = 'material-file';
-    files.type = 'file';
-    files.multiple = true;
+    files.id = 'material-file'; files.type = 'file'; files.multiple = true; files.className = 'sr-only';
     files.accept = '.txt,.md,.srt,.vtt,.mp3,.wav,.m4a,.aac,.ogg,.flac,.mp4,.mov,.webm,.mkv';
     files.disabled = intakeBusy;
-    const recordingLabel = element('label', '逐字稿关联录音（可选）');
-    recordingLabel.htmlFor = 'related-recording';
+    const drop = element('label', null, 'intake-drop'); drop.htmlFor = files.id;
+    const dropTitle = iconLabel(element('strong', '拖入录音、录屏或逐字稿，或点击选择'), 'upload');
+    const dropHint = element('span', 'TXT／MD／SRT／VTT 逐字稿，或常见音视频；每个文件最大 256 MB');
+    drop.append(dropTitle, dropHint);
+    const submit = iconLabel(element('button', '导入', 'button primary'), 'upload');
+    submit.type = 'submit'; submit.disabled = true;
+    const chosen = () => {
+      const names = Array.from(files.files).map(file => file.name);
+      dropHint.textContent = names.length ? names.join('、') : 'TXT／MD／SRT／VTT 逐字稿，或常见音视频；每个文件最大 256 MB';
+      drop.classList.toggle('has-files', names.length > 0);
+      submit.disabled = intakeBusy || !names.length;
+      submit.lastChild.textContent = names.length ? '导入 ' + names.length + ' 个文件' : '导入';
+    };
+    files.addEventListener('change', chosen);
+    for (const type of ['dragenter', 'dragover']) drop.addEventListener(type, event => { event.preventDefault(); drop.classList.add('dragging'); });
+    for (const type of ['dragleave', 'drop']) drop.addEventListener(type, () => drop.classList.remove('dragging'));
+    drop.addEventListener('drop', event => { event.preventDefault(); if (event.dataTransfer?.files?.length) { files.files = event.dataTransfer.files; chosen(); } });
     const recording = element('select'); recording.id = 'related-recording';
-    const independent = element('option', '独立素材'); independent.value = ''; recording.append(independent);
+    const independent = element('option', '不关联'); independent.value = ''; recording.append(independent);
     serverState.jobs.filter(job => job.kind === 'recording').forEach(job => { const option = element('option', job.name); option.value = job.job_id; recording.append(option); });
     recording.disabled = intakeBusy;
-    const submit = iconLabel(element('button', '导入文件', 'button primary'), 'upload');
-    submit.type = 'submit';
-    submit.disabled = intakeBusy;
-    form.append(label, files, element('p', '每个文件最大 256 MB。逐字稿生成来源片段，音视频提取音轨后等待转写。', 'inline-note'), recordingLabel, recording, submit);
+    form.append(files, drop, submit);
     form.addEventListener('submit', event => {
       event.preventDefault();
       const selected = Array.from(files.files);
@@ -525,83 +568,82 @@
         }
       });
     });
-    const connector = element('section', null, 'inbox-row');
-    connector.append(element('h3', '飞书妙记'));
-    const feishu = element('form', null, 'intake-form');
-    const urlLabel = element('label', '妙记链接');
-    urlLabel.htmlFor = 'minutes-url';
+    const feishu = element('form', null, 'intake-inline');
     const url = element('input');
-    url.id = 'minutes-url';
-    url.type = 'url';
-    url.required = true;
-    url.placeholder = 'https://…feishu.cn/minutes/…';
-    const mode = element('select');
-    mode.setAttribute('aria-label', '获取内容');
-    for (const [value, text] of [['transcript', '逐字稿'], ['media', '原始音视频']]) {
-      const option = element('option', text); option.value = value; mode.append(option);
-    }
-    const connect = iconLabel(element('button', '获取素材', 'button'), 'link');
-    connect.type = 'submit';
-    connect.disabled = intakeBusy || !serverState.lark_cli_available;
-    feishu.append(urlLabel, url, mode, connect);
+    url.id = 'minutes-url'; url.type = 'url'; url.required = true; url.placeholder = '或粘贴飞书妙记链接 https://…feishu.cn/minutes/…';
+    url.setAttribute('aria-label', '飞书妙记链接'); url.disabled = intakeBusy || !serverState.lark_cli_available;
+    const mode = element('select'); mode.id = 'minutes-mode';
+    for (const [value, text] of [['transcript', '逐字稿'], ['media', '原始音视频']]) { const option = element('option', text); option.value = value; mode.append(option); }
+    const connect = iconLabel(element('button', '获取', 'button'), 'link');
+    connect.type = 'submit'; connect.disabled = intakeBusy || !serverState.lark_cli_available;
+    feishu.append(url, connect);
     feishu.addEventListener('submit', event => {
       event.preventDefault();
       const minutes = url.value;
       const media = mode.value === 'media';
       importAction(() => localRequest('/api/feishu', {method: 'POST', body: JSON.stringify({minutes, media})}));
     });
-    connector.append(feishu, element('p', '使用本机飞书账号读取所选妙记，需已有访问及导出权限。', 'inline-note'));
-    card.append(form, connector);
+    const advanced = element('details', null, 'intake-advanced');
+    advanced.append(element('summary', '更多选项'));
+    for (const [text, control] of [['逐字稿关联已有录音', recording], ['飞书妙记获取内容', mode]]) { const label = element('label', text); label.htmlFor = control.id; advanced.append(label, control); }
+    card.append(form, feishu);
+    if (!serverState.lark_cli_available) card.append(element('p', '本机未连接飞书（lark-cli 未就绪），可改为导入妙记导出的逐字稿文件。', 'inline-note'));
+    card.append(advanced);
     if (intakeBusy) { const progress = element('progress'); progress.setAttribute('aria-label', '素材预处理中'); card.append(progress); }
     if (intakeMessage) { const message = element('p', intakeMessage, 'inline-note'); message.setAttribute('role', 'status'); card.append(message); }
     content.append(card);
-    const jobs = panel('接收箱');
+    const jobs = panel('最近导入');
     const labels = {ready_for_analysis: '待 Skill 分析', awaiting_transcript: '等待转写', failed: '处理失败', processing: '处理中'};
-    for (const job of serverState.jobs) {
-      const row = element('section', null, 'inbox-row');
-      row.append(element('h3', job.name));
+    const analysisLabels = {waiting_host: '等待宿主分析', running: '分析执行中', failed: '分析失败', completed: '已生成分析版本'};
+    for (const job of [...serverState.jobs].reverse()) {
+      const row = element('section', null, 'intake-row');
       const analysis = analysisFor(job);
-      const analysisLabels = {waiting_host: '等待宿主分析', running: '分析执行中', failed: '分析失败', completed: '已生成分析版本'};
       const statusLabel = analysis ? analysisLabels[analysis.status] : job.status === 'awaiting_transcript' && hasTranscript(job) ? '已有转写' : labels[job.status] || job.status;
-      badges(row, [statusLabel, job.kind === 'recording' ? '音视频' : '逐字稿', job.source_count ? job.source_count + ' 段原话' : job.stage]);
-      if (job.provenance.related_job_id) row.append(element('p', '关联录音 · ' + (serverState.jobs.find(item => item.job_id === job.provenance.related_job_id)?.name || job.provenance.related_job_id), 'inline-note'));
-      if (job.error) row.append(element('p', job.error, 'inline-note'));
+      const head = element('div', null, 'intake-row-head');
+      head.append(element('strong', job.name));
+      badges(head, [statusLabel, job.kind === 'recording' ? '音视频' : '逐字稿', job.source_count ? job.source_count + ' 段原话' : job.stage]);
       const actions = element('div', null, 'document-actions');
-      for (const [key, label] of [['original', '原始素材'], ['sources', '来源片段'], ['analysis_request', '分析请求']]) if (job.files[key]) actions.append(jobLink(job, key, label));
+      if (job.status === 'ready_for_analysis' && job.source_count) {
+        const view = element('button', '查看原话', 'button small'); view.type = 'button';
+        view.addEventListener('click', () => { materialTab = 'library'; render(); });
+        actions.append(view);
+      }
       if (job.status === 'awaiting_transcript') {
         const linked = serverState.jobs.find(item => item.provenance.related_job_id === job.job_id && item.status === 'ready_for_analysis');
-        if (linked) row.append(element('p', '已有关联逐字稿 · ' + linked.name, 'inline-note'));
-        else {
-          const asr = element('button', '使用已配置转写服务', 'button'); asr.type = 'button'; asr.disabled = intakeBusy || !serverState.asr_configured;
+        if (!linked && serverState.asr_configured) {
+          const asr = element('button', '转写', 'button small'); asr.type = 'button'; asr.disabled = intakeBusy;
           asr.addEventListener('click', () => importAction(() => localRequest('/api/transcribe', {method: 'POST', body: JSON.stringify({job_id: job.job_id})}))); actions.append(asr);
         }
       }
       if (job.status === 'failed') {
-        const retry = iconLabel(element('button', '重试预处理', 'button small'), 'refresh');
+        const retry = iconLabel(element('button', '重试', 'button small'), 'refresh');
         retry.type = 'button'; retry.disabled = intakeBusy;
         retry.addEventListener('click', () => importAction(() => localRequest('/api/retry', {method: 'POST', body: JSON.stringify({job_id: job.job_id})})));
         actions.append(retry);
       }
-      row.append(actions);
+      head.append(actions);
+      row.append(head);
+      if (job.error) row.append(element('p', job.error, 'inline-note'));
+      if (job.provenance.related_job_id) row.append(element('p', '关联录音 · ' + (serverState.jobs.find(item => item.job_id === job.provenance.related_job_id)?.name || job.provenance.related_job_id), 'inline-note'));
+      const fileLinks = [['original', '原始素材'], ['sources', '来源片段'], ['analysis_request', '分析请求']].filter(([key]) => job.files[key]);
       const mediaKey = /\.(mp4|mov|webm|mkv)$/i.test(job.files.original || '') ? 'original' : job.files.audio ? 'audio' : 'original';
       const path = job.files[mediaKey];
-      if (job.kind === 'recording' && path && job.status !== 'failed') {
-        const player = element(/\.(mp4|mov|webm|mkv)$/i.test(path) ? 'video' : 'audio');
-        player.controls = true;
-        player.preload = 'none';
-        player.src = '/api/jobs/' + job.job_id + '/' + mediaKey;
-        row.append(player);
+      if (fileLinks.length || (job.kind === 'recording' && path && job.status !== 'failed')) {
+        const more = element('details', null, 'intake-files');
+        more.append(element('summary', '文件'));
+        const links = element('div', null, 'document-actions');
+        for (const [key, label] of fileLinks) links.append(jobLink(job, key, label));
+        more.append(links);
+        if (job.kind === 'recording' && path && job.status !== 'failed') {
+          const player = element(/\.(mp4|mov|webm|mkv)$/i.test(path) ? 'video' : 'audio');
+          player.controls = true; player.preload = 'none'; player.src = '/api/jobs/' + job.job_id + '/' + mediaKey;
+          more.append(player);
+        }
+        row.append(more);
       }
       jobs.append(row);
     }
-    if (!serverState.jobs.length) jobs.append(element('p', '导入后的素材将在这里显示'));
-    const refresh = iconLabel(element('button', '刷新接收箱', 'button ghost small'), 'refresh');
-    refresh.type = 'button';
-    refresh.disabled = intakeBusy;
-    refresh.addEventListener('click', async () => {
-      try { await refreshLocal(); render(); } catch (error) { intakeMessage = error.message; render(); }
-    });
-    jobs.append(refresh);
+    if (!serverState.jobs.length) jobs.append(empty('还没有导入的会议'));
     content.append(jobs);
   }
   function nextVersion() {
@@ -627,94 +669,117 @@
       render();
     }
   }
+  // Processing: one status line per material, one action to start the next version, details folded.
   function processingFlow() {
-    const card = panel('素材处理流程');
-    if (!serverState?.jobs.length) { card.append(empty('暂无处理中的素材')); content.append(card); return; }
+    const card = panel('处理进度');
+    if (!serverState?.jobs.length) { card.append(empty('暂无素材，先在“导入”中添加会议')); content.append(card); return; }
+    const versionTasks = serverState.tasks || [];
     for (const job of serverState.jobs) {
       const relatedJobs = [job.job_id, ...serverState.jobs.filter(item => item.provenance?.related_job_id === job.job_id).map(item => item.job_id)];
-      const task = (serverState.tasks || []).filter(item => item.kind === 'analysis' && (item.job_ids || []).some(id => relatedJobs.includes(id))).at(-1);
+      const task = versionTasks.filter(item => item.kind === 'analysis' && (item.job_ids || []).some(id => relatedJobs.includes(id))).at(-1);
       const transcriptReady = job.status === 'ready_for_analysis' || hasTranscript(job);
       const failed = job.status === 'failed';
-      const row = element('section', null, 'processing-item'); row.append(element('h3', job.name));
+      const row = element('section', null, 'processing-item');
       const steps = element('ol', null, 'processing-flow'); steps.setAttribute('aria-label', job.name + '处理流程');
       const values = [
-        ['接收', failed ? '处理失败' : '已接收'],
-        ['转写', transcriptReady ? '已就绪' : failed ? '未开始' : '等待转写'],
-        ['需求分析', task?.status === 'completed' ? '已完成' : task?.status === 'running' ? '分析中' : task?.status === 'failed' ? '分析失败' : task ? '等待分析' : '未开始'],
-        ['工作台', task?.status === 'completed' ? '可查看' : '未就绪']
+        ['接收', failed ? 'failed' : 'done'],
+        ['转写', transcriptReady ? 'done' : failed ? 'todo' : 'waiting'],
+        ['需求分析', task?.status === 'completed' ? 'done' : task?.status === 'failed' ? 'failed' : task ? 'waiting' : 'todo'],
+        ['工作台', task?.status === 'completed' ? 'done' : 'todo'],
       ];
-      values.forEach(([title, status], index) => {
-        const step = element('li'); step.append(element('strong', title), element('span', status));
-        if (index === 3 && task?.status === 'completed') { const link = element('a', '打开 →', 'source-link'); link.href = '/versions/' + task.id + '/workbench/index.html'; step.append(link); }
+      for (const [title, state] of values) {
+        const step = element('li', title); step.dataset.state = state;
+        step.setAttribute('aria-label', title + '：' + ({done: '完成', waiting: '进行中', failed: '失败', todo: '未开始'}[state]));
         steps.append(step);
-      });
-      row.append(steps); if (job.error || task?.error) row.append(element('p', job.error || task.error, 'inline-note')); card.append(row);
+      }
+      const head = element('div', null, 'processing-head');
+      head.append(element('strong', job.name), steps);
+      if (task?.status === 'completed') { const link = element('a', '打开 ' + task.version + ' →', 'source-link'); link.href = '/versions/' + task.id + '/workbench/index.html'; head.append(link); }
+      row.append(head);
+      if (job.error || task?.error) row.append(element('p', job.error || task.error, 'inline-note'));
+      card.append(row);
     }
     content.append(card);
   }
   function analysisPanel() {
     if (!serverState) return;
-    const card = panel('需求分析');
+    const card = panel('生成新版本');
+    const present = new Set((project.materials || []).map(item => item.material_id));
+    const ready = serverState.jobs.filter(item => item.status === 'ready_for_analysis');
     const form = element('form', null, 'intake-form');
     const choices = [];
-    const present = new Set((project.materials || []).map(item => item.material_id));
-    for (const job of serverState.jobs.filter(item => item.status === 'ready_for_analysis')) {
-      const label = element('label', job.name);
-      const select = element('select'); select.id = 'analysis-' + job.job_id; label.htmlFor = select.id;
-      for (const [value, text] of [['skip', '跳过'], ['meeting', '会议材料'], ['context', '前情资料']]) { const option = element('option', text); option.value = value; select.append(option); }
-      select.value = present.has(job.material_id) ? 'skip' : 'meeting';
-      select.disabled = workflowBusy;
-      choices.push([job.job_id, select]); form.append(label, select);
+    const roles = element('details', null, 'intake-advanced'); roles.append(element('summary', '更多选项'));
+    for (const job of ready) {
+      const check = element('label', null, 'workflow-check');
+      const box = element('input'); box.type = 'checkbox'; box.checked = !present.has(job.material_id); box.disabled = workflowBusy;
+      check.append(box, document.createTextNode(job.name + (present.has(job.material_id) ? '（已在当前版本）' : '')));
+      const role = element('select'); role.id = 'analysis-' + job.job_id; role.disabled = workflowBusy;
+      for (const [value, text] of [['meeting', '作为会议材料'], ['context', '作为前情资料']]) { const option = element('option', text); option.value = value; role.append(option); }
+      const roleLabel = element('label', job.name); roleLabel.htmlFor = role.id;
+      roles.append(roleLabel, role);
+      choices.push([job.job_id, box, role]); form.append(check);
     }
-    const versionLabel = element('label', '目标版本'); versionLabel.htmlFor = 'analysis-version';
     const version = element('input'); version.id = 'analysis-version'; version.value = nextVersion(); version.required = true; version.disabled = workflowBusy;
-    const submit = iconLabel(element('button', '准备分析请求', 'button primary'), 'documents'); submit.type = 'submit'; submit.disabled = workflowBusy;
-    form.append(versionLabel, version, submit);
+    const versionLabel = element('label', '版本号'); versionLabel.htmlFor = version.id;
+    roles.append(versionLabel, version);
+    const submit = iconLabel(element('button', '生成 ' + version.value, 'button primary'), 'documents'); submit.type = 'submit'; submit.disabled = workflowBusy || !ready.length;
+    version.addEventListener('input', () => { submit.lastChild.textContent = '生成 ' + (version.value || '新版本'); });
+    form.append(submit, roles);
+    if (!ready.length) form.prepend(element('p', '没有可分析的素材。', 'inline-note'));
     form.addEventListener('submit', event => {
       event.preventDefault();
-      const job_ids = choices.filter(([, choice]) => choice.value !== 'skip').map(([id]) => id);
-      const context_job_ids = choices.filter(([, choice]) => choice.value === 'context').map(([id]) => id);
+      const picked = choices.filter(([, box]) => box.checked);
+      if (!picked.length) { workflowMessage = '请至少选择一份素材'; render(); return; }
+      const job_ids = picked.map(([id]) => id);
+      const context_job_ids = picked.filter(([, , role]) => role.value === 'context').map(([id]) => id);
       const selectedVersion = version.value;
       workflowAction(() => localRequest('/api/analysis', {method: 'POST', body: JSON.stringify({job_ids, context_job_ids, version: selectedVersion})}));
     });
     card.append(form);
     if (workflowMessage) { const message = element('p', workflowMessage, 'inline-note'); message.setAttribute('role', 'status'); card.append(message); }
     const labels = {waiting_host: '等待宿主分析', running: '生成中', failed: '失败，可重试', completed: '已生成'};
-    for (const task of (serverState.tasks || []).filter(item => item.kind === 'analysis').slice(-3)) {
+    const tasks = (serverState.tasks || []).filter(item => item.kind === 'analysis');
+    const pending = tasks.filter(task => task.status !== 'completed');
+    const done = tasks.filter(task => task.status === 'completed').slice(-3).reverse();
+    for (const task of pending) {
       const row = element('section', null, 'inbox-row');
-      row.append(element('h3', task.version + ' · ' + ({review: '评审修订', document: '文档修订', generation: '成果生成', analysis: '需求分析'}[task.kind] || task.kind)));
+      row.append(element('h3', task.version + ' · 需求分析'));
       badges(row, [labels[task.status] || task.status]);
       if (task.error) row.append(element('p', task.error, 'inline-note'));
-      for (const result of task.generation_results || []) row.append(element('p', result.capability + ' · ' + (result.generation_status === 'success' ? '已生成' : result.error), 'inline-note'));
-      if (task.status === 'completed') {
-        const link = element('a', '打开新版本', 'button');
-        link.href = '/versions/' + task.id + '/workbench/index.html'; link.target = '_blank'; link.rel = 'noopener'; row.append(link);
-      } else {
-        for (const [key, label] of [['request', '分析请求'], ['baseline', '原基线'], ['sources', '完整来源']]) {
-          const link = element('a', label, 'button ghost small'); link.href = '/api/tasks/' + task.id + '/' + key; link.target = '_blank'; link.rel = 'noopener'; row.append(link);
+      const links = element('div', null, 'document-actions');
+      for (const [key, label] of [['request', '分析请求'], ['baseline', '原基线'], ['sources', '完整来源']]) {
+        const link = element('a', label, 'button ghost small'); link.href = '/api/tasks/' + task.id + '/' + key; link.target = '_blank'; link.rel = 'noopener'; links.append(link);
+      }
+      row.append(links);
+      if (task.status !== 'running') {
+        if (serverState.analysis_configured) {
+          const execute = iconLabel(element('button', '执行已配置宿主', 'button primary'), 'play'); execute.type = 'button'; execute.disabled = workflowBusy;
+          execute.addEventListener('click', () => workflowAction(() => localRequest('/api/analysis/execute', {method: 'POST', body: JSON.stringify({request_id: task.id})}))); row.append(execute);
         }
-        if (task.kind === 'analysis' && task.status !== 'running') {
-          if (serverState.analysis_configured) {
-            const execute = iconLabel(element('button', '执行已配置宿主', 'button primary'), 'play'); execute.type = 'button'; execute.disabled = workflowBusy;
-            execute.addEventListener('click', () => workflowAction(() => localRequest('/api/analysis/execute', {method: 'POST', body: JSON.stringify({request_id: task.id})}))); row.append(execute);
-          }
-          const resultForm = element('form', null, 'intake-form');
-          const label = element('label', '宿主返回的 project.json'); label.htmlFor = 'result-' + task.id;
-          const file = element('input'); file.type = 'file'; file.accept = '.json'; file.required = true; file.id = label.htmlFor;
-          const complete = iconLabel(element('button', '校验并生成新版本', 'button'), 'decided'); complete.type = 'submit'; complete.disabled = workflowBusy;
-          resultForm.append(label, file, complete);
-          resultForm.addEventListener('submit', event => {
-            event.preventDefault(); const selected = file.files[0];
-            if (!selected) return;
-            workflowAction(async () => {
-              const candidate = JSON.parse(await selected.text());
-              return localRequest('/api/analysis/complete', {method: 'POST', body: JSON.stringify({request_id: task.id, project: candidate})});
-            });
+        const resultForm = element('form', null, 'intake-form');
+        const label = element('label', '宿主返回的 project.json'); label.htmlFor = 'result-' + task.id;
+        const file = element('input'); file.type = 'file'; file.accept = '.json'; file.required = true; file.id = label.htmlFor;
+        const complete = iconLabel(element('button', '校验并生成新版本', 'button'), 'decided'); complete.type = 'submit'; complete.disabled = workflowBusy;
+        resultForm.append(label, file, complete);
+        resultForm.addEventListener('submit', event => {
+          event.preventDefault(); const selected = file.files[0];
+          if (!selected) return;
+          workflowAction(async () => {
+            const candidate = JSON.parse(await selected.text());
+            return localRequest('/api/analysis/complete', {method: 'POST', body: JSON.stringify({request_id: task.id, project: candidate})});
           });
-          row.append(resultForm);
-        }
+        });
+        row.append(resultForm);
       }
       card.append(row);
+    }
+    if (done.length) {
+      const history = element('details', null, 'intake-advanced'); history.append(element('summary', '最近生成的版本'));
+      for (const task of done) {
+        const link = element('a', task.version + ' · 打开工作台', 'source-link'); link.href = '/versions/' + task.id + '/workbench/index.html'; link.target = '_blank'; link.rel = 'noopener';
+        history.append(link);
+      }
+      card.append(history);
     }
     content.append(card);
   }
@@ -859,8 +924,39 @@
     const full = iconLabel(element('button', '打开完整逐字稿', 'source-link'), 'documents'); full.type = 'button';
     full.addEventListener('click', () => { materialReader = 'transcript'; render(); focusSource(); });
     inspector.append(full);
-    details.classList.add('with-evidence'); details.append(inspector);
+    details.classList.add('with-evidence'); details.append(splitter(details), inspector);
     meetingTranscript(inspector, selected, attached, true);
+  }
+  // Drag (or arrow keys) to resize the quote panel; the width is remembered in this browser only.
+  function splitter(container) {
+    const key = 'workbench:evidence-width';
+    const handle = element('div', null, 'pane-splitter');
+    handle.setAttribute('role', 'separator'); handle.setAttribute('aria-orientation', 'vertical');
+    handle.setAttribute('aria-label', '拖动调整原话面板宽度'); handle.tabIndex = 0;
+    const apply = width => {
+      const bounds = container.getBoundingClientRect().width || 1200;
+      const value = Math.round(Math.min(Math.max(width, 240), bounds * 0.6));
+      container.style.setProperty('--evidence-width', value + 'px');
+      handle.setAttribute('aria-valuenow', String(value));
+      return value;
+    };
+    let saved = 0;
+    try { saved = Number(localStorage.getItem(key)) || 0; } catch { /* storage unavailable */ }
+    if (saved) apply(saved);
+    const remember = value => { try { localStorage.setItem(key, String(value)); } catch { /* storage unavailable */ } };
+    handle.addEventListener('pointerdown', event => {
+      event.preventDefault(); handle.setPointerCapture?.(event.pointerId); container.classList.add('resizing');
+      const move = moveEvent => apply(container.getBoundingClientRect().right - moveEvent.clientX);
+      const stop = () => { container.classList.remove('resizing'); handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', stop); remember(Number(handle.getAttribute('aria-valuenow'))); };
+      handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', stop);
+    });
+    handle.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+      event.preventDefault();
+      const current = Number(handle.getAttribute('aria-valuenow')) || container.querySelector('.meeting-evidence')?.getBoundingClientRect().width || 320;
+      remember(apply(current + (event.key === 'ArrowLeft' ? 24 : -24)));
+    });
+    return handle;
   }
 
   function meetingTranscript(host, selected, attached, contextOnly = false) {
@@ -1327,9 +1423,58 @@
     frame.contentWindow.addEventListener('afterprint', () => frame.remove(), {once: true});
     frame.contentWindow.focus(); frame.contentWindow.print();
   }
+  // Minimal schedule: work packages from modules, ordered by module dependencies; dates and owners are left for people.
+  function workPackages() {
+    const later = req => ['deferred', 'parked'].includes(req.review_status) || ['deferred', 'parked'].includes(req.lifecycle_status);
+    const active = requirements.filter(req => req.lifecycle_status !== 'cancelled' && req.review_status !== 'cancelled');
+    const modules = (project.modules || []).filter(module => (module.requirement_ids || []).some(id => active.some(req => req.requirement_id === id)));
+    const packages = modules.length
+      ? modules.map(module => ({id: module.module_id, name: module.name || module.module_id, reqs: active.filter(req => module.requirement_ids.includes(req.requirement_id))}))
+      : active.map(req => ({id: req.requirement_id, name: req.title, reqs: [req]}));
+    const known = new Set(packages.map(item => item.id));
+    const after = new Map(packages.map(item => [item.id, new Set()]));
+    for (const relation of project.module_relations || []) if (known.has(relation.from) && known.has(relation.to) && relation.from !== relation.to) after.get(relation.to).add(relation.from);
+    const ordered = []; const placed = new Set();
+    while (ordered.length < packages.length) {
+      const next = packages.find(item => !placed.has(item.id) && [...after.get(item.id)].every(id => placed.has(id))) || packages.find(item => !placed.has(item.id));
+      placed.add(next.id); ordered.push(next);
+    }
+    return ordered.map(item => ({...item, after: [...after.get(item.id)].map(id => packages.find(other => other.id === id)?.name || id), phase: item.reqs.every(later) ? '后续' : '本期'}));
+  }
+  function schedulePanel() {
+    const card = panel('工作包时间线', 'pending');
+    const packages = workPackages();
+    if (!packages.length) { card.append(empty('整理出需求后显示工作包')); return card; }
+    card.append(element('p', '按模块依赖排序。日期、负责人和工期都待确认，评审时由人填写，不由 Skill 推测。', 'inline-note'));
+    for (const phase of ['本期', '后续']) {
+      const rows = packages.filter(item => item.phase === phase);
+      if (!rows.length) continue;
+      card.append(element('h3', phase, 'schedule-phase'));
+      const list = element('ol', null, 'schedule-list');
+      for (const item of rows) {
+        const row = element('li', null, 'schedule-item');
+        const head = element('div', null, 'schedule-head');
+        head.append(element('strong', item.name), element('span', '开始 待确认 · 结束 待确认 · 负责人 待确认', 'schedule-dates'));
+        row.append(head);
+        const meta = element('p', null, 'schedule-meta');
+        meta.append(element('span', item.reqs.map(req => req.title).join('、')));
+        if (item.after.length) meta.append(element('span', '依赖：' + item.after.join('、'), 'schedule-after'));
+        row.append(meta);
+        list.append(row);
+      }
+      card.append(list);
+    }
+    return card;
+  }
   function documents() {
     const name = selectedDocument;
-    const items = [['proposal.md', '项目方案', 'documents'], ['prd.md', 'PRD', 'modules'], ...(data.documents['agent-prompt.md'] ? [['agent-prompt.md', '开发提示词', 'api']] : [])];
+    const items = [['proposal.md', '项目方案', 'documents'], ['prd.md', 'PRD', 'modules'], ['schedule', '排期', 'pending']];
+    if (name === 'schedule') {
+      const tabs = sectionTabs(items, name, '文档类型', key => { selectedDocument = key; documentChapter = 0; documentEntry = 0; documentEditing = false; documentMessage = ''; render(); });
+      tabs.classList.add('document-type-tabs');
+      content.append(tabs, schedulePanel());
+      return;
+    }
     const derived = name === 'agent-prompt.md';
     if (derived) documentEditing = false;
     const tabs = sectionTabs(items, name, '文档类型', key => { selectedDocument = key; documentChapter = 0; documentEntry = 0; documentEditing = false; documentMessage = ''; render(); });
@@ -1679,7 +1824,7 @@
   }
   function api() {
     const apis = (project.apis || []).filter(matches);
-    if (!apis.length) { content.append(empty('暂无接口设计')); return; }
+    if (!apis.length) { content.append(empty('暂无接口设计：本次分析没有整理接口草案。需要时让 Skill 按已确认需求补充 apis，并标为草案')); return; }
     for (const item of apis) {
       const card = panel(item.name || item.api_id, 'technical');
       card.classList.add('api-spec');

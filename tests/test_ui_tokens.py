@@ -7,7 +7,7 @@ ASSETS = Path(__file__).resolve().parents[1] / 'product-requirements/assets'
 COLOUR = re.compile(r'#[0-9a-fA-F]{3,8}\b|\b(?:rgb|rgba|hsl|hsla)\(')
 FONT_SIZE = re.compile(r'font-size\s*:\s*([^;}]+)')
 RADIUS = re.compile(r'border-radius\s*:\s*([^;}]+)')
-VARIABLE = re.compile(r'var\(\s*(--[a-z0-9-]+)')
+VARIABLE = re.compile(r'var\(\s*(--ui-[a-z0-9-]+)')  # local layout variables (e.g. --evidence-width) are allowed
 
 
 def token_block():

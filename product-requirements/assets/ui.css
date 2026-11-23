@@ -23,12 +23,12 @@
   --ui-accent-soft-strong: #dce9ff;
   --ui-accent-border: #b2c7eb;
   /* navigation */
-  --ui-nav: #f1f4f9;
-  --ui-nav-ink: #182132;
-  --ui-nav-muted: #46566c;
-  --ui-nav-hover: #e7edf6;
-  --ui-nav-active: #dfe9fc;
-  --ui-nav-line: #d8e0ec;
+  --ui-nav: #172438;
+  --ui-nav-ink: #e6edf7;
+  --ui-nav-muted: #abbad0;
+  --ui-nav-hover: #22334b;
+  --ui-nav-active: #2c4160;
+  --ui-nav-line: #3c5271;
   /* status */
   --ui-success: #17643f;
   --ui-success-soft: #e6f5ec;
@@ -48,8 +48,8 @@
   --ui-text-lg: 18px;
   --ui-text-xl: 24px;
   /* shape and depth */
-  --ui-radius-sm: 4px;
-  --ui-radius: 6px;
+  --ui-radius-sm: 8px;
+  --ui-radius: 10px;
   --ui-radius-pill: 999px;
   --ui-shadow-overlay: 0 18px 48px rgb(23 36 56 / .18);
   --ui-backdrop: rgb(23 36 56 / .28);

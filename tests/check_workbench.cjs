@@ -90,6 +90,20 @@ async function settle() {
   assert.equal(document.querySelectorAll('.overview-stat').length, 4);
   assert.match(document.querySelector('.overview-stats').textContent, /当前版本.*已迭代.*会议.*当前进度/);
   assert.equal(document.getElementById('next-action'), null);
+  const handoff = document.querySelector('.output-row[data-target="handoff"]');
+  assert(handoff, 'overview offers the development hand-off');
+  if (!handoff.disabled) { handoff.click(); assert.match(document.querySelector('.handoff-text').textContent, /开发提示词/); }
+  else assert.match(handoff.textContent, /确认需求后可生成/);
+  navigate('documents');
+  assert(![...document.querySelectorAll('button')].some(item => item.textContent === '开发提示词'), 'agent prompt left the documents tabs');
+  button('排期').click();
+  assert.match(document.getElementById('page-content').textContent, /工作包时间线[\s\S]*待确认/);
+  button('项目方案').click();
+  navigate('materials');
+  button('处理流程').click();
+  assert.match(document.getElementById('page-content').textContent, /生成新版本/);
+  button('素材').click();
+  navigate('overview');
   document.querySelector('.output-row[data-target="prototype"]').click();
   assert(document.querySelector('.workbench-preview'));
   navigate('overview');
