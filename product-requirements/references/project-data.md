@@ -61,7 +61,7 @@ python3 product-requirements/scripts/build_documents.py \
 
 meetings 可补充 date、duration_label、url 和 highlights。highlights 为数组，每项提供 text 与非空 source_refs，引用必须属于该会议关联材料。日期和时长来自会议元数据，重点根据逐字稿提炼，并保留人工复核状态。
 
-工作台先展示会议重点，点选时间进入逐字稿对应页；未提供重点时直接阅读逐字稿。原始来源记录保持完整，列表分页和说话人前缀的显示处理在界面完成。
+会议重点可选 `status`，支持 `decided`、`conditional`、`proposal` 和 `pending`。工作台先展示会议重点，点选时间在原话面板定位并显示相邻片段，完整逐字稿可一键跳到对应页。未提供重点时直接阅读逐字稿。原始来源记录保持完整，列表分页和说话人前缀的显示处理在界面完成。
 
 ## 人工文档正文
 

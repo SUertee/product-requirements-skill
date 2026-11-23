@@ -183,4 +183,4 @@ class ArtifactTests(unittest.TestCase):
         self.assertNotIn('statement_import_records', text)
         payload = json.loads(re.search(r'id="schemaData">(.*?)</script>', text, re.S)[1])
         self.assertEqual([item['id'] for item in payload['tables']], ['Ticket'])
-        self.assertEqual(payload['tables'][0]['columns'][0]['type'], 'text')
+        self.assertEqual(payload['tables'][0]['columns'][0]['type'], '长文本')

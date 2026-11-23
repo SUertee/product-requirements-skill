@@ -463,9 +463,9 @@ def render_agent_prompt(project, sources, questions):
     return '\n'.join(lines)
 
 
-def render_workbench(project, sources, review, documents, artifacts, extra=None, module_diagram=None, architecture_diagram=None, generated_at=None):
+def render_workbench(project, sources, review, documents, artifacts, extra=None, module_diagram=None, architecture_diagram=None, generated_at=None, data_model_diagram=None):
     attachments = [{'material_id': item['material_id'], 'path': item['path']} for item in artifacts if item.get('material_id')]
-    payload = json.dumps({'project': project, 'sources': list(sources.values()), 'review': review, 'documents': documents, 'artifacts': artifacts, 'attachments': attachments, 'module_diagram': module_diagram, 'architecture_diagram': architecture_diagram, 'diff': (extra or {}).get('diff.json'), 'generation': (extra or {}).get('generation.json'), 'generated_at': generated_at}, ensure_ascii=False)
+    payload = json.dumps({'project': project, 'sources': list(sources.values()), 'review': review, 'documents': documents, 'artifacts': artifacts, 'attachments': attachments, 'module_diagram': module_diagram, 'architecture_diagram': architecture_diagram, 'data_model_diagram': data_model_diagram, 'diff': (extra or {}).get('diff.json'), 'generation': (extra or {}).get('generation.json'), 'generated_at': generated_at}, ensure_ascii=False)
     payload = payload.replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
     values = {
         '__WORKBENCH_STYLE__': (PACKAGE / 'assets/ui.css').read_text() + '\n' + (PACKAGE / 'assets/workbench.css').read_text(),
@@ -530,7 +530,9 @@ def publish(project, sources, destination, materials_root=None, *, review_data=N
         module_diagram = (stage / 'diagrams/modules.html').read_text(encoding='utf-8') if module_record and module_record.get('generator') == 'Archify' else None
         architecture_record = artifact_metadata.get('diagrams/architecture.html')
         architecture_diagram = (stage / 'diagrams/architecture.html').read_text(encoding='utf-8') if architecture_record and architecture_record.get('generator') == 'Archify' else None
-        workbench.write_text(render_workbench(project, sources, review, {'proposal.md': proposal, 'prd.md': prd, 'agent-prompt.md': agent_prompt}, artifacts, extra, module_diagram, architecture_diagram, generated_at), encoding='utf-8')
+        data_model_record = artifact_metadata.get('data-model/index.html')
+        data_model_diagram = (stage / 'data-model/index.html').read_text(encoding='utf-8') if data_model_record and data_model_record.get('generator') == 'Schema Canvas' else None
+        workbench.write_text(render_workbench(project, sources, review, {'proposal.md': proposal, 'prd.md': prd, 'agent-prompt.md': agent_prompt}, artifacts, extra, module_diagram, architecture_diagram, generated_at, data_model_diagram), encoding='utf-8')
         artifacts.append({'path': 'workbench/index.html', 'generation_status': 'success', 'review_status': 'draft', 'artifact_version': project['artifact_version'], 'depends_on': [item['path'] for item in artifacts], 'source_ids': list(sources), 'audience': 'internal', 'sha256': hashlib.sha256(workbench.read_bytes()).hexdigest(), 'generator': 'build_documents/0.1', 'validation_results': ['Embedded data encoded for inert JSON script']})
         manifest = {'schema_version': '0.1', 'project_id': project['project_id'], 'artifact_version': project['artifact_version'], 'generated_at': generated_at, 'artifacts': artifacts}
         (stage / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')

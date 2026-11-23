@@ -175,7 +175,10 @@ class Handler(BaseHTTPRequestHandler):
                 block = stream.read(min(remaining, 1024 * 1024))
                 if not block:
                     break
-                self.wfile.write(block)
+                try:
+                    self.wfile.write(block)
+                except (BrokenPipeError, ConnectionResetError):
+                    return
                 remaining -= len(block)
 
     def do_GET(self):

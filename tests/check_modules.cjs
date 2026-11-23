@@ -10,12 +10,12 @@ const d = w.document;
 const data = JSON.parse(d.getElementById('workbench-data').textContent);
 w.eval(fs.readFileSync(path.join(__dirname,'../product-requirements/assets/workbench.js'),'utf8'));
 function button(text) { const result = [...d.querySelectorAll('button')].find(item => item.textContent === text); assert(result,text); return result; }
-function detail() { return d.querySelector('.module-detail').textContent; }
+function detail() { return (d.querySelector('.module-detail') || d.querySelector('.requirement-list-layout')).textContent; }
 function event(id, source) { w.dispatchEvent(new w.MessageEvent('message',{data:{type:'product-requirements:module-select',id},source})); }
 assert.equal(d.querySelector('.module-map'), null);
 assert(d.querySelector('.requirement-group'));
 assert.equal(d.querySelector('.module-filters'), null);
-button('功能模块').click();
+button('业务模块').click();
 let frame = d.querySelector('.module-map');
 assert(frame);
 assert.equal(d.querySelector('.module-filters'), null);
@@ -28,7 +28,7 @@ button('全部状态').click();
 button('收起筛选').click();
 frame = d.querySelector('.module-map');
 assert.match(detail(), /客户查询/);
-assert.equal(d.querySelector('.requirement-inspector > h2').textContent, '客户查询');
+assert.equal(d.querySelector('.requirement-inspector .requirement-head h2').textContent, '客户查询');
 assert.equal(d.querySelector('.requirement-choice').textContent.startsWith('REQ-'), false);
 button('相关内容').click();
 assert(d.querySelector('.module-related'));
@@ -43,7 +43,7 @@ assert.match(detail(), /创建工单/);
 button('用例图').click();
 assert(d.querySelector('[data-usecase-id="REQ-003"]'));
 d.querySelector('[data-usecase-id="REQ-003"]').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
-assert.equal(d.querySelector('.requirement-inspector > h2').textContent,'创建工单');
+assert.equal(d.querySelector('.requirement-inspector .requirement-head h2').textContent,'创建工单');
 button('需求列表').click();
 assert.match(detail(), /创建工单/);
 d.querySelector('.requirement-choice[data-requirement-id="REQ-004"]').click();
@@ -54,7 +54,7 @@ assert(d.querySelector('.requirement-inspector [data-source-ref]'));
 const search = d.getElementById('search');
 search.value = '工单处理'; search.dispatchEvent(new w.Event('input'));
 assert.match(d.getElementById('page-content').textContent,/2 \/ 6 条需求/);
-button('功能模块').click();
+button('业务模块').click();
 assert.equal(search.value,'工单处理');
 event('module_0',d.querySelector('.module-map').contentWindow);
 assert.match(detail(), /状态流转待客户确认/);
