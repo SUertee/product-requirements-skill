@@ -989,3 +989,5 @@ video { width: 100%; max-height: 520px; margin-top: 20px; background: var(--ui-n
 .page-header .workbench-toolbar { min-height: 0; }
 .prototype-handoff { margin-top: 18px; }
 .prototype-handoff .handoff-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.requirement-choice-status[data-pending="true"], .requirement-identity .status-tag[data-pending="true"] { outline: 1px dashed currentColor; outline-offset: -1px; }
+.panel > .review-pending-bar { margin: 0 0 14px; }

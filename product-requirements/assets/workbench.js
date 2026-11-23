@@ -279,13 +279,27 @@
     }
     parent.append(section);
   }
+  // A verdict saved on this version but not yet applied: shown right away as "（待生效）" until 生成新版本 applies it.
+  function pendingVerdict(target) {
+    const decided = (serverState?.review?.decisions || []).filter(item => item.target === target && (item.review_stage || 'definition') === 'definition').at(-1);
+    return decided || null;
+  }
+  function statusView(item) {
+    const target = item.requirement_id || item.nfr_id;
+    const pending = pendingVerdict(target);
+    if (!pending) return {status: item.review_status, label: states[item.review_status] || '草稿', pending: false};
+    const status = {confirmed: 'confirmed', needs_changes: 'draft', parked: 'parked'}[pending.outcome];
+    return {status, label: {confirmed: '确认', needs_changes: '需修改', parked: '暂缓'}[pending.outcome] + '（待生效）', pending: true};
+  }
   function requirementChoice(req, current, onSelect) {
     const button = element('button', null, 'requirement-choice'); button.type = 'button';
     button.dataset.requirementId = req.requirement_id || req.nfr_id;
     button.title = '编号 ' + (req.requirement_id || req.nfr_id);
     button.setAttribute('aria-pressed', String(req === current));
-    const status = element('span', states[req.review_status] || '草稿', 'requirement-choice-status');
-    status.dataset.status = req.review_status;
+    const view = statusView(req);
+    // The narrow list keeps the short verdict; the dashed border and tooltip mark it as not yet applied.
+    const status = element('span', view.pending ? view.label.replace('（待生效）', '') : view.label, 'requirement-choice-status');
+    status.dataset.status = view.status; if (view.pending) { status.dataset.pending = 'true'; status.title = view.label + '：生成新版本后生效'; }
     button.append(element('strong', req.title), status);
     button.addEventListener('click', onSelect);
     return button;
@@ -323,7 +337,8 @@
     card.classList.add('requirement-inspector');
     const identity = element('div', null, 'requirement-identity');
     const evidence = element('span', '来源：' + (evidenceNames[nfr.evidence_type] || '待确认'), 'evidence-tag'); evidence.dataset.evidence = nfr.evidence_type || 'unknown';
-    const status = element('span', '状态：' + (states[nfr.review_status] || '草稿'), 'status-tag'); status.dataset.status = nfr.review_status;
+    const view = statusView(nfr);
+    const status = element('span', '状态：' + view.label, 'status-tag'); status.dataset.status = view.status; if (view.pending) status.dataset.pending = 'true';
     identity.append(evidence, status, element('span', nfr.nfr_id, 'requirement-code'));
     const head = element('header', null, 'requirement-head'); head.append(card.firstElementChild, identity);
     card.append(head);
@@ -354,9 +369,10 @@
     const evidence = element('span', '来源：' + (evidenceNames[req.evidence_type] || '待确认'), 'evidence-tag');
     evidence.title = evidenceHelp[req.evidence_type] || evidenceHelp.unknown;
     evidence.dataset.evidence = req.evidence_type || 'unknown';
-    const status = element('span', '状态：' + (states[req.review_status] || '草稿'), 'status-tag');
-    status.title = statusHelp[req.review_status] || statusHelp.draft;
-    status.dataset.status = req.review_status;
+    const view = statusView(req);
+    const status = element('span', '状态：' + view.label, 'status-tag');
+    status.title = view.pending ? '评审结论已保存，生成新版本后生效' : statusHelp[req.review_status] || statusHelp.draft;
+    status.dataset.status = view.status; if (view.pending) status.dataset.pending = 'true';
     identity.append(evidence, status, element('span', req.requirement_id, 'requirement-code'));
     const head = element('header', null, 'requirement-head'); head.append(card.firstElementChild, identity);
     card.append(head);
@@ -1597,14 +1613,24 @@
     const confirmed = active.filter(req => req.review_status === 'confirmed');
     const noAcceptance = confirmed.filter(req => display(req.acceptance_criteria) === '待确认');
     const openNfrs = nfrs.filter(item => !['confirmed', 'parked'].includes(item.review_status));
+    // Verdicts saved here but not yet applied count in the progress, marked 待生效; they take effect in the next version.
+    const pendingConfirm = active.filter(req => req.review_status !== 'confirmed' && statusView(req).pending && statusView(req).status === 'confirmed').length;
+    const pendingNfr = openNfrs.filter(item => statusView(item).pending && ['confirmed', 'parked'].includes(statusView(item).status)).length;
+    const pendingAll = (serverState?.review?.decisions || []).filter(item => (item.review_stage || 'definition') === 'definition').length;
     const openFirst = (target) => () => { selectedRequirement = target; moduleView = 'list'; requirementTab = 'detail'; navigate('modules'); };
     const rows = [
-      {done: active.length > 0 && confirmed.length === active.length, title: '确认功能需求', detail: active.length ? confirmed.length + ' / ' + active.length + ' 条已确认' : '尚无功能需求', go: active.find(req => req.review_status !== 'confirmed') && openFirst(active.find(req => req.review_status !== 'confirmed').requirement_id)},
+      {done: active.length > 0 && confirmed.length === active.length, title: '确认功能需求', detail: active.length ? confirmed.length + pendingConfirm + ' / ' + active.length + ' 条已确认' + (pendingConfirm ? '（其中 ' + pendingConfirm + ' 条待生效）' : '') : '尚无功能需求', go: active.find(req => req.review_status !== 'confirmed') && openFirst(active.find(req => req.review_status !== 'confirmed').requirement_id)},
       {done: confirmed.length > 0 && !noAcceptance.length, title: '补全验收标准', detail: !confirmed.length ? '确认需求后检查' : noAcceptance.length ? noAcceptance.map(req => req.title).join('、') + ' 缺验收标准' : '已确认需求都有验收标准', go: noAcceptance[0] && openFirst(noAcceptance[0].requirement_id)},
-      {done: nfrs.length > 0 && !openNfrs.length, title: '确认非功能需求', detail: !nfrs.length ? '还没有：交给 Skill 时会先整理性能、权限、设备等要求，回到「功能需求」确认' : openNfrs.length ? openNfrs.length + ' 条待确认' : nfrs.length + ' 条已处理', go: openNfrs[0] && openFirst(openNfrs[0].nfr_id)},
+      {done: nfrs.length > 0 && !openNfrs.length, title: '确认非功能需求', detail: !nfrs.length ? '还没有：交给 Skill 时会先整理性能、权限、设备等要求，回到「功能需求」确认' : openNfrs.length ? (openNfrs.length - pendingNfr) + ' 条待确认' + (pendingNfr ? '，' + pendingNfr + ' 条已评审待生效' : '') : nfrs.length + ' 条已处理', go: openNfrs[0] && openFirst(openNfrs[0].nfr_id)},
     ];
     const missing = rows.filter(row => !row.done);
     const card = panel('生成原型');
+    if (pendingAll) {
+      const notice = element('div', null, 'review-pending-bar');
+      notice.append(element('span', '有 ' + pendingAll + ' 条评审结论待生效：先在「功能需求」生成新版本，原型按新版本里已确认的需求生成。'));
+      const go = element('button', '去生成新版本', 'button primary small'); go.type = 'button'; go.addEventListener('click', () => { moduleView = 'list'; navigate('modules'); });
+      notice.append(go); card.append(notice);
+    }
     card.append(element('p', missing.length ? '生成前必须完成下面 ' + missing.length + ' 项：原型只按已确认的需求和验收标准设计，未完成时 Skill 会拒绝生成。' : '前置条件都已完成，复制下面的指令交给 Skill 生成原型。', 'inline-note'));
     const list = element('ol', null, 'prototype-checklist');
     for (const row of rows) {
@@ -1621,6 +1647,7 @@
       '项目编号：' + project.project_id + '；基于版本：' + project.artifact_version + '。',
       '按 references/prototype.md：确定项目定位、信息架构和页面，把已确认的功能需求落到页面，写入 prototype_design，检查覆盖后生成原型，并生成新版本。',
     ];
+    if (pendingAll) lines.push('工作台里还有 ' + pendingAll + ' 条评审结论没生效：请先在工作台「生成新版本」，再基于新版本生成原型。');
     if (!nfrs.length) lines.push('还没有非功能需求：先从会议原话整理性能、权限、设备等要求，标为草稿，生成新版本后停下，等我在工作台确认。');
     else if (missing.length) lines.push('当前还缺：' + missing.map(row => row.title + '（' + row.detail + '）').join('；') + '。缺项未完成前不要生成，先告诉我还差什么。');
     const text = lines.join('\n');

@@ -187,6 +187,7 @@ async function settle() {
   assert.match(document.getElementById('page-content').textContent, /合成评审：需要核对验收/);
   navigate('modules');
   assert(document.querySelector('.review-pending-bar'), 'pending verdicts and edits shown on the requirement page');
+  assert.match(document.querySelector('.requirement-identity .status-tag').textContent, /需修改（待生效）/, 'saved verdict shows right away as pending');
   submit(document.getElementById('review-version').closest('form'));
   await settle();
   const applied = requests.find(item => item.url === '/api/review/apply');
