@@ -1607,73 +1607,68 @@
   // FR/NFR, and the generator refuses unconfirmed input. So this page lists the hard prerequisites and hands a
   // ready-to-paste instruction to the Skill, like 交给开发 does for coding agents.
   let prototypeHandoffMessage = '';
+  // Three short checks and one next step. The page cannot design a prototype itself: drafting (acceptance criteria,
+  // NFRs) and generation run in the Skill, so the next step is either "generate the new version" or "copy for the Skill".
   function prototypeChecklist() {
     const nfrs = project.nfrs || [];
-    // Progress counts what the reviewer has already decided here, including verdicts and edits saved but not yet
-    // applied (待生效): a row is ticked as soon as the work is done; the notice above says to generate the new version.
     const effective = item => statusView(item).status;
     const active = requirements.filter(req => effective(req) !== 'parked' && req.lifecycle_status !== 'cancelled');
     const confirmed = active.filter(req => effective(req) === 'confirmed');
-    const pendingConfirm = confirmed.filter(req => req.review_status !== 'confirmed').length;
-    const editedAcceptance = new Set(pendingChanges.filter(change => change.field === 'acceptance_criteria' && display(change.value) !== '待确认').map(change => change.target));
-    const noAcceptance = confirmed.filter(req => display(req.acceptance_criteria) === '待确认' && !editedAcceptance.has(req.requirement_id));
+    const edited = new Set(pendingChanges.filter(change => change.field === 'acceptance_criteria' && display(change.value) !== '待确认').map(change => change.target));
+    const noAcceptance = confirmed.filter(req => display(req.acceptance_criteria) === '待确认' && !edited.has(req.requirement_id));
     const openNfrs = nfrs.filter(item => !['confirmed', 'parked'].includes(effective(item)));
-    const pendingNfr = nfrs.filter(item => statusView(item).pending).length;
-    const pendingAll = (serverState?.review?.decisions || []).filter(item => (item.review_stage || 'definition') === 'definition').length + pendingChanges.length;
-    const openFirst = target => () => { selectedRequirement = target; moduleView = 'list'; requirementTab = 'detail'; navigate('modules'); };
     const unconfirmed = active.find(req => effective(req) !== 'confirmed');
-    // Acceptance criteria and NFRs are drafted by the Skill (it reads the meeting); the page hands over the instruction.
-    const intro = '用「产品需求落地」Skill 处理项目《' + (project.name || project.project_id) + '》（版本 ' + project.artifact_version + '）：';
-    const copyPrompt = (prompt, what) => async () => {
-      try { await navigator.clipboard.writeText(intro + prompt); prototypeHandoffMessage = '已复制' + what + '的指令，粘贴到 Claude Code、码道等装了这个 Skill 的工具里；生成新版本后回到工作台确认'; } catch { prototypeHandoffMessage = '浏览器未允许复制'; }
-      render();
-    };
-    const copyNfrPrompt = copyPrompt('从会议原话整理非功能需求（性能与数据量、权限与安全、兼容与设备、可靠性、审计等），按 references/prototype.md 写入 nfrs，标为草稿并保留原话依据，生成新版本后停下，等我在工作台确认。', '整理非功能需求');
+    const pending = (serverState?.review?.decisions || []).filter(item => (item.review_stage || 'definition') === 'definition').length + pendingChanges.length;
     const rows = [
-      {done: active.length > 0 && !unconfirmed, title: '确认功能需求', detail: active.length ? confirmed.length + ' / ' + active.length + ' 条已确认' + (pendingConfirm ? '（其中 ' + pendingConfirm + ' 条待生效）' : '') : '尚无功能需求', go: unconfirmed && openFirst(unconfirmed.requirement_id)},
-      {done: confirmed.length > 0 && !noAcceptance.length, title: '补全验收标准', detail: !confirmed.length ? '确认需求后检查' : noAcceptance.length ? noAcceptance.length + ' 条缺验收标准：' + noAcceptance.slice(0, 3).map(req => req.title).join('、') + (noAcceptance.length > 3 ? ' 等' : '') + '。让 Skill 按需求和原话起草，回到需求下核对；也可以在需求里「修改内容」手写' : '已确认需求都有验收标准', go: noAcceptance.length && copyPrompt('为这些需求起草验收标准：' + noAcceptance.map(req => req.requirement_id + ' ' + req.title).join('、') + '。按 references/workflow.md 写成可检查的条目，覆盖正常路径和空数据、无权限、失败情况，写入各需求的 acceptance_criteria，生成新版本后停下，等我在工作台核对。', '起草验收标准'), label: '复制起草指令'},
-      {done: nfrs.length > 0 && !openNfrs.length, title: '确认非功能需求', detail: !nfrs.length ? '还没有：复制指令让 Skill 先整理成草稿，再回到「功能需求」确认' : openNfrs.length ? openNfrs.length + ' 条待确认' : nfrs.length + ' 条已处理' + (pendingNfr ? '（其中 ' + pendingNfr + ' 条待生效）' : ''), go: openNfrs[0] ? openFirst(openNfrs[0].nfr_id) : !nfrs.length && copyNfrPrompt, label: nfrs.length ? '去处理' : '复制整理指令'},
+      {done: active.length > 0 && !unconfirmed, title: '确认功能需求', detail: confirmed.length + ' / ' + active.length},
+      {done: confirmed.length > 0 && !noAcceptance.length, title: '验收标准', detail: noAcceptance.length ? '缺 ' + noAcceptance.length + ' 条' : confirmed.length ? '齐全' : '—'},
+      {done: nfrs.length > 0 && !openNfrs.length, title: '确认非功能需求', detail: !nfrs.length ? '还没有' : openNfrs.length ? '待确认 ' + openNfrs.length + ' 条' : '已确认'},
     ];
-    const missing = rows.filter(row => !row.done);
     const card = panel('生成原型');
-    if (pendingAll) {
-      const notice = element('div', null, 'review-pending-bar');
-      notice.append(element('span', '有 ' + pendingAll + ' 条评审结论待生效：先在「功能需求」生成新版本，原型按新版本里已确认的需求生成。'));
-      const go = element('button', '去生成新版本', 'button primary small'); go.type = 'button'; go.addEventListener('click', () => { moduleView = 'list'; navigate('modules'); });
-      notice.append(go); card.append(notice);
-    }
-    card.append(element('p', missing.length ? '生成前必须完成下面 ' + missing.length + ' 项：原型只按已确认的需求和验收标准设计，未完成时 Skill 会拒绝生成。' : '前置条件都已完成，复制下面的指令交给 Skill 生成原型。', 'inline-note'));
     const list = element('ol', null, 'prototype-checklist');
     for (const row of rows) {
       const item = element('li', null, row.done ? 'done' : '');
-      const body = element('div');
-      body.append(element('strong', row.title), element('span', row.detail));
-      item.append(element('span', row.done ? '✓' : '', 'check-mark'), body);
-      if (row.go && !row.done) { const go = element('button', row.label || '去处理', 'button ghost small'); go.type = 'button'; go.addEventListener('click', row.go); item.append(go); }
+      item.append(element('span', row.done ? '✓' : '', 'check-mark'), element('strong', row.title), element('span', row.detail));
       list.append(item);
     }
     card.append(list);
-    const lines = [
-      '用「产品需求落地」Skill 为项目《' + (project.name || project.project_id) + '》生成可交互原型。',
-      '项目编号：' + project.project_id + '；基于版本：' + project.artifact_version + '。',
-      '按 references/prototype.md：确定项目定位、信息架构和页面，把已确认的功能需求落到页面，写入 prototype_design，检查覆盖后生成原型，并生成新版本。',
-    ];
-    if (pendingAll) lines.push('工作台里还有 ' + pendingAll + ' 条评审结论没生效：请先在工作台「生成新版本」，再基于新版本生成原型。');
-    if (!nfrs.length) lines.push('还没有非功能需求：先从会议原话整理性能、权限、设备等要求，标为草稿，生成新版本后停下，等我在工作台确认。');
-    else if (missing.length) lines.push('当前还缺：' + missing.map(row => row.title + '（' + row.detail + '）').join('；') + '。缺项未完成前不要生成，先告诉我还差什么。');
-    const text = lines.join('\n');
-    const handoff = element('section', null, 'handoff-preview prototype-handoff'); handoff.setAttribute('aria-label', '交给 Skill 生成原型');
-    const head = element('div', null, 'handoff-head');
-    head.append(iconLabel(element('strong', '交给 Skill 生成原型'), 'prototype'));
-    const copy = iconLabel(element('button', '复制指令', missing.length ? 'button small' : 'button primary small'), 'copy'); copy.type = 'button';
-    copy.addEventListener('click', async () => {
-      try { await navigator.clipboard.writeText(text); prototypeHandoffMessage = '已复制，粘贴到 Claude Code、码道等装了这个 Skill 的工具里'; } catch { prototypeHandoffMessage = '浏览器未允许复制，请手动选中下面的文字'; }
-      render();
-    });
-    head.append(copy); handoff.append(head);
-    if (prototypeHandoffMessage) { const status = element('p', prototypeHandoffMessage, 'inline-note'); status.setAttribute('role', 'status'); handoff.append(status); }
-    handoff.append(element('pre', text, 'handoff-text'));
-    card.append(handoff);
+    // One next step, in order: confirm requirements → apply verdicts → let the Skill draft what is missing → generate.
+    const intro = '用「产品需求落地」Skill 处理项目《' + (project.name || project.project_id) + '》（版本 ' + project.artifact_version + '）：';
+    let note, button;
+    if (unconfirmed) {
+      note = '先在「功能需求」逐条确认。';
+      button = element('button', '去确认', 'button primary small');
+      button.addEventListener('click', () => { selectedRequirement = unconfirmed.requirement_id; moduleView = 'list'; requirementTab = 'detail'; navigate('modules'); });
+    } else if (pending) {
+      note = '结论已保存，生成新版本后生效。';
+      button = element('button', '去生成新版本', 'button primary small');
+      button.addEventListener('click', () => { moduleView = 'list'; navigate('modules'); });
+    } else {
+      const ready = rows.every(row => row.done);
+      const asks = [];
+      if (noAcceptance.length) asks.push('为 ' + noAcceptance.map(req => req.requirement_id).join('、') + ' 起草验收标准（按 references/workflow.md）');
+      if (!nfrs.length) asks.push('从会议原话整理非功能需求草稿（按 references/prototype.md）');
+      const prompt = ready
+        ? intro + '按 references/prototype.md 设计并生成可交互原型，生成新版本。'
+        : intro + asks.join('；') + '。生成新版本后停下，等我在工作台确认。';
+      note = ready ? '条件齐了，复制指令交给 Skill 生成原型。' : openNfrs.length && !asks.length ? '在「功能需求」的「非功能需求」组里确认。' : '缺的部分交给 Skill 起草，回来确认后再生成。';
+      if (openNfrs.length && !asks.length) {
+        button = element('button', '去确认', 'button primary small');
+        button.addEventListener('click', () => { selectedRequirement = openNfrs[0].nfr_id; moduleView = 'list'; requirementTab = 'detail'; navigate('modules'); });
+      } else {
+        button = iconLabel(element('button', '复制指令给 Skill', 'button primary small'), 'copy');
+        button.title = prompt;
+        button.addEventListener('click', async () => {
+          try { await navigator.clipboard.writeText(prompt); prototypeHandoffMessage = '已复制，粘贴到装了这个 Skill 的 Claude Code 或码道里。'; } catch { prototypeHandoffMessage = '浏览器未允许复制：' + prompt; }
+          render();
+        });
+      }
+    }
+    button.type = 'button';
+    const next = element('div', null, 'prototype-next');
+    next.append(element('p', note), button);
+    card.append(next);
+    if (prototypeHandoffMessage) { const status = element('p', prototypeHandoffMessage, 'inline-note'); status.setAttribute('role', 'status'); card.append(status); }
     content.append(card);
   }
   function designedPrototype(artifact) {
