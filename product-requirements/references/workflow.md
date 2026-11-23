@@ -17,6 +17,8 @@
 
 每条需求记录 `requirement_id`、标题、角色、触发、行为、输入输出、规则、异常、验收、`source_refs`、`evidence_type`、`review_status` 与 `locked_fields`。REQ ID 在同一项目内唯一且跨版本稳定。
 
+`acceptance_criteria` 在分析时由 Skill 起草，写成可检查的条目（输入什么、看到什么结果），并覆盖空数据、无权限和失败情况。会上明确说过的照原话写；没说过的按需求行为推导，作为草稿随需求一起由负责人确认，不写“待确认”。
+
 `evidence_type` 使用 explicit、inferred、suggested 或 unknown。`review_status` 使用 draft、confirmed、disputed 或 parked。事实来源与人工确认分别保存。
 
 原话引用指向 sources.jsonl 的片段。人工补充也建立带补充者和时间的来源记录。TXT 的段落定位可以用于追溯，时间缺失记录 null。
@@ -27,7 +29,7 @@
 
 页面定义目标、角色、入口、主要操作、字段、空态、加载、错误和返回路径。每页关联 REQ ID，示例数据和模拟接口清楚标注。
 
-非功能需求单独整理为 NFR，保留原话依据并区分客户表达与模型推断，确认后进入原型设计，见 [原型设计与生成](prototype.md)。
+非功能需求在分析时一并整理为 NFR 草稿，保留原话依据并区分客户表达与模型推断，在工作台「功能需求」的「非功能需求」组里确认后进入原型设计，见 [原型设计与生成](prototype.md)。
 
 ## 修订
 

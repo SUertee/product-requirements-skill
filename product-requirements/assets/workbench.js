@@ -53,7 +53,6 @@
   let workflowMessage = '';
   let appliedTask = null;  // version created from the review bar this session
   let pendingChanges = [];
-  let editorField = null;  // field the editor opens on, when another page sends the reviewer here
   let previewDevice = 'desktop';
 
   function element(tag, text, className) {
@@ -229,7 +228,6 @@
     const select = element('select'); select.id = 'edit-field-' + req.requirement_id;
     const labels = {behavior: '功能内容', acceptance_criteria: '验收标准', rules: '业务规则', exceptions: '出错时怎么处理', role: '使用者', title: '需求名称'};
     for (const [key, label] of Object.entries(labels)) { const option = element('option', label); option.value = key; select.append(option); }
-    if (editorField) { select.value = editorField; editorField = null; }  // opened from 原型预览 → 去填写
     const fieldLabel = element('label', '改哪一项'); fieldLabel.htmlFor = select.id;
     const text = element('textarea'); text.id = 'edit-value-' + req.requirement_id; text.rows = 4;
     const textLabel = element('label', '改成'); textLabel.htmlFor = text.id;
@@ -1622,16 +1620,18 @@
     const openNfrs = nfrs.filter(item => !['confirmed', 'parked'].includes(effective(item)));
     const pendingNfr = nfrs.filter(item => statusView(item).pending).length;
     const pendingAll = (serverState?.review?.decisions || []).filter(item => (item.review_stage || 'definition') === 'definition').length + pendingChanges.length;
-    const openFirst = (target, tab = 'detail') => () => { selectedRequirement = target; moduleView = 'list'; requirementTab = tab; if (tab === 'edit') editorField = 'acceptance_criteria'; navigate('modules'); };
+    const openFirst = target => () => { selectedRequirement = target; moduleView = 'list'; requirementTab = 'detail'; navigate('modules'); };
     const unconfirmed = active.find(req => effective(req) !== 'confirmed');
-    const copyNfrPrompt = async () => {
-      const prompt = '用「产品需求落地」Skill 为项目《' + (project.name || project.project_id) + '》（版本 ' + project.artifact_version + '）整理非功能需求：从会议原话找出性能与数据量、权限与安全、兼容与设备、可靠性、审计等要求，按 references/prototype.md 写入 nfrs，标为草稿并保留原话依据，生成新版本后停下，等我在工作台确认。';
-      try { await navigator.clipboard.writeText(prompt); prototypeHandoffMessage = '已复制整理非功能需求的指令，粘贴到 Claude Code、码道等装了这个 Skill 的工具里'; } catch { prototypeHandoffMessage = '浏览器未允许复制'; }
+    // Acceptance criteria and NFRs are drafted by the Skill (it reads the meeting); the page hands over the instruction.
+    const intro = '用「产品需求落地」Skill 处理项目《' + (project.name || project.project_id) + '》（版本 ' + project.artifact_version + '）：';
+    const copyPrompt = (prompt, what) => async () => {
+      try { await navigator.clipboard.writeText(intro + prompt); prototypeHandoffMessage = '已复制' + what + '的指令，粘贴到 Claude Code、码道等装了这个 Skill 的工具里；生成新版本后回到工作台确认'; } catch { prototypeHandoffMessage = '浏览器未允许复制'; }
       render();
     };
+    const copyNfrPrompt = copyPrompt('从会议原话整理非功能需求（性能与数据量、权限与安全、兼容与设备、可靠性、审计等），按 references/prototype.md 写入 nfrs，标为草稿并保留原话依据，生成新版本后停下，等我在工作台确认。', '整理非功能需求');
     const rows = [
       {done: active.length > 0 && !unconfirmed, title: '确认功能需求', detail: active.length ? confirmed.length + ' / ' + active.length + ' 条已确认' + (pendingConfirm ? '（其中 ' + pendingConfirm + ' 条待生效）' : '') : '尚无功能需求', go: unconfirmed && openFirst(unconfirmed.requirement_id)},
-      {done: confirmed.length > 0 && !noAcceptance.length, title: '补全验收标准', detail: !confirmed.length ? '确认需求后检查' : noAcceptance.length ? noAcceptance.length + ' 条缺验收标准：' + noAcceptance.slice(0, 3).map(req => req.title).join('、') + (noAcceptance.length > 3 ? ' 等' : '') + '。打开后点「修改内容」填写' : '已确认需求都有验收标准', go: noAcceptance[0] && openFirst(noAcceptance[0].requirement_id, 'edit'), label: '去填写'},
+      {done: confirmed.length > 0 && !noAcceptance.length, title: '补全验收标准', detail: !confirmed.length ? '确认需求后检查' : noAcceptance.length ? noAcceptance.length + ' 条缺验收标准：' + noAcceptance.slice(0, 3).map(req => req.title).join('、') + (noAcceptance.length > 3 ? ' 等' : '') + '。让 Skill 按需求和原话起草，回到需求下核对；也可以在需求里「修改内容」手写' : '已确认需求都有验收标准', go: noAcceptance.length && copyPrompt('为这些需求起草验收标准：' + noAcceptance.map(req => req.requirement_id + ' ' + req.title).join('、') + '。按 references/workflow.md 写成可检查的条目，覆盖正常路径和空数据、无权限、失败情况，写入各需求的 acceptance_criteria，生成新版本后停下，等我在工作台核对。', '起草验收标准'), label: '复制起草指令'},
       {done: nfrs.length > 0 && !openNfrs.length, title: '确认非功能需求', detail: !nfrs.length ? '还没有：复制指令让 Skill 先整理成草稿，再回到「功能需求」确认' : openNfrs.length ? openNfrs.length + ' 条待确认' : nfrs.length + ' 条已处理' + (pendingNfr ? '（其中 ' + pendingNfr + ' 条待生效）' : ''), go: openNfrs[0] ? openFirst(openNfrs[0].nfr_id) : !nfrs.length && copyNfrPrompt, label: nfrs.length ? '去处理' : '复制整理指令'},
     ];
     const missing = rows.filter(row => !row.done);
