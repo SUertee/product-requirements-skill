@@ -161,7 +161,7 @@ async function settle() {
   assert.match(document.getElementById('page-content').textContent, /合成评审：需要核对验收/);
   button('版本变更').click();
   assert.match(document.getElementById('page-content').textContent, /当前版本/);
-  button('待确认').click();
+  button('负责人复核').click();
   submit(document.getElementById('review-version').closest('form'));
   await settle();
   const applied = requests.find(item => item.url === '/api/review/apply');

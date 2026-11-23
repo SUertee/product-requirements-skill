@@ -11,7 +11,7 @@ description: 将客户会议录音、逐字稿与前情资料整理为带依据�
 
 - 新会议或后台接收材料，读取 [输入与预处理](references/ingestion.md)。本地文件使用 `scripts/ingest_material.py`，飞书妙记使用 `scripts/feishu_connector.py`。运行前查看 `--help`。纯文本标准化可直接运行 `scripts/normalize_transcript.py`。
 - 首次需求整理，读取 [需求建模与评审](references/workflow.md)。
-- 绘制流程、架构或数据模型，先读 [能力接入与设计路由](references/capabilities.md)。
+- 生成业务模块图、技术架构图、流程图或 ERD 前，读取 [能力接入与设计路由](references/capabilities.md)。需要 Archify 且本地缺失时，按其中步骤下载固定版本，读取入口后再运行。
 - 生成客户原型，读取 [原型设计与生成](references/prototype.md) 和 [内置 UI 规范](references/ui-design.md)，使用 assets/ui.css 与 assets/prototype-shell.html。
 - 生成内部工作台，读取 [工作台页面规范](references/workbench.md) 和内置 UI 规范，使用 assets/workbench-template.html、assets/workbench.css 与 assets/workbench.js。
 - 需要在网页中导入和记录评审时，运行 scripts/serve_workbench.py，传入已生成的 run-dir 与该项目的 workspace。读取接收箱的分析请求，再执行语义分析与新版本生成。
@@ -56,9 +56,13 @@ description: 将客户会议录音、逐字稿与前情资料整理为带依据�
 
 内部 PRD 与工作台用于分享浏览和反馈汇总，负责人通过 Skill 修订。客户默认查看选定版本的交互原型。多人在线编辑暂缓。
 
-流程与架构图通过 Archify 生成，交互式业务数据模型通过 Schema Canvas 生成。调用前读取对应 Skill 入口及所需参考，接入方式见 capabilities.md。依赖缺失时记录失败环节与具体接入位置。
+流程与架构图通过 Archify 生成，交互式业务数据模型通过 Schema Canvas 生成。调用前读取对应 Skill 入口及所需参考。依赖准备失败时记录实际失败环节。
 
 执行结束后提供真实文件入口、版本、待确认问题和失败环节。展示已实际生成的文件与实际执行的能力。
+
+## 客户现场复核
+
+对待确认且适合选择的问题，可在对应需求中给出 `customer_review_question`，包含 `prompt` 和 2 到 6 项 `options`。每题只问一个决定，选项依据已知约束和方案，涉及重要例外时保留差异。负责人在评审页选择或改写后生成链接，客户可点选、补充或暂缓。收到的回答是新的来源素材，由负责人核对后进入后续需求分析。
 
 ## 交付检查
 

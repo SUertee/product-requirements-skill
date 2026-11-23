@@ -1539,8 +1539,117 @@
     }
     content.append(card);
   }
+  function customerReview() {
+    const card = panel('客户复核');
+    content.append(card);
+    if (!serverState) {
+      card.append(element('p', '请在本地工作台中创建问卷和查看回答。', 'inline-note'));
+      return;
+    }
+    const feedback = serverState.jobs.filter(job => job.provenance?.provider === 'customer_review' && job.provenance.artifact_version === project.artifact_version);
+    const responses = panel('本版客户反馈');
+    const refresh = element('button', '刷新反馈', 'button');
+    refresh.type = 'button';
+    const feedbackStatus = element('p', '', 'inline-note');
+    feedbackStatus.setAttribute('role', 'status');
+    const list = element('ul');
+    function showFeedback(jobs) {
+      list.replaceChildren();
+      for (const job of jobs.filter(item => item.status !== 'failed')) {
+        const row = element('li');
+        row.append(jobLink(job, 'original', '查看反馈 ' + job.job_id.slice(-8)));
+        list.append(row);
+      }
+      feedbackStatus.textContent = list.childElementCount ? '' : '本版暂无已接收的反馈';
+    }
+    showFeedback(feedback);
+    refresh.addEventListener('click', async () => {
+      try {
+        await refreshLocal();
+        showFeedback(serverState.jobs.filter(job => job.provenance?.provider === 'customer_review' && job.provenance.artifact_version === project.artifact_version));
+      } catch (error) { feedbackStatus.textContent = error.message; }
+    });
+    responses.append(refresh, feedbackStatus, list);
+    content.append(responses);
+    if (!serverState.customer_review_enabled) {
+      card.append(element('p', '启动工作台时传入 --customer-host 本机局域网 IP，即可生成客户答题链接。', 'inline-note'));
+      return;
+    }
+    if (!requirements.length) {
+      card.append(element('p', '先整理至少一条需求，再创建客户问卷。', 'inline-note'));
+      return;
+    }
+    const form = element('form', null, 'intake-form');
+    const questions = element('div');
+    const add = element('button', '添加问题', 'button');
+    add.type = 'button';
+    const publish = element('button', '生成答题链接', 'button primary');
+    publish.type = 'submit';
+    const status = element('p', '', 'inline-note');
+    status.setAttribute('role', 'status');
+    function addQuestion() {
+      const row = element('fieldset', null, 'inbox-row');
+      const target = element('select');
+      for (const requirement of requirements) {
+        const option = element('option', requirement.title);
+        option.value = requirement.requirement_id;
+        target.append(option);
+      }
+      if (reviewTarget) target.value = requirements.some(req => req.requirement_id === reviewTarget) ? reviewTarget : requirements[0].requirement_id;
+      const prompt = element('input');
+      prompt.required = true;
+      prompt.maxLength = 300;
+      const options = element('textarea');
+      options.rows = 3;
+      options.required = true;
+      function suggest() {
+        const requirement = requirements.find(req => req.requirement_id === target.value);
+        const suggestion = requirement.customer_review_question;
+        prompt.value = String(suggestion?.prompt || requirement.open_questions?.[0] || '「' + requirement.title + '」是否符合你的使用预期？').slice(0, 300);
+        options.value = Array.isArray(suggestion?.options) ? suggestion.options.join('\n') : requirement.open_questions?.length ? '' : '符合，可以按当前方案推进\n基本符合，补充细节后可以推进\n需要调整后再确认';
+      }
+      target.addEventListener('change', suggest);
+      suggest();
+      const remove = element('button', '删除问题', 'button');
+      remove.type = 'button';
+      remove.addEventListener('click', () => { row.remove(); publish.disabled = !questions.children.length; add.disabled = false; });
+      row.append(element('legend', '客户可见问题'));
+      for (const [name, control] of [['关联需求（内部）', target], ['问题', prompt], ['候选项（每行一项）', options]]) {
+        const label = element('label', name);
+        label.append(control);
+        row.append(label);
+      }
+      row.append(remove);
+      questions.append(row);
+      add.disabled = questions.children.length >= 20;
+      publish.disabled = false;
+    }
+    add.addEventListener('click', addQuestion);
+    addQuestion();
+    form.append(questions, add, publish, status);
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      publish.disabled = true;
+      try {
+        const entries = Array.from(questions.children, row => ({
+          target: row.querySelector('select').value,
+          prompt: row.querySelector('input').value,
+          options: row.querySelector('textarea').value.split(/\r?\n/).map(option => option.trim()).filter(Boolean),
+        }));
+        const result = await localRequest('/api/customer-review', {method: 'POST', body: JSON.stringify({questions: entries})});
+        const link = element('a', result.url);
+        link.href = result.url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        status.replaceChildren(document.createTextNode('把这个链接发给参会客户：'), link);
+      } catch (error) { status.textContent = error.message; }
+      finally { publish.disabled = !questions.children.length; }
+    });
+    card.append(form);
+  }
   function review() {
-    content.append(sectionTabs([['questions', '待确认'], ['records', '已记录'], ['changes', '版本变更'], ['delivery', '交付']], reviewTab, '评审内容', key => { reviewTab = key; render(); }));
+    content.append(sectionTabs([['questions', '负责人复核'], ['customer', '客户复核'], ['records', '已记录'], ['changes', '版本变更'], ['delivery', '交付']], reviewTab, '评审内容', key => { reviewTab = key; render(); }));
+    if (reviewTab === 'customer') { customerReview(); return; }
     if (reviewTab === 'delivery') { releasePanel(); reviewForm(content, 'release'); return; }
     if (reviewTab === 'records') {
       const records = [...(data.review.decisions || []), ...(serverState?.review.decisions || [])];
