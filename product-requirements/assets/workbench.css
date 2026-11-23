@@ -402,6 +402,9 @@ video { width: 100%; max-height: 520px; margin-top: 20px; background: var(--nav-
 .requirement-code { margin-left: auto; font-variant-numeric: tabular-nums; }
 .requirement-tab-body .source-link { margin-top: 4px; }
 .requirement-tab-body .source-quote { margin: 8px 0 16px; }
+.requirement-feedback { margin-top: 20px; }
+.customer-answer { overflow-wrap: anywhere; }
+.customer-answer p { margin: 6px 0; }
 .requirement-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 16px; border-top: 1px solid var(--border); }
 @media (max-width: 700px) { .requirement-group { flex: 0 0 auto; align-self: center; margin: 0 4px 0 8px; white-space: nowrap; } .requirement-group:first-child { margin-left: 0; } }
 

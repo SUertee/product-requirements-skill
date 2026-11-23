@@ -237,6 +237,23 @@
     });
     detail.append(form); return detail;
   }
+  function appendCustomerFeedback(parent, requirementId) {
+    const answers = (serverState?.customer_feedback || []).filter(item => item.target === requirementId);
+    if (!answers.length) return;
+    const section = element('section', null, 'requirement-feedback');
+    section.append(element('h3', '客户反馈'));
+    for (const item of answers) {
+      const row = element('div', null, 'source-quote customer-answer');
+      if (item.prompt) {
+        row.append(element('strong', item.prompt), element('p', item.answer));
+        if (item.note) row.append(element('p', item.note));
+        if (item.respondent) row.append(element('p', item.respondent, 'workbench-meta'));
+      }
+      row.append(jobLink(item, 'original', '查看原始答复'));
+      section.append(row);
+    }
+    parent.append(section);
+  }
   function requirementCard(req) {
     const card = panel(req.title);
     card.classList.add('requirement-inspector');
@@ -250,6 +267,7 @@
     if (editing) body.append(requirementEditor(req));
     else {
       body.append(element('h3', '功能内容'), valueNode(req.behavior));
+      appendCustomerFeedback(body, req.requirement_id);
       body.append(element('h3', '验收标准'), valueNode(req.acceptance_criteria));
       if (req.open_questions?.length) body.append(element('h3', '需要确认'), valueNode(req.open_questions));
       const known = [['使用者', req.role], ['触发条件', req.trigger], ['输入', req.inputs], ['输出', req.outputs], ['业务规则', req.rules], ['异常处理', req.exceptions]].filter(([, value]) => display(value) !== '待确认');

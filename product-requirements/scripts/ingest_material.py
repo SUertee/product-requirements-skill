@@ -30,7 +30,7 @@ def read_job(directory):
     return json.loads((directory / 'job.json').read_text(encoding='utf-8'))
 
 
-def ingest(input_path, workspace, project_id, provenance=None, retry=False, related_job_id=None):
+def ingest(input_path, workspace, project_id, provenance=None, retry=False, related_job_id=None, *, metadata=None):
     input_path = Path(input_path).resolve(strict=True)
     workspace = Path(workspace).resolve()
     if not project_id.strip():
@@ -65,6 +65,8 @@ def ingest(input_path, workspace, project_id, provenance=None, retry=False, rela
            'material_id': material_id, 'name': input_path.name, 'kind': 'transcript' if suffix in TEXT else 'recording',
            'processor_version': PROCESSOR, 'created_at': datetime.now(timezone.utc).isoformat(),
            'stage': 'received', 'status': 'processing', 'provenance': origin, 'files': {}}
+    if metadata is not None:
+        job['metadata'] = metadata
     if retry_of:
         job['retry_of'] = retry_of
     try:

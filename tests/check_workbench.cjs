@@ -46,6 +46,8 @@ const state = {
   review: {revision: 0, decisions: []},
   tasks: [{id: 'AN-' + 'b'.repeat(24), kind: 'analysis', status: 'completed', version: 'v1', job_ids: [jobId]}],
   releases: [],
+  customer_feedback: [{target: 'REQ-001', job_id: jobId, respondent: '客服主管',
+    prompt: '电话必填吗？', answer: '选填', note: '有回访需求时才必填'}],
   jobs: [{job_id: jobId, material_id: 'fixture', name: '合成会议.txt', kind: 'transcript', status: 'ready_for_analysis', source_count: 3, files: {}, provenance: {}}]
 };
 window.fetch = async (url, options = {}) => {
@@ -131,6 +133,13 @@ async function settle() {
   assert.match(document.getElementById('page-content').textContent, /原话时间超出录音长度/);
   assert(document.querySelectorAll('.source-excerpt').length <= 30);
   navigate('modules');
+  const feedback = document.querySelector('.requirement-feedback');
+  assert.match(feedback.textContent, /电话必填吗？.*选填.*有回访需求时才必填.*客服主管/);
+  assert.equal(feedback.querySelector('a').getAttribute('href'), '/api/jobs/' + jobId + '/original');
+  const choices = [...document.querySelectorAll('.requirement-choice')];
+  choices.find(choice => choice.dataset.requirementId !== 'REQ-001').click();
+  assert.equal(document.querySelector('.requirement-feedback'), null);
+  document.querySelector('.requirement-choice[data-requirement-id="REQ-001"]').click();
   const citation = [...document.querySelectorAll('[data-source-ref]')].find(node => node.dataset.sourceRef === lastSourceId);
   assert.match(citation.textContent, /查看原话/);
   citation.click();
