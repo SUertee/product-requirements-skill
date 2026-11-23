@@ -26,9 +26,12 @@ html[data-annotate] [data-nfr]:not([data-req])::before{background:var(--ui-warni
 .pt-mobile .ui-nav nav a{flex:1;text-align:center;padding:10px 4px;font-size:var(--ui-text-sm)}
 .pt-mobile .ui-main{padding:16px 16px 96px}
 @media (max-width:899px){.ui-nav nav{display:flex;flex-wrap:wrap;gap:4px}.ui-nav nav a{padding:8px 10px}}
+.pt-feedback{position:fixed;right:24px;bottom:24px;z-index:15;box-shadow:var(--ui-shadow-overlay)}
+.pt-mobile .pt-feedback{right:16px;bottom:84px}
 </style><style id="page-styles"></style></head>
 <body><div class="ui-shell"><aside class="ui-nav"><h1 id="project-name"></h1><label class="pt-role" id="role-picker" hidden>当前角色<select id="role"></select></label><nav id="pages" aria-label="原型页面"></nav></aside><main class="ui-main"><p class="pt-notice" id="notice"></p><div id="screen"></div></main></div>
 <div class="pt-toast" id="toast" role="status" aria-live="polite" hidden></div>
+<a class="ui-button primary pt-feedback" id="feedback" target="_blank" rel="noopener noreferrer" hidden>提意见</a>
 <script id="prototype-data" type="application/json">__PROTOTYPE_DATA__</script>
 <script>
 (() => {
@@ -113,6 +116,18 @@ html[data-annotate] [data-nfr]:not([data-req])::before{background:var(--ui-warni
       try { handler(sections.get(current), P.params); } catch (error) { report(current, error); }
     }
     if (parent !== window) parent.postMessage({type: 'prototype:page', page_id: current}, '*');
+    updateFeedback(page);
+  }
+  // Customers open the released prototype directly; the workbench preview (an iframe) keeps the button hidden.
+  function updateFeedback(page) {
+    const link = document.getElementById('feedback');
+    if (!data.feedback || parent !== window) return;
+    const url = new URL(data.feedback.url);
+    const values = {'页面': page.name, '需求': (page.requirement_ids || []).join(' '), '原型版本': data.artifact_version, '项目': data.feedback.project_id};
+    for (const [field, value] of Object.entries(values)) url.searchParams.set('prefill_' + field, value);
+    for (const field of ['需求', '原型版本', '项目']) url.searchParams.set('hide_' + field, '1');
+    link.href = url.toString();
+    link.hidden = false;
   }
   function report(pageId, error) {
     errors.push({page_id: pageId, message: String(error && error.message || error)});

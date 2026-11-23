@@ -276,6 +276,7 @@ def service_desk_project(request, baseline, sources):
                         'nfr_ids': ['NFR-002']},
         'roles': [{'role_id': 'agent', 'name': '客服 · 张敏'}, {'role_id': 'supervisor', 'name': '主管'}],
         'start_page_id': 'tickets',
+        'feedback_form_url': 'https://example.feishu.cn/share/base/shrcnSyntheticForm0001',
         'sample_data': {'current_agent': '张敏', 'agents': AGENTS, 'tickets': sample_tickets()},
         'pages': design_pages,
     }

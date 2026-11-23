@@ -100,12 +100,20 @@ class MarkupScan(HTMLParser):
                 self.roles.update(part.strip() for part in value.split(',') if part.strip())
 
 
+# Customer feedback goes to a Feishu Base form; the prototype only links to it and pre-fills page context.
+FEEDBACK_FORM = re.compile(r'https://[a-z0-9-]+\.(?:feishu\.cn|larksuite\.com)/share/base/(?:form/)?shr[A-Za-z0-9]{10,40}')
+
+
 def check_design(project):
     """Return (design, report). Raises ValueError when the design cannot be generated."""
     design = project.get('prototype_design')
     require(isinstance(design, dict), 'prototype_design is required for designed prototypes')
     requirements = {item['requirement_id']: item for item in project['requirements']}
     nfrs = {item['nfr_id']: item for item in project.get('nfrs', [])}
+
+    feedback = design.get('feedback_form_url')
+    require(feedback is None or (isinstance(feedback, str) and FEEDBACK_FORM.fullmatch(feedback)),
+            'feedback_form_url must be a Feishu/Lark Base form share link (https://<tenant>.feishu.cn/share/base/...)')
 
     positioning = design.get('positioning')
     require(isinstance(positioning, dict) and text(positioning.get('product_type')) and text(positioning.get('main_flow')),
@@ -228,6 +236,8 @@ def build(project, design, report):
         'requirements': {key: requirement['title'] for key, requirement in ((item['requirement_id'], item) for item in project['requirements'])},
         'nfrs': {item['nfr_id']: item['title'] for item in project.get('nfrs', [])},
     }
+    if design.get('feedback_form_url'):
+        payload['feedback'] = {'url': design['feedback_form_url'], 'project_id': project['project_id']}
     data = json.dumps(payload, ensure_ascii=False).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026').replace('\u2028', '\\u2028').replace('\u2029', '\\u2029')
     template = (PACKAGE / 'assets/prototype-shell.html').read_text(encoding='utf-8')
     return template.replace('__PROTOTYPE_STYLE__', (PACKAGE / 'assets/ui.css').read_text(encoding='utf-8')).replace('__PROTOTYPE_DATA__', data)

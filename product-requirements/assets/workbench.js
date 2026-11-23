@@ -247,7 +247,8 @@
       if (item.prompt) {
         row.append(element('strong', item.prompt), element('p', item.answer));
         if (item.note) row.append(element('p', item.note));
-        if (item.respondent) row.append(element('p', item.respondent, 'workbench-meta'));
+        const meta = [item.source === 'prototype_feedback' ? '原型意见 · ' + (item.artifact_version || '') : '', item.respondent].filter(Boolean).join(' · ');
+        if (meta) row.append(element('p', meta, 'workbench-meta'));
       }
       row.append(jobLink(item, 'original', '查看原始答复'));
       section.append(row);

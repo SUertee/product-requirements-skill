@@ -22,7 +22,7 @@ metadata:
 - 需要在网页中导入和记录评审时，运行 scripts/serve_workbench.py，传入已生成的 run-dir 与该项目的 workspace。读取接收箱的分析请求，再执行语义分析与新版本生成。
 - 结构化需求已整理完成时，读取 [项目输入规范](references/project-data.md)，运行 scripts/build_documents.py 生成方案、PRD、内部工作台和评审包草稿。
 - 生成或修订成果，读取 [输出合同](references/output-contract.md)，PRD 使用 [章节模板](assets/prd-template.md)。
-- 收到第二次会议、人工修改或客户反馈，对照已有基线生成差异与影响范围，再更新受影响产物。
+- 收到第二次会议、人工修改或客户反馈，对照已有基线生成差异与影响范围，再更新受影响产物。客户在原型里提的意见用 `scripts/prototype_feedback.py` 从飞书表单导入，见 [外部接入](references/connectors.md)。
 - 执行分析任务、应用评审、生成图示／原型或客户包，读取 [运行流程](references/execution.md)，使用 scripts/workflow.py。后台目录接收和显式妙记查询使用 scripts/intake_runner.py。
 
 ## 核心流程

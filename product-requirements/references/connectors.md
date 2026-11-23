@@ -30,6 +30,20 @@ python3 scripts/feishu_connector.py --minutes 'https://<租户>.feishu.cn/minute
 - `--media` 下载原始录音录像，用于核对。lark-cli 的下载地址校验可能拒绝，此时保留失败记录，不绕过校验。
 - 只有本地录音时，可以由用户上传到飞书妙记生成逐字稿，再按上面方式导入。客户录音发送到第三方服务前需取得客户授权。
 
+## 客户原型意见
+
+客户看原型时的意见收集到一个飞书多维表格表单，团队在飞书里随时可见，不需要自建服务。
+
+1. 新建多维表格，字段为文本：`意见`、`页面`、`需求`、`原型版本`、`项目`、`称呼`。为它创建表单，`意见` 设为必填，开启分享。客户不在本组织时，分享范围需由负责人改为“任何人”。
+2. 表单分享链接写入 `prototype_design.feedback_form_url`，重新生成原型。按钮会预填页面并隐藏需求、版本、项目字段。
+3. 收回意见，作为素材导入：
+
+```bash
+python3 scripts/prototype_feedback.py --base-token <多维表格 token> --table-id <表 ID> --project-id <项目> --workspace <接收目录>
+```
+
+只导入本项目、尚未导入的意见，每个原型版本形成一份素材，进入下一次分析；工作台“功能需求”详情中按需求显示这些意见。已导入的记录 ID 保存在 `<接收目录>/prototype-feedback/imported.json`。需要 `base:record:read` 权限。
+
 ## 逐字稿文件
 
 任何会议工具导出的 UTF-8 TXT、Markdown、SRT、VTT 都可以直接导入，见 [输入与预处理](ingestion.md)。多数段落以“名字: ”或“说话人 1：”开头时，标准化会记录说话人；只有少数段落这样开头时视为普通文本，不记录说话人。

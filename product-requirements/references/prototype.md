@@ -46,6 +46,7 @@
 | start_page_id | 默认打开的页面 |
 | sample_data | 示例数据，页面脚本通过 `P.data` 读写 |
 | excluded_requirements | 不在原型中的已确认需求及原因 |
+| feedback_form_url | 可选，客户意见表单的飞书多维表格分享链接，见 [外部接入](connectors.md) |
 | pages | 见下表 |
 
 页面字段：`page_id`、`name`、`purpose`、`requirement_ids`、`nfr_ids`、`states`、`markup`，可选 `roles`（可访问的角色）、`nav`（false 表示不进导航，如详情页）、`script`、`css`。
@@ -68,6 +69,10 @@ python3 product-requirements/scripts/workflow.py --workspace <workspace> generat
 ```
 
 第一条在写入版本前检查设计稿并输出覆盖报告；第二条生成 prototype/index.html，覆盖报告写入 generation.json。检查项包括 FR／NFR 确认状态、需求覆盖或排除原因、NFR 体现或不适用原因、标注、跳转、状态、角色和外部资源。脚本运行错误在页面内显示并记录到 `window.__prototypeErrors`，浏览器复核需另行完成。
+
+## 客户意见
+
+设置 `feedback_form_url` 后，客户直接打开原型时右下角显示“提意见”按钮，链接到飞书表单并自动带入当前页面、关联需求、原型版本和项目，客户只需写意见。在工作台内预览时不显示该按钮。收回意见的方式见 [外部接入](connectors.md)。
 
 ## 复核
 

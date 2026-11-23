@@ -33,6 +33,15 @@ assert.ok(section('create').querySelector('[data-state="error"]').hasAttribute('
 w.Prototype.setState('', 'create');
 assert.ok(!section('create').querySelector('[data-state="error"]').hasAttribute('data-state-active'));
 w.postMessage({type: 'prototype:annotate', on: true}, '*');
+// Customer feedback link: shown when the prototype is opened directly, pre-filled with page context.
+const feedback = d.getElementById('feedback');
+assert.equal(feedback.hidden, false, 'feedback button shown for a standalone prototype');
+const feedbackUrl = new w.URL(feedback.href);
+assert.equal(feedbackUrl.origin + feedbackUrl.pathname, 'https://example.feishu.cn/share/base/shrcnSyntheticForm0001');
+assert.equal(feedbackUrl.searchParams.get('prefill_页面'), d.title.split(' · ').pop(), 'current page name is pre-filled');
+assert.match(feedbackUrl.searchParams.get('prefill_需求'), /REQ-/);
+assert.equal(feedbackUrl.searchParams.get('hide_项目'), '1');
+assert.equal(feedback.getAttribute('rel'), 'noopener noreferrer');
 
 // 2. Workbench mapping
 const page = new JSDOM(fs.readFileSync(path.join(run, 'workbench/index.html'), 'utf8'), {url: 'http://127.0.0.1:8765/workbench/index.html#prototype', runScripts: 'outside-only', virtualConsole: quiet});

@@ -36,6 +36,18 @@ class PrototypeDesignChecks(unittest.TestCase):
             check_design(project)
         self.assertIn(fragment, str(caught.exception))
 
+    def test_feedback_form_must_be_a_feishu_base_share_link(self):
+        for url in ['https://example.feishu.cn/share/base/form/shrcnAbc1234567',
+                    'https://example.larksuite.com/share/base/shrcnAbc1234567']:
+            project = confirmed_project()
+            project['prototype_design']['feedback_form_url'] = url
+            check_design(project)
+        for url in ['http://example.feishu.cn/share/base/shrcnAbc1234567', 'https://evil.test/share/base/shrcnAbc1234567',
+                    'https://example.feishu.cn/docx/abc', 'javascript:alert(1)']:
+            project = confirmed_project()
+            project['prototype_design']['feedback_form_url'] = url
+            self.assertRejected(project, 'feedback_form_url')
+
     def test_unconfirmed_requirement_blocks_generation(self):
         project = confirmed_project()
         project['requirements'][0]['review_status'] = 'draft'

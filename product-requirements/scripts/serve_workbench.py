@@ -190,13 +190,17 @@ class Handler(BaseHTTPRequestHandler):
                 if job['project_id'] == self.project['project_id']:
                     jobs.append(job)
                     origin = job['provenance']
-                    if (origin.get('provider') == 'customer_review'
-                            and origin.get('artifact_version') == self.project['artifact_version']
-                            and job['status'] == 'ready_for_analysis'):
+                    # Questionnaire replies belong to the reviewed version; prototype comments are shown for
+                    # every version because the customer usually comments on an earlier released prototype.
+                    provider = origin.get('provider')
+                    if job['status'] == 'ready_for_analysis' and (
+                            provider == 'prototype_feedback'
+                            or (provider == 'customer_review' and origin.get('artifact_version') == self.project['artifact_version'])):
                         feedback = read_feedback(self.server.workspace, job)
                         customer_feedback.extend(
-                            {**answer, 'respondent': feedback['respondent'], 'job_id': job['job_id']}
-                            for answer in feedback['answers']
+                            {**answer, 'respondent': answer.get('respondent') or feedback['respondent'], 'job_id': job['job_id'],
+                             'source': provider, 'artifact_version': origin.get('artifact_version')}
+                            for answer in feedback['answers'] if answer.get('target')
                         )
             releases = []
             for file in sorted((self.server.workspace / 'releases').glob('REL-*/release.json')):
