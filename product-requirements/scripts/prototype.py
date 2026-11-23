@@ -59,6 +59,9 @@ def validate_prototype(project):
 
 
 def generate_prototype(project, root):
+    if project.get('prototype_design') is not None:
+        from prototype_design import generate_designed_prototype
+        return generate_designed_prototype(project, root)
     pages = validate_prototype(project)
     payload = {'name': project.get('name', project['project_id']), 'artifact_version': project['artifact_version'],
                'pages': [{key: page[key] for key in ['page_id', 'name', 'task', 'requirement_ids', 'fields', 'actions', 'records_from', 'columns'] if key in page} for page in pages]}

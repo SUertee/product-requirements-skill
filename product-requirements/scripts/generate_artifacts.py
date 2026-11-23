@@ -248,7 +248,7 @@ def generate(project, sources, root, kinds):
                 record = generate_prototype(project, root)
             record.update(artifact_version=project['artifact_version'], source_ids=list(sources), depends_on=['project.json', 'sources.jsonl'])
             records.append(record)
-            results.append({'capability': kind, **input_details, 'generation_status': 'success', 'path': record['path'], 'validation_results': record['validation_results']})
+            results.append({'capability': kind, **input_details, 'generation_status': 'success', 'path': record['path'], 'validation_results': record['validation_results'], **({'coverage': record['coverage']} if 'coverage' in record else {})})
         except (OSError, ValueError, TypeError, KeyError, subprocess.TimeoutExpired) as error:
             results.append({'capability': kind, **input_details, 'generation_status': 'failed', 'error': str(error)})
     return records, {'project_id': project['project_id'], 'artifact_version': project['artifact_version'], 'results': results}

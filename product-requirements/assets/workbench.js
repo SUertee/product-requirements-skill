@@ -1246,8 +1246,147 @@
       content.append(card);
     }
   }
+  const nfrCategories = {performance: '性能与数据量', security: '权限与安全', compatibility: '兼容与设备', reliability: '可靠性与失败处理', usability: '易用性', accessibility: '无障碍', compliance: '审计与合规', other: '其他'};
+  function nfrTitle(key) { return (project.nfrs || []).find(item => item.nfr_id === key)?.title; }
+  let selectedPrototypePage = null;
+  let prototypeAnnotate = false;
+  function prototypeChecklist() {
+    const nfrs = project.nfrs || [];
+    const active = requirements.filter(req => req.review_status !== 'parked' && req.lifecycle_status !== 'cancelled');
+    const confirmed = active.filter(req => req.review_status === 'confirmed');
+    const noAcceptance = confirmed.filter(req => display(req.acceptance_criteria) === '待确认');
+    const openNfrs = nfrs.filter(item => !['confirmed', 'parked'].includes(item.review_status));
+    const design = project.prototype_design;
+    const rows = [
+      {done: active.length > 0 && confirmed.length === active.length, title: '确认功能需求', detail: active.length ? confirmed.length + ' / ' + active.length + ' 条已确认' : '尚无功能需求', view: 'review'},
+      {done: confirmed.length > 0 && !noAcceptance.length, title: '补全验收标准', detail: !confirmed.length ? '确认需求后检查' : noAcceptance.length ? noAcceptance.map(req => req.title).join('、') + ' 缺验收标准' : '已确认需求都有验收标准', view: 'modules'},
+      {done: nfrs.length > 0 && !openNfrs.length, title: '确认非功能需求', detail: !nfrs.length ? '尚未整理性能、权限、设备等非功能需求' : openNfrs.length ? openNfrs.length + ' 条待确认' : nfrs.length + ' 条已处理', view: nfrs.length ? 'review' : null},
+      {done: Boolean(design), title: '原型设计', detail: design ? (design.pages || []).length + ' 个页面 · ' + (design.positioning?.product_type || '') : '由 Skill 按项目定位、需求和非功能需求设计页面', view: null},
+    ];
+    const card = panel('生成原型前');
+    const list = element('ol', null, 'prototype-checklist');
+    for (const row of rows) {
+      const item = element('li', null, row.done ? 'done' : '');
+      const body = element('div');
+      body.append(element('strong', row.title), element('span', row.detail));
+      item.append(element('span', row.done ? '✓' : '', 'check-mark'), body);
+      if (row.view && !row.done) { const go = element('button', '去处理', 'button ghost small'); go.type = 'button'; go.addEventListener('click', () => navigate(row.view)); item.append(go); }
+      list.append(item);
+    }
+    card.append(list);
+    const ready = rows.every(row => row.done);
+    if (ready && serverState) {
+      const form = element('form', null, 'document-actions');
+      const version = element('input'); version.value = nextVersion(); version.required = true; version.setAttribute('aria-label', '原型版本'); version.disabled = workflowBusy;
+      const submit = element('button', '生成原型', 'button primary'); submit.type = 'submit'; submit.disabled = workflowBusy;
+      form.append(version, submit);
+      form.addEventListener('submit', event => { event.preventDefault(); workflowAction(() => localRequest('/api/generate', {method: 'POST', body: JSON.stringify({version: version.value, kinds: ['prototype']})})); });
+      card.append(form);
+      if (workflowMessage) card.append(element('p', workflowMessage, 'inline-note'));
+      const task = (serverState.tasks || []).filter(item => item.kind === 'generation' && item.status === 'completed').at(-1);
+      if (task) { const link = element('a', '打开 ' + task.version, 'button ghost small'); link.href = '/versions/' + task.id + '/workbench/index.html#prototype'; card.append(link); }
+    } else if (ready) card.append(element('p', '用本地服务打开工作台后可直接生成，或在 Skill 中执行原型生成。', 'inline-note'));
+    content.append(card);
+  }
+  function designedPrototype(artifact) {
+    const design = project.prototype_design;
+    const pages = design.pages;
+    const nfrs = project.nfrs || [];
+    if (!pages.some(page => page.page_id === selectedPrototypePage)) selectedPrototypePage = design.start_page_id || pages[0].page_id;
+    const devices = design.positioning?.target_devices?.length ? design.positioning.target_devices : ['desktop'];
+    if (!devices.includes(previewDevice)) previewDevice = devices[0];
+    const widths = {desktop: '100%', tablet: '768px', mobile: '390px'};
+    const covered = new Set(pages.flatMap(page => page.requirement_ids || []));
+    const confirmedNfrs = nfrs.filter(item => item.review_status === 'confirmed');
+    const shown = confirmedNfrs.filter(item => item.prototype_treatment?.kind === 'shown').length;
+    const toolbar = element('div', null, 'prototype-toolbar');
+    toolbar.append(element('span', [artifact.artifact_version || project.artifact_version, '覆盖 ' + covered.size + ' 条需求', confirmedNfrs.length ? '体现 ' + shown + ' 条非功能需求' : ''].filter(Boolean).join(' · '), 'prototype-summary'));
+    const tools = element('div', null, 'document-actions');
+    const frame = element('iframe', null, 'workbench-preview prototype-frame');
+    frame.title = '交互原型';
+    frame.setAttribute('sandbox', 'allow-scripts allow-forms');
+    const base = '../' + artifact.path.split('/').map(encodeURIComponent).join('/');
+    frame.src = base + (prototypeAnnotate ? '?annotate=1' : '') + '#' + encodeURIComponent(selectedPrototypePage);
+    frame.style.width = widths[previewDevice];
+    if (devices.length > 1) for (const device of devices) {
+      const button = element('button', {desktop: '桌面', tablet: '平板', mobile: '手机'}[device], 'button ghost small'); button.type = 'button';
+      button.setAttribute('aria-pressed', String(device === previewDevice));
+      button.addEventListener('click', () => { previewDevice = device; frame.style.width = widths[device]; tools.querySelectorAll('[data-device]').forEach(item => item.setAttribute('aria-pressed', String(item === button))); });
+      button.dataset.device = device; tools.append(button);
+    }
+    const annotate = element('button', '标注需求', 'button ghost small'); annotate.type = 'button';
+    annotate.setAttribute('aria-pressed', String(prototypeAnnotate));
+    annotate.addEventListener('click', () => { prototypeAnnotate = !prototypeAnnotate; annotate.setAttribute('aria-pressed', String(prototypeAnnotate)); frame.contentWindow?.postMessage({type: 'prototype:annotate', on: prototypeAnnotate}, '*'); });
+    tools.append(annotate, fileLink(artifact.path, '独立打开'));
+    toolbar.append(tools);
+    content.append(toolbar);
+    const layout = element('div', null, 'prototype-layout');
+    const list = element('nav', null, 'selection-list'); list.setAttribute('aria-label', '原型页面');
+    const side = element('div', null, 'prototype-stage');
+    const mapping = element('section', null, 'panel prototype-mapping');
+    function drawMapping() {
+      const page = pages.find(item => item.page_id === selectedPrototypePage);
+      list.querySelectorAll('[data-selection-key]').forEach(node => { if (node.dataset.selectionKey === page.page_id) node.setAttribute('aria-current', 'true'); else node.removeAttribute('aria-current'); });
+      mapping.replaceChildren(element('h2', page.name), element('p', page.purpose, 'prototype-purpose'));
+      const reqs = (page.requirement_ids || []).map(id => requirements.find(req => req.requirement_id === id)).filter(Boolean);
+      if (reqs.length) {
+        mapping.append(element('h3', '功能需求'));
+        const rows = element('ul', null, 'prototype-links');
+        reqs.forEach(req => { const row = element('li'); row.append(requirementLink(req), element('span', req.requirement_id, 'muted-id')); rows.append(row); });
+        mapping.append(rows);
+      }
+      const pageNfrs = (page.nfr_ids || []).map(id => nfrs.find(item => item.nfr_id === id)).filter(Boolean);
+      if (pageNfrs.length) {
+        mapping.append(element('h3', '非功能需求'));
+        const rows = element('ul', null, 'prototype-nfrs');
+        pageNfrs.forEach(item => { const row = element('li'); row.append(element('strong', item.title), element('span', nfrCategories[item.category] || item.category, 'nfr-category'), element('p', item.prototype_treatment?.note || item.statement)); rows.append(row); });
+        mapping.append(rows);
+      }
+      const stateNames = {empty: '空数据', loading: '加载中', error: '出错', denied: '无权限', success: '成功'};
+      const roleNames = Object.fromEntries((design.roles || []).map(role => [role.role_id, role.name]));
+      const extra = [];
+      if (page.states?.length) extra.push(['页面状态', page.states.map(state => stateNames[state] || state).join('、')]);
+      if (page.roles?.length) extra.push(['可见角色', page.roles.map(role => roleNames[role] || role).join('、')]);
+      if (extra.length) fields(mapping, extra);
+      const overall = (design.positioning?.nfr_ids || []).map(id => nfrs.find(item => item.nfr_id === id)).filter(Boolean);
+      if (overall.length) {
+        mapping.append(element('h3', '整体体现'));
+        const rows = element('ul', null, 'prototype-nfrs');
+        overall.forEach(item => { const row = element('li'); row.append(element('strong', item.title), element('span', nfrCategories[item.category] || item.category, 'nfr-category'), element('p', item.prototype_treatment?.note || item.statement)); rows.append(row); });
+        mapping.append(rows);
+      }
+    }
+    for (const page of pages) {
+      const button = element('button', null, 'selection-button'); button.type = 'button'; button.dataset.selectionKey = page.page_id;
+      button.append(element('strong', page.name), element('span', [(page.requirement_ids || []).length ? page.requirement_ids.length + ' 条需求' : '', (page.nfr_ids || []).length ? page.nfr_ids.length + ' 条非功能' : ''].filter(Boolean).join(' · ')));
+      button.addEventListener('click', () => { selectedPrototypePage = page.page_id; frame.contentWindow?.postMessage({type: 'prototype:go', page_id: page.page_id}, '*'); drawMapping(); });
+      list.append(button);
+    }
+    const listener = event => {
+      if (!frame.isConnected) { window.removeEventListener('message', listener); return; }
+      if (event.source !== frame.contentWindow || event.data?.type !== 'prototype:page' || !pages.some(page => page.page_id === event.data.page_id)) return;
+      if (selectedPrototypePage !== event.data.page_id) { selectedPrototypePage = event.data.page_id; drawMapping(); }
+    };
+    window.addEventListener('message', listener);
+    side.append(frame);
+    layout.append(list, side, mapping);
+    content.append(layout);
+    drawMapping();
+    const excluded = design.excluded_requirements || [];
+    const skipped = confirmedNfrs.filter(item => item.prototype_treatment?.kind === 'not_applicable');
+    if (excluded.length || skipped.length) {
+      const card = panel('不在原型中');
+      const rows = element('ul', null, 'prototype-nfrs');
+      excluded.forEach(item => { const row = element('li'); row.append(element('strong', requirements.find(req => req.requirement_id === item.requirement_id)?.title || item.requirement_id), element('span', '功能需求', 'nfr-category'), element('p', item.reason)); rows.append(row); });
+      skipped.forEach(item => { const row = element('li'); row.append(element('strong', item.title), element('span', nfrCategories[item.category] || item.category, 'nfr-category'), element('p', item.prototype_treatment.note)); rows.append(row); });
+      card.append(rows); content.append(card);
+    }
+  }
   function prototype() {
-    artifactPreviews('prototype/', '暂无原型');
+    const artifact = data.artifacts.find(item => item.path === 'prototype/index.html');
+    if (artifact && project.prototype_design?.pages?.length) { designedPrototype(artifact); return; }
+    if (artifact) { artifactPreviews('prototype/', '暂无原型'); return; }
+    prototypeChecklist();
   }
   function database() {
     if (data.artifacts.some(item => item.path.startsWith('data-model/') && item.path.endsWith('.html'))) {
@@ -1300,7 +1439,7 @@
     function fillTargets() {
       targets = new Set(stage.value === 'release' ? data.artifacts.filter(item => item.path.startsWith('prototype/') && item.path.endsWith('.html')).map(item => item.path) : [...requirements.map(item => item.requirement_id), ...data.review.questions.map(item => item.target)]);
       target.replaceChildren();
-      targets.forEach(value => { const req = requirements.find(item => item.requirement_id === value); const option = element('option', req ? req.title : value); option.value = value; target.append(option); });
+      targets.forEach(value => { const req = requirements.find(item => item.requirement_id === value); const option = element('option', req ? req.title : nfrTitle(value) || value); option.value = value; target.append(option); });
       if (reviewTarget && targets.has(reviewTarget)) target.value = reviewTarget;
     }
     fillTargets(); stage.addEventListener('change', () => { fillTargets(); save.disabled = !targets.size; });
@@ -1428,7 +1567,7 @@
       const req = requirements.find(item => item.requirement_id === target);
       const issues = data.review.questions.filter(question => question.target === target);
       const specific = [...new Set(issues.map(issue => issue.reason))].filter(reason => reason !== '核对依据、范围与确认状态');
-      return {key: target, title: req?.title || ({business_model: '业务模型', pages: '页面定义', requirements: '功能需求'}[target] || (target.startsWith('requirement_profile.') ? '项目背景与范围' : target)), meta: specific.length ? specific.length + ' 个问题' : '', req, issues, specific};
+      return {key: target, title: req?.title || nfrTitle(target) || ({business_model: '业务模型', pages: '页面定义', requirements: '功能需求'}[target] || (target.startsWith('requirement_profile.') ? '项目背景与范围' : target)), meta: specific.length ? specific.length + ' 个问题' : '', req, issues, specific};
     }).filter(group => (group.specific.length || group.key === reviewTarget) && matches([group.title, group.key, group.issues]));
     const current = groups.find(group => group.key === reviewTarget) || groups[0];
     if (!current) { content.append(empty(queryInput.value.trim() ? '没有匹配的评审事项' : '没有需要确认的问题')); return; }

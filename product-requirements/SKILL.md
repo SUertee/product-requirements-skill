@@ -12,7 +12,7 @@ description: 将客户会议录音、逐字稿与前情资料整理为带依据�
 - 新会议或后台接收材料，读取 [输入与预处理](references/ingestion.md)。本地文件使用 `scripts/ingest_material.py`，飞书妙记使用 `scripts/feishu_connector.py`。运行前查看 `--help`。纯文本标准化可直接运行 `scripts/normalize_transcript.py`。
 - 首次需求整理，读取 [需求建模与评审](references/workflow.md)。
 - 绘制流程、架构或数据模型，先读 [能力接入与设计路由](references/capabilities.md)。
-- 生成客户原型，读取 [内置 UI 规范](references/ui-design.md)，使用 assets/ui.css 的基础样式。
+- 生成客户原型，读取 [原型设计与生成](references/prototype.md) 和 [内置 UI 规范](references/ui-design.md)，使用 assets/ui.css 与 assets/prototype-shell.html。
 - 生成内部工作台，读取 [工作台页面规范](references/workbench.md) 和内置 UI 规范，使用 assets/workbench-template.html、assets/workbench.css 与 assets/workbench.js。
 - 需要在网页中导入和记录评审时，运行 scripts/serve_workbench.py，传入已生成的 run-dir 与该项目的 workspace。读取接收箱的分析请求，再执行语义分析与新版本生成。
 - 结构化需求已整理完成时，读取 [项目输入规范](references/project-data.md)，运行 scripts/build_documents.py 生成方案、PRD、内部工作台和评审包草稿。
@@ -27,8 +27,8 @@ description: 将客户会议录音、逐字稿与前情资料整理为带依据�
 3. 整理会议事实与需求画像八要素，形成稳定 REQ ID、原话引用、约束、疑问和冲突。
 4. 按业务需要建模角色、流程、实体、字段、关系和状态，将结果存入共享项目数据。
 5. 生成方案、PRD 草稿与内部 HTML 工作台框架，集中展示待确认问题与影响。
-6. 负责人确认方案与 PRD 的范围、规则和验收后，判断产品类型、已有样式与可参考产品，形成页面规范和原型设计依据。
-7. 按 [内置 UI 规范](references/ui-design.md) 和 assets/ui.css，结合产品类型与已确认样式生成可交互原型。
+6. 负责人确认方案与 PRD 的范围、规则和验收，并确认性能、权限、设备、失败处理等非功能需求（NFR）。
+7. 按 [原型设计与生成](references/prototype.md)，从项目定位、已确认 FR 与 NFR 设计信息架构和页面，写入 prototype_design，经脚本检查覆盖关系后生成可交互原型。
 8. 将方案、PRD、原型以及 Archify 图示和 Schema Canvas 数据模型汇入内部工作台，检查版本与依据一致性。
 9. 负责人复核原型与工作台，选择客户可见内容和版本，按用户授权部署分享。客户反馈回写需求基线并形成下一版本。
 

@@ -67,6 +67,10 @@ meetings 可补充 date、duration_label、url 和 highlights。highlights 为�
 
 可选 document_overrides 以 proposal.md 或 prd.md 为键，值包含 content（完整 Markdown）、edited_from（基线版本）、base_sha256（原正文哈希）、source_refs（人工修订来源）。发布使用该正文替代对应自动生成文档，其他文档仍按结构化数据生成。自动分析保留已有人工正文，覆盖建议记录为 human_edited_document 冲突。正文与结构化需求分别修订。
 
+## 非功能需求与原型设计
+
+可选 nfrs 记录性能、权限、设备、可靠性、审计等非功能需求，结构与需求卡一致并使用 NFR-ID。可选 prototype_design 记录项目定位、角色、页面、示例数据和页面内容。两者的字段、检查规则和生成方式见 [原型设计与生成](prototype.md)。未确认的 NFR 进入待确认清单，评审确认方式与需求相同。
+
 ## 技术架构
 
 可选 technical_architecture 独立于 modules 和 business_model.flows。layers 为带唯一 id、name 的层次；components 为带唯一 id、name、layer 的组件，可用 runtime 说明运行环境；connections 以 from、to 连接实际组件。review_status 默认 draft，requirement_ids 和 source_refs 关联已有需求和来源。层次与组件身份、连接端点及引用均经输入校验。

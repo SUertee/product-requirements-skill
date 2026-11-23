@@ -52,6 +52,7 @@ a { color: var(--ui-accent-hover); text-underline-offset: 3px; }
 .ui-table-scroll table { width: 100%; border-collapse: collapse; }
 .ui-table-scroll th, .ui-table-scroll td { padding: 12px 16px; border-bottom: 1px solid var(--ui-border); text-align: left; vertical-align: top; }
 .ui-table-scroll th { background: var(--ui-muted-surface); }
+.ui-table-scroll th, .ui-table-scroll td { white-space: nowrap; }
 .ui-preview { display: block; width: 100%; min-height: 65dvh; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-surface); }
 @media (max-width: 899px) {
   .ui-shell { grid-template-columns: minmax(0, 1fr); }

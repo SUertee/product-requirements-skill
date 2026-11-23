@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>交互原型</title>
+<style>__PROTOTYPE_STYLE__
+html,body{overflow-x:clip}
+.ui-nav{display:flex;flex-direction:column;gap:20px}
+.ui-nav h1{font-size:17px;line-height:1.4;margin:0}
+.ui-nav nav{display:grid;gap:4px}
+.ui-nav a[aria-current="page"]{background:#2c4160}
+.pt-role{display:grid;gap:6px;font-size:13px}
+.pt-role select{min-height:40px;padding:6px 10px;border-radius:8px;border:1px solid #3a4e68;background:#22344c;color:var(--ui-nav-ink);font:inherit}
+.pt-notice{margin:0 0 20px;font-size:12px;color:var(--ui-muted)}
+.pt-page:focus{outline:none}
+.pt-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:min(480px,calc(100vw - 32px));padding:12px 18px;border-radius:10px;background:var(--ui-nav);color:var(--ui-nav-ink);box-shadow:0 12px 32px rgb(23 36 56/.25);z-index:20}
+.pt-toast[data-kind="error"]{background:var(--ui-danger)}
+.pt-denied{padding:48px 24px;text-align:center;color:var(--ui-muted)}
+.pt-script-error{margin-bottom:16px;padding:12px 16px;border-radius:8px;background:#fdecec;color:var(--ui-danger)}
+[data-state]:not([data-state-active]){display:none !important}
+html[data-annotate] [data-req],html[data-annotate] [data-nfr]{outline:2px dashed var(--ui-accent);outline-offset:3px;position:relative}
+html[data-annotate] [data-nfr]:not([data-req]){outline-color:#b45309}
+html[data-annotate] [data-req]::before,html[data-annotate] [data-nfr]::before{content:attr(data-req) " " attr(data-nfr);position:absolute;top:-11px;right:4px;padding:0 6px;border-radius:6px;background:var(--ui-accent);color:#fff;font-size:11px;line-height:18px;font-weight:600;white-space:nowrap;z-index:5;pointer-events:none}
+html[data-annotate] [data-nfr]:not([data-req])::before{background:#b45309}
+.pt-mobile .ui-shell{display:block;max-width:480px;margin:0 auto;min-height:100dvh;background:var(--ui-page)}
+.pt-mobile .ui-nav{position:sticky;top:0;z-index:10;padding:12px 16px;gap:10px}
+.pt-mobile .ui-nav nav{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:space-around;gap:0;padding:6px 8px calc(6px + env(safe-area-inset-bottom));background:var(--ui-nav);z-index:10}
+.pt-mobile .ui-nav nav a{flex:1;text-align:center;padding:10px 4px;font-size:13px}
+.pt-mobile .ui-main{padding:16px 16px 96px}
+@media (max-width:899px){.ui-nav nav{display:flex;flex-wrap:wrap;gap:4px}.ui-nav nav a{padding:8px 10px}}
+</style><style id="page-styles"></style></head>
+<body><div class="ui-shell"><aside class="ui-nav"><h1 id="project-name"></h1><label class="pt-role" id="role-picker" hidden>当前角色<select id="role"></select></label><nav id="pages" aria-label="原型页面"></nav></aside><main class="ui-main"><p class="pt-notice" id="notice"></p><div id="screen"></div></main></div>
+<div class="pt-toast" id="toast" role="status" aria-live="polite" hidden></div>
+<script id="prototype-data" type="application/json">__PROTOTYPE_DATA__</script>
+<script>
+(() => {
+  'use strict';
+  const data = JSON.parse(document.getElementById('prototype-data').textContent);
+  const params = new URLSearchParams(location.search);
+  const pages = new Map(data.pages.map(page => [page.page_id, page]));
+  const sections = new Map();
+  const showHandlers = new Map();
+  const roleHandlers = [];
+  const errors = window.__prototypeErrors = [];
+  const roles = data.roles || [];
+  let role = roles.some(item => item.role_id === params.get('role')) ? params.get('role') : (roles[0] || {}).role_id || '';
+  let current = '';
+  let toastTimer = 0;
+
+  function h(tag, attributes, ...children) {
+    const element = document.createElement(tag);
+    for (const [key, value] of Object.entries(attributes || {})) {
+      if (value === undefined || value === null || value === false) continue;
+      if (key === 'class') element.className = value;
+      else if (key === 'text') element.textContent = String(value);
+      else if (key.startsWith('on') && typeof value === 'function') element.addEventListener(key.slice(2), value);
+      else element.setAttribute(key, value === true ? '' : String(value));
+    }
+    for (const child of children.flat()) if (child !== undefined && child !== null && child !== false) element.append(child instanceof Node ? child : document.createTextNode(String(child)));
+    return element;
+  }
+  function allowed(page) { return !page.roles || !page.roles.length || !role || page.roles.includes(role); }
+  function applyRoles(root) {
+    for (const element of root.querySelectorAll('[data-roles]')) {
+      const list = element.dataset.roles.split(',').map(item => item.trim()).filter(Boolean);
+      element.hidden = Boolean(role) && !list.includes(role);
+    }
+  }
+  function setState(name, pageId) {
+    const section = sections.get(pageId || current);
+    if (!section) return;
+    for (const element of section.querySelectorAll('[data-state]')) {
+      if (name && element.dataset.state === name) element.setAttribute('data-state-active', ''); else element.removeAttribute('data-state-active');
+    }
+    section.dataset.currentState = name || '';
+  }
+  function notify(text, kind) {
+    const toast = document.getElementById('toast');
+    toast.textContent = text; toast.dataset.kind = kind || 'success'; toast.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { toast.hidden = true; }, 2600);
+  }
+  function drawNav() {
+    const nav = document.getElementById('pages'); nav.replaceChildren();
+    for (const page of data.pages) {
+      if (page.nav === false || !allowed(page)) continue;
+      const link = h('a', {href: '#' + encodeURIComponent(page.page_id), 'data-page': page.page_id, text: page.name});
+      if (page.page_id === current) link.setAttribute('aria-current', 'page');
+      nav.append(link);
+    }
+  }
+  const P = {
+    h, notify, setState,
+    data: JSON.parse(JSON.stringify(data.sample_data || {})),
+    params: {},
+    get role() { return role; },
+    get page() { return current; },
+    go(pageId, values) { P.params = values || {}; if (location.hash.slice(1) === encodeURIComponent(pageId)) show(pageId); else location.hash = encodeURIComponent(pageId); },
+    onShow(pageId, handler) { const list = showHandlers.get(pageId) || []; list.push(handler); showHandlers.set(pageId, list); },
+    onRole(handler) { roleHandlers.push(handler); },
+    loading(ms, then) { setState('loading'); setTimeout(() => { setState(''); if (then) then(); }, ms || 600); },
+  };
+  window.Prototype = P;
+
+  function show(pageId) {
+    const page = pages.get(pageId) || pages.get(data.start_page_id) || data.pages[0];
+    current = page.page_id;
+    document.title = data.name + ' · ' + page.name;
+    for (const [key, section] of sections) section.hidden = key !== current;
+    const denied = document.getElementById('denied');
+    denied.hidden = allowed(page);
+    if (!allowed(page)) sections.get(current).hidden = true;
+    setState('');
+    drawNav();
+    if (allowed(page)) for (const handler of showHandlers.get(current) || []) {
+      try { handler(sections.get(current), P.params); } catch (error) { report(current, error); }
+    }
+    if (parent !== window) parent.postMessage({type: 'prototype:page', page_id: current}, '*');
+  }
+  function report(pageId, error) {
+    errors.push({page_id: pageId, message: String(error && error.message || error)});
+    console.error('[prototype:' + pageId + ']', error);
+    const section = sections.get(pageId);
+    if (section && !section.querySelector('.pt-script-error')) section.prepend(h('p', {class: 'pt-script-error', role: 'alert', text: '页面脚本出错：' + (error && error.message || error)}));
+  }
+
+  document.getElementById('project-name').textContent = data.name;
+  document.getElementById('notice').textContent = '交互原型 · ' + data.artifact_version + ' · 示例数据，操作只在本页面内模拟';
+  if ((data.positioning.target_devices || []).every(device => device === 'mobile')) document.documentElement.classList.add('pt-mobile');
+  if (params.has('annotate')) document.documentElement.dataset.annotate = '';
+  if (roles.length > 1) {
+    const select = document.getElementById('role');
+    for (const item of roles) select.append(h('option', {value: item.role_id, text: item.name}));
+    select.value = role;
+    select.addEventListener('change', () => {
+      role = select.value;
+      for (const section of sections.values()) applyRoles(section);
+      for (const handler of roleHandlers) { try { handler(role); } catch (error) { report(current, error); } }
+      show(current);
+    });
+    document.getElementById('role-picker').hidden = false;
+  }
+  document.getElementById('page-styles').textContent = data.pages.map(page => page.css || '').join('\n');
+  const screen = document.getElementById('screen');
+  screen.append(h('section', {id: 'denied', class: 'ui-card pt-denied', hidden: true, role: 'alert'}, h('h2', {text: '当前角色无权访问此页面'}), h('p', {text: '切换到有权限的角色后再查看。'})));
+  for (const page of data.pages) {
+    const section = h('section', {class: 'pt-page', 'data-page-id': page.page_id, tabindex: '-1', hidden: true});
+    section.innerHTML = page.markup;
+    applyRoles(section);
+    sections.set(page.page_id, section);
+    screen.append(section);
+  }
+  for (const page of data.pages) {
+    if (!page.script) continue;
+    try { new Function('page', 'P', page.script)(sections.get(page.page_id), P); } catch (error) { report(page.page_id, error); }
+  }
+  document.addEventListener('submit', event => event.preventDefault(), true);
+  document.addEventListener('click', event => {
+    const goto = event.target.closest('[data-goto]');
+    if (goto) { event.preventDefault(); const values = {}; for (const [key, value] of Object.entries(goto.dataset)) if (key.startsWith('param')) values[key.slice(5).toLowerCase()] = value; P.go(goto.dataset.goto, values); return; }
+    const state = event.target.closest('[data-show-state]');
+    if (state) { event.preventDefault(); setState(state.dataset.showState); }
+  });
+  window.addEventListener('message', event => {
+    if (event.source !== parent || !event.data || typeof event.data.type !== 'string') return;
+    if (event.data.type === 'prototype:go' && pages.has(event.data.page_id)) P.go(event.data.page_id);
+    if (event.data.type === 'prototype:annotate') { if (event.data.on) document.documentElement.dataset.annotate = ''; else delete document.documentElement.dataset.annotate; }
+  });
+  window.addEventListener('hashchange', () => { let id = ''; try { id = decodeURIComponent(location.hash.slice(1)); } catch { /* fall back */ } show(id); sections.get(current)?.focus({preventScroll: true}); window.scrollTo(0, 0); });
+  let first = '';
+  try { first = decodeURIComponent(location.hash.slice(1)); } catch { /* invalid fragment falls back to start page */ }
+  show(first || data.start_page_id);
+})();
+</script></body></html>

@@ -202,6 +202,9 @@ def read_inputs(project_path, sources_path):
     check_references(project)
     for field in ['action_items', 'reported_facts']:
         require(isinstance(project.get(field, []), list), field + ' must be an array')
+    from prototype_design import validate_nfrs
+    validate_nfrs(project, requirement_ids, sources)
+    require(project.get('prototype_design') is None or isinstance(project['prototype_design'], dict), 'prototype_design must be an object')
     return project, sources
 
 
@@ -218,6 +221,11 @@ def collect_questions(project):
             questions.append({'target': req['requirement_id'], 'reason': str(question)})
         if req['review_status'] != 'confirmed' or req['evidence_type'] != 'explicit':
             questions.append({'target': req['requirement_id'], 'reason': '核对依据、范围与确认状态'})
+    for nfr in project.get('nfrs', []):
+        if nfr['review_status'] != 'confirmed':
+            questions.append({'target': nfr['nfr_id'], 'reason': '确认非功能需求：' + nfr['title']})
+        elif not nfr.get('prototype_treatment'):
+            questions.append({'target': nfr['nfr_id'], 'reason': '说明原型怎样体现，或写明不适用的原因'})
     for key in ['business_model', 'pages']:
         if not project[key]:
             questions.append({'target': key, 'reason': '尚未整理，需要补充并评审'})
