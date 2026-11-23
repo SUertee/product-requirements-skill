@@ -11,6 +11,9 @@ from urllib.parse import parse_qs, urlsplit
 from ingest_material import ingest
 
 
+OTHER_ANSWERS = ('都不合适，我来补充', '暂时无法决定')
+
+
 def validate_questions(project, questions):
     if not isinstance(questions, list) or not 1 <= len(questions) <= 20:
         raise ValueError('请选择 1 到 20 个复核问题。')
@@ -48,7 +51,7 @@ button{{background:#184d97;color:white;border:0;border-radius:6px;padding:.65rem
 def questionnaire(document):
     sections = []
     for index, question in enumerate(document['questions']):
-        options = [*question['options'], '都不合适，我来补充', '暂时无法决定']
+        options = [*question['options'], *OTHER_ANSWERS]
         choices = ''.join(
             f'<label><input type="radio" name="answer-{index}" value="{choice}" required> {escape(label)}</label>'
             for choice, label in enumerate(options)
@@ -70,8 +73,9 @@ def record_feedback(document, form, workspace):
     lines = [f'客户复核反馈。评审版本：{document["artifact_version"]}。问卷：{document["id"]}。']
     if respondent:
         lines.append(f'客户称呼：{respondent}')
+    answers = []
     for index, question in enumerate(document['questions']):
-        options = [*question['options'], '都不合适，我来补充', '暂时无法决定']
+        options = [*question['options'], *OTHER_ANSWERS]
         answer = form.get(f'answer-{index}', [])
         note = form.get(f'note-{index}', [''])[0].strip()
         if len(answer) != 1 or answer[0] not in {str(i) for i in range(len(options))} or len(note) > 1000:
@@ -79,6 +83,7 @@ def record_feedback(document, form, workspace):
         choice = int(answer[0])
         if choice == len(question['options']) and not note:
             raise ValueError('选择「都不合适」时，请补充你的建议。')
+        answers.append({'target': question['target'], 'prompt': question['prompt'], 'answer': options[choice], 'note': note})
         lines.extend(['', f'需求 {question["target"]}。问题：{question["prompt"]}', f'客户选择：{options[choice]}'])
         if note:
             lines.append(f'客户补充：{note}')
@@ -88,10 +93,53 @@ def record_feedback(document, form, workspace):
         job = ingest(file, workspace, document['project_id'], {
             'provider': 'customer_review', 'questionnaire_id': document['id'],
             'artifact_version': document['artifact_version'], 'submission_id': submission,
-        })
+        }, metadata={'customer_feedback': {'respondent': respondent, 'answers': answers}})
     if job['status'] == 'failed':
         raise ValueError('反馈预处理失败，请联系负责人。')
     return job
+
+
+def read_feedback(workspace, job):
+    feedback = job.get('metadata', {}).get('customer_feedback')
+    if feedback is not None:
+        return feedback
+
+    # Older submissions only stored a text record. Match it against the saved questions.
+    origin = job['provenance']
+    questionnaire_id = origin.get('questionnaire_id', '')
+    if not re.fullmatch(r'[A-Za-z0-9_-]{32}', questionnaire_id):
+        return {'respondent': '', 'answers': []}
+    try:
+        questionnaire_file = workspace / 'customer-questionnaires' / f'{questionnaire_id}.json'
+        questionnaire = json.loads(questionnaire_file.read_text(encoding='utf-8'))
+        original = workspace / 'jobs' / job['job_id'] / 'original.txt'
+        parts = original.read_text(encoding='utf-8').split('\n\n需求 ')
+    except (OSError, ValueError):
+        return {'respondent': '', 'answers': []}
+    if (questionnaire.get('project_id') != job['project_id']
+            or questionnaire.get('artifact_version') != origin.get('artifact_version')):
+        return {'respondent': '', 'answers': []}
+
+    questions = questionnaire['questions']
+    fallback = {'respondent': '', 'answers': [{'target': question['target']} for question in questions]}
+    if len(parts) != len(questions) + 1:
+        return fallback
+    respondent = parts[0].partition('\n客户称呼：')[2]
+    answers = []
+    for question, part in zip(questions, parts[1:]):
+        question_line = f'{question["target"]}。问题：{question["prompt"]}\n客户选择：'
+        if not part.startswith(question_line):
+            return fallback
+        response = part[len(question_line):].removesuffix('\n')
+        note_label = '\n客户补充：'
+        options = list(dict.fromkeys([*question['options'], *OTHER_ANSWERS]))
+        matches = [option for option in options if response == option or response.startswith(option + note_label)]
+        if len(matches) != 1:
+            return fallback
+        answer = matches[0]
+        note = response[len(answer):].removeprefix(note_label)
+        answers.append({'target': question['target'], 'prompt': question['prompt'], 'answer': answer, 'note': note})
+    return {'respondent': respondent, 'answers': answers}
 
 
 class CustomerReviewServer(ThreadingHTTPServer):

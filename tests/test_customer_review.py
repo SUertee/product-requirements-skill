@@ -10,7 +10,9 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'product-requirements' / 'scripts'))
-from customer_review import CustomerReviewServer, validate_questions
+from customer_review import CustomerReviewServer, read_feedback, validate_questions
+from serve_workbench import WorkbenchServer
+from workflow import initialize
 
 
 class CustomerReviewTests(unittest.TestCase):
@@ -39,7 +41,7 @@ class CustomerReviewTests(unittest.TestCase):
                         urlopen(url.split('/review/')[0] + '/workbench/index.html', timeout=5)
                     self.assertEqual(denied.exception.code, 404)
                     submission = re.search(r'name="submission" value="([^"]+)"', html)[1]
-                    form = {'submission': submission, 'answer-0': '2'}
+                    form = {'submission': submission, 'respondent': '客服主管', 'answer-0': '2'}
                     with self.assertRaises(HTTPError) as invalid:
                         urlopen(Request(url, data=urlencode(form).encode()), timeout=5)
                     self.assertEqual(invalid.exception.code, 400)
@@ -54,6 +56,27 @@ class CustomerReviewTests(unittest.TestCase):
                     self.assertEqual(job['status'], 'ready_for_analysis')
                     self.assertEqual(job['provenance']['artifact_version'], 'v3')
                     self.assertIn('有回访需求时才必填', (files[0].parent / job['files']['sources']).read_text())
+                    expected = {'respondent': '客服主管', 'answers': [
+                        {'target': 'REQ-001', 'prompt': '电话必填吗？<script>',
+                         'answer': '都不合适，我来补充', 'note': '有回访需求时才必填'},
+                    ]}
+                    self.assertEqual(read_feedback(workspace, job), expected)
+                    del job['metadata']
+                    self.assertEqual(read_feedback(workspace, job), expected)
                 finally:
                     server.shutdown()
+                    thread.join(timeout=5)
+
+            run = workspace / 'v0'
+            initialize('demo', '客户复核测试', run)
+            with WorkbenchServer(('127.0.0.1', 0), run, workspace) as workbench:
+                thread = Thread(target=workbench.serve_forever)
+                thread.start()
+                try:
+                    original = f'http://127.0.0.1:{workbench.server_port}/api/jobs/{job["job_id"]}/original'
+                    with urlopen(original, timeout=5) as response:
+                        self.assertEqual(response.headers.get_content_charset(), 'utf-8')
+                        self.assertIn('有回访需求时才必填', response.read().decode('utf-8'))
+                finally:
+                    workbench.shutdown()
                     thread.join(timeout=5)

@@ -21,7 +21,7 @@ from feishu_connector import import_minutes
 from workflow import Workflow, WorkflowConflict
 from release_package import build_release
 from intake_runner import transcribe
-from customer_review import CustomerReviewServer
+from customer_review import CustomerReviewServer, read_feedback
 
 MAX_UPLOAD = 256 * 1024 * 1024
 
@@ -158,7 +158,7 @@ class Handler(BaseHTTPRequestHandler):
             status = 206
         self.send_response(status)
         mime = mimetypes.guess_type(file.name)[0] or 'application/octet-stream'
-        if file.suffix in {'.md', '.jsonl', '.srt', '.vtt'}:
+        if file.suffix.lower() in TEXT | {'.jsonl'}:
             mime = 'text/plain; charset=utf-8'
         self.send_header('Content-Type', mime)
         self.send_header('Content-Length', str(max(0, end - start + 1)))
@@ -184,10 +184,20 @@ class Handler(BaseHTTPRequestHandler):
         path = unquote(urlparse(self.path).path)
         if path == '/api/status':
             jobs = []
+            customer_feedback = []
             for file in sorted((self.server.workspace / 'jobs').glob('JOB-*/job.json')):
                 job = json.loads(file.read_text(encoding='utf-8'))
                 if job['project_id'] == self.project['project_id']:
                     jobs.append(job)
+                    origin = job['provenance']
+                    if (origin.get('provider') == 'customer_review'
+                            and origin.get('artifact_version') == self.project['artifact_version']
+                            and job['status'] == 'ready_for_analysis'):
+                        feedback = read_feedback(self.server.workspace, job)
+                        customer_feedback.extend(
+                            {**answer, 'respondent': feedback['respondent'], 'job_id': job['job_id']}
+                            for answer in feedback['answers']
+                        )
             releases = []
             for file in sorted((self.server.workspace / 'releases').glob('REL-*/release.json')):
                 release = json.loads(file.read_text())
@@ -203,6 +213,7 @@ class Handler(BaseHTTPRequestHandler):
                 'ffmpeg_available': bool(shutil.which('ffmpeg')),
                 'lark_cli_available': bool(shutil.which('lark-cli')),
                 'jobs': jobs,
+                'customer_feedback': customer_feedback,
                 'customer_review_enabled': self.server.customer_server is not None,
                 'review': self.server.review(self.project),
                 'tasks': self.server.workflow.tasks(self.project['project_id']),
