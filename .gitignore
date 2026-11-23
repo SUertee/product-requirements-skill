@@ -6,5 +6,4 @@ __pycache__/
 !.env.example
 runs/
 recordings/
-.opencode/
-20261029140143-Started by 头头-Video Quality-1.mp3
+dist/

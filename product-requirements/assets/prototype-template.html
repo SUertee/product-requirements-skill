@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>交互原型</title>
+<style>__PROTOTYPE_STYLE__
+html,body{overflow-x:clip}.ui-nav{display:flex;flex-direction:column;gap:24px}.ui-nav h1{font-size:var(--ui-text-lg);line-height:1.5;margin:0}.ui-nav a[aria-current="page"]{background:var(--ui-nav-active)}.ui-main{max-width:1100px}.prototype-notice{font-size:var(--ui-text-sm);color:var(--ui-muted);margin-bottom:24px}.prototype-fields{display:grid;gap:20px;max-width:680px}.prototype-records{margin-top:24px}.ui-field input[type="checkbox"]{width:22px;min-height:22px}.ui-actions{margin-top:24px}.prototype-feedback{min-height:24px;color:var(--ui-success);margin-top:16px}.prototype-meta{color:var(--ui-muted);font-size:var(--ui-text-xs);margin-bottom:24px}.ui-card h2{font-size:var(--ui-text-lg);margin:0 0 20px}.ui-nav nav{display:grid;gap:6px}.prototype-empty{color:var(--ui-muted);padding:24px 0}.prototype-search{width:100%;padding:12px;border:1px solid var(--ui-border-strong);border-radius:var(--ui-radius-sm);margin-bottom:16px}
+</style></head>
+<body><div class="ui-shell"><aside class="ui-nav"><h1 id="project-name"></h1><nav id="pages" aria-label="原型页面"></nav></aside><main class="ui-main"><p class="prototype-notice" id="version"></p><h1 class="ui-title" id="title" tabindex="-1"></h1><p class="prototype-meta" id="requirements"></p><div id="screen"></div></main></div>
+<script id="prototype-data" type="application/json">__PROTOTYPE_DATA__</script>
+<script>
+(() => {
+  'use strict';
+  const data = JSON.parse(document.getElementById('prototype-data').textContent);
+  const records = new Map();
+  let sequence = 0;
+  let feedback = '';
+  function node(tag, text, className) {
+    const element = document.createElement(tag);
+    if (text !== undefined) element.textContent = String(text);
+    if (className) element.className = className;
+    return element;
+  }
+  function go(id) { location.hash = encodeURIComponent(id); }
+  function render() {
+    let pageId = '';
+    try { pageId = decodeURIComponent(location.hash.slice(1)); } catch { /* Invalid shared fragments fall back to the first page. */ }
+    const page = data.pages.find(item => item.page_id === pageId) || data.pages[0];
+    document.title = data.name + ' · ' + (page.name || page.page_id);
+    document.getElementById('title').textContent = page.name || page.page_id;
+    document.getElementById('requirements').textContent = page.requirement_ids.join(' · ');
+    document.querySelectorAll('[data-page]').forEach(link => {
+      if (link.dataset.page === page.page_id) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
+    });
+    const host = document.getElementById('screen'); host.replaceChildren();
+    const card = node('section', undefined, 'ui-card');
+    if (page.task) card.append(node('h2', page.task));
+    const form = node('form', undefined, 'prototype-fields');
+    for (const field of page.fields || []) {
+      const wrapper = node('div', undefined, 'ui-field');
+      const label = node('label', field.label); label.htmlFor = 'field-' + field.id;
+      const input = node(field.type === 'textarea' ? 'textarea' : field.type === 'select' ? 'select' : 'input');
+      input.id = label.htmlFor; input.name = field.id;
+      if (input.tagName === 'INPUT') input.type = field.type || 'text';
+      if (field.type === 'select') {
+        const blank = node('option', '请选择'); blank.value = ''; input.append(blank);
+        field.options.forEach(value => { const option = node('option', value); option.value = value; input.append(option); });
+      }
+      input.required = field.required === true;
+      for (const key of ['min', 'max', 'minLength', 'maxLength', 'pattern']) if (field[key] !== undefined) input[key] = field[key];
+      wrapper.append(label, input); form.append(wrapper);
+    }
+    const actions = node('div', undefined, 'ui-actions');
+    for (const action of page.actions) {
+      const button = node('button', action.label, 'ui-button' + (action.type === 'submit' ? ' primary' : ''));
+      button.type = action.type === 'submit' ? 'submit' : action.type === 'reset' ? 'reset' : 'button';
+      button.dataset.action = action.id;
+      if (action.type === 'navigate') button.addEventListener('click', () => { feedback = ''; go(action.target_page_id); });
+      if (action.type === 'submit') button.addEventListener('click', () => { form.dataset.submitAction = action.id; });
+      actions.append(button);
+    }
+    const message = node('p', feedback, 'prototype-feedback'); message.setAttribute('role', 'status');
+    form.append(actions, message);
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      if (!form.reportValidity()) return;
+      const action = page.actions.find(item => item.id === form.dataset.submitAction) || page.actions.find(item => item.type === 'submit');
+      const row = Object.fromEntries(new FormData(form).entries());
+      row.record_id = 'DEMO-' + String(++sequence).padStart(4, '0');
+      const items = records.get(page.page_id) || []; items.push(row); records.set(page.page_id, items);
+      feedback = (action.success_message || '提交成功') + '（模拟） · ' + row.record_id;
+      form.reset(); render();
+    });
+    card.append(form); host.append(card);
+    const recordSource = page.records_from || page.page_id;
+    const tableCard = node('section', undefined, 'ui-card prototype-records');
+    tableCard.append(node('h2', '会话内示例记录'));
+    const search = node('input', undefined, 'prototype-search'); search.type = 'search'; search.placeholder = '筛选示例记录'; search.setAttribute('aria-label', '筛选示例记录');
+    const body = node('div', undefined, 'ui-table-scroll');
+    function drawRecords() {
+      body.replaceChildren();
+      const items = (records.get(recordSource) || []).filter(row => JSON.stringify(row).toLowerCase().includes(search.value.toLowerCase()));
+      if (!items.length) { body.append(node('p', '暂无匹配记录', 'prototype-empty')); return; }
+      const table = node('table'); const head = node('thead'); const line = node('tr');
+      const columns = page.columns || Object.keys(items[0]).map(id => ({id, label: id}));
+      columns.forEach(column => line.append(node('th', column.label || column.id))); head.append(line); table.append(head);
+      const rows = node('tbody'); items.forEach(item => { const row = node('tr'); columns.forEach(column => row.append(node('td', item[column.id] ?? ''))); rows.append(row); }); table.append(rows); body.append(table);
+    }
+    search.addEventListener('input', drawRecords); tableCard.append(search, body); host.append(tableCard); drawRecords();
+  }
+  document.getElementById('project-name').textContent = data.name;
+  document.getElementById('version').textContent = '交互原型 · ' + data.artifact_version + ' · 示例数据／接口模拟 · 数据保留在本页面会话';
+  data.pages.forEach(page => { const link = node('a', page.name || page.page_id); link.href = '#' + encodeURIComponent(page.page_id); link.dataset.page = page.page_id; document.getElementById('pages').append(link); });
+  window.addEventListener('hashchange', () => { feedback = ''; render(); document.getElementById('title').focus(); });
+  render();
+})();
+</script></body></html>

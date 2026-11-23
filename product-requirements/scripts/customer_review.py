@@ -1,0 +1,227 @@
+"""Serve customer questionnaires separately from the internal workbench."""
+from html import escape
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+from pathlib import Path
+import re
+import secrets
+import tempfile
+from urllib.parse import parse_qs, urlsplit
+
+from ingest_material import ingest
+
+
+OTHER_ANSWERS = ('都不合适，我来补充', '暂时无法决定')
+
+
+def validate_questions(project, questions):
+    if not isinstance(questions, list) or not 1 <= len(questions) <= 20:
+        raise ValueError('请选择 1 到 20 个复核问题。')
+    targets = {item['requirement_id'] for item in project['requirements']}
+    result = []
+    for question in questions:
+        target = question.get('target') if isinstance(question, dict) else None
+        if not isinstance(target, str) or target not in targets:
+            raise ValueError('复核问题必须关联当前版本的需求。')
+        prompt, options = question.get('prompt'), question.get('options')
+        if not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 300:
+            raise ValueError('问题须包含 1 到 300 个字符。')
+        if not isinstance(options, list) or not 2 <= len(options) <= 6 or any(
+            not isinstance(option, str) or not 1 <= len(option.strip()) <= 200 for option in options
+        ):
+            raise ValueError('每题须有 2 到 6 个候选项，每项最多 200 字。')
+        options = [option.strip() for option in options]
+        if len(set(options)) != len(options):
+            raise ValueError('同一题的候选项不能重复。')
+        result.append({'target': target, 'prompt': prompt.strip(), 'options': options})
+    return result
+
+
+UI_STYLE = (Path(__file__).resolve().parent.parent / 'assets' / 'ui.css').read_text(encoding='utf-8')
+# Customer-facing, usually opened on a phone during the meeting: built-in tokens, one column, large targets.
+PAGE_STYLE = """
+.cr-main{max-width:680px;margin:0 auto;padding:24px 16px 48px}
+.cr-main h1{margin:0 0 8px;font-size:var(--ui-text-xl);line-height:1.3}
+.cr-meta{margin:0 0 24px;color:var(--ui-muted);font-size:var(--ui-text-sm)}
+.cr-form{display:grid;gap:16px}
+.cr-question{margin:0;display:grid;gap:8px}
+.cr-question legend{float:left;width:100%;padding:0;margin-bottom:8px;font-weight:600;font-size:var(--ui-text-md)}
+.cr-choice{display:flex;align-items:center;gap:12px;min-height:44px;padding:8px 12px;border:1px solid var(--ui-border);border-radius:var(--ui-radius-sm);cursor:pointer}
+.cr-choice:has(input:checked){border-color:var(--ui-accent-border);background:var(--ui-accent-soft);color:var(--ui-accent-ink)}
+.cr-choice input{width:18px;height:18px;margin:0;accent-color:var(--ui-accent)}
+.cr-note{display:grid;gap:4px;color:var(--ui-muted);font-size:var(--ui-text-sm)}
+.cr-note textarea,.cr-name input{width:100%;min-height:44px;padding:8px 12px;border:1px solid var(--ui-border-strong);border-radius:var(--ui-radius-sm);color:var(--ui-ink);background:var(--ui-surface)}
+.cr-name{display:grid;gap:4px;color:var(--ui-muted);font-size:var(--ui-text-sm)}
+.cr-submit{justify-self:start}
+"""
+
+
+def page(title, body):
+    return f"""<!doctype html><html lang="zh-CN"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>{escape(title)}</title>
+<style>{UI_STYLE}{PAGE_STYLE}</style><main class="cr-main"><h1>{escape(title)}</h1>{body}</main></html>"""
+
+
+def questionnaire(document):
+    sections = []
+    for index, question in enumerate(document['questions']):
+        options = [*question['options'], *OTHER_ANSWERS]
+        choices = ''.join(
+            f'<label class="cr-choice"><input type="radio" name="answer-{index}" value="{choice}" required> {escape(label)}</label>'
+            for choice, label in enumerate(options)
+        )
+        sections.append(f'<fieldset class="ui-card cr-question"><legend>{index + 1}. {escape(question["prompt"])}</legend>{choices}'
+                        f'<label class="cr-note">补充说明（选填）<textarea name="note-{index}" maxlength="1000" rows="2"></textarea></label></fieldset>')
+    submission = secrets.token_urlsafe(12)
+    return page('客户复核', f'<p class="cr-meta">方案版本 {escape(document["artifact_version"])} · 每题选一项；选「都不合适」时请写下建议。</p>'
+                f'<form method="post" class="cr-form"><input type="hidden" name="submission" value="{submission}">'
+                f'<label class="cr-name">称呼（选填）<input name="respondent" maxlength="100"></label>{"".join(sections)}'
+                '<button class="ui-button primary cr-submit">提交反馈</button></form>')
+
+
+def record_feedback(document, form, workspace):
+    submission = form.get('submission', [''])[0]
+    respondent = form.get('respondent', [''])[0].strip()
+    if not re.fullmatch(r'[A-Za-z0-9_-]{16}', submission) or len(respondent) > 100:
+        raise ValueError('请重新打开问卷，称呼最多 100 字。')
+    lines = [f'客户复核反馈。评审版本：{document["artifact_version"]}。问卷：{document["id"]}。']
+    if respondent:
+        lines.append(f'客户称呼：{respondent}')
+    answers = []
+    for index, question in enumerate(document['questions']):
+        options = [*question['options'], *OTHER_ANSWERS]
+        answer = form.get(f'answer-{index}', [])
+        note = form.get(f'note-{index}', [''])[0].strip()
+        if len(answer) != 1 or answer[0] not in {str(i) for i in range(len(options))} or len(note) > 1000:
+            raise ValueError('请为每题选择一个答案，补充说明最多 1000 字。')
+        choice = int(answer[0])
+        if choice == len(question['options']) and not note:
+            raise ValueError('选择「都不合适」时，请补充你的建议。')
+        answers.append({'target': question['target'], 'prompt': question['prompt'], 'answer': options[choice], 'note': note})
+        lines.extend(['', f'需求 {question["target"]}。问题：{question["prompt"]}', f'客户选择：{options[choice]}'])
+        if note:
+            lines.append(f'客户补充：{note}')
+    with tempfile.TemporaryDirectory(dir=workspace) as temporary:
+        file = Path(temporary) / '客户复核反馈.txt'
+        file.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+        job = ingest(file, workspace, document['project_id'], {
+            'provider': 'customer_review', 'questionnaire_id': document['id'],
+            'artifact_version': document['artifact_version'], 'submission_id': submission,
+        }, metadata={'customer_feedback': {'respondent': respondent, 'answers': answers}})
+    if job['status'] == 'failed':
+        raise ValueError('反馈预处理失败，请联系负责人。')
+    return job
+
+
+def read_feedback(workspace, job):
+    feedback = job.get('metadata', {}).get('customer_feedback')
+    if feedback is not None:
+        return feedback
+
+    # Older submissions only stored a text record. Match it against the saved questions.
+    origin = job['provenance']
+    questionnaire_id = origin.get('questionnaire_id', '')
+    if not re.fullmatch(r'[A-Za-z0-9_-]{32}', questionnaire_id):
+        return {'respondent': '', 'answers': []}
+    try:
+        questionnaire_file = workspace / 'customer-questionnaires' / f'{questionnaire_id}.json'
+        questionnaire = json.loads(questionnaire_file.read_text(encoding='utf-8'))
+        original = workspace / 'jobs' / job['job_id'] / 'original.txt'
+        parts = original.read_text(encoding='utf-8').split('\n\n需求 ')
+    except (OSError, ValueError):
+        return {'respondent': '', 'answers': []}
+    if (questionnaire.get('project_id') != job['project_id']
+            or questionnaire.get('artifact_version') != origin.get('artifact_version')):
+        return {'respondent': '', 'answers': []}
+
+    questions = questionnaire['questions']
+    fallback = {'respondent': '', 'answers': [{'target': question['target']} for question in questions]}
+    if len(parts) != len(questions) + 1:
+        return fallback
+    respondent = parts[0].partition('\n客户称呼：')[2]
+    answers = []
+    for question, part in zip(questions, parts[1:]):
+        question_line = f'{question["target"]}。问题：{question["prompt"]}\n客户选择：'
+        if not part.startswith(question_line):
+            return fallback
+        response = part[len(question_line):].removesuffix('\n')
+        note_label = '\n客户补充：'
+        options = list(dict.fromkeys([*question['options'], *OTHER_ANSWERS]))
+        matches = [option for option in options if response == option or response.startswith(option + note_label)]
+        if len(matches) != 1:
+            return fallback
+        answer = matches[0]
+        note = response[len(answer):].removeprefix(note_label)
+        answers.append({'target': question['target'], 'prompt': question['prompt'], 'answer': answer, 'note': note})
+    return {'respondent': respondent, 'answers': answers}
+
+
+class CustomerReviewServer(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def __init__(self, address, workspace):
+        self.workspace = workspace
+        self.directory = workspace / 'customer-questionnaires'
+        self.directory.mkdir(parents=True, exist_ok=True)
+        super().__init__(address, CustomerReviewHandler)
+
+    def publish(self, project, questions):
+        questions = validate_questions(project, questions)
+        identifier = secrets.token_urlsafe(24)
+        document = {'id': identifier, 'project_id': project['project_id'],
+                    'artifact_version': project['artifact_version'], 'questions': questions}
+        with (self.directory / f'{identifier}.json').open('x', encoding='utf-8') as file:
+            json.dump(document, file, ensure_ascii=False)
+        host, port = self.server_address
+        return f'http://{host}:{port}/review/{identifier}'
+
+
+class CustomerReviewHandler(BaseHTTPRequestHandler):
+    def setup(self):
+        super().setup()
+        self.connection.settimeout(15)
+
+    def log_message(self, *args):
+        pass
+
+    def respond(self, body, status=200):
+        content = body.encode('utf-8')
+        self.send_response(status)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(content)))
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('Referrer-Policy', 'no-referrer')
+        self.end_headers()
+        self.wfile.write(content)
+
+    def document(self):
+        match = re.fullmatch(r'/review/([A-Za-z0-9_-]{32})', urlsplit(self.path).path)
+        if match:
+            try:
+                return json.loads((self.server.directory / f'{match[1]}.json').read_text(encoding='utf-8'))
+            except FileNotFoundError:
+                pass
+        self.respond(page('问卷未找到', '<p>请向会议负责人确认链接。</p>'), 404)
+        return None
+
+    def do_GET(self):
+        document = self.document()
+        if document:
+            self.respond(questionnaire(document))
+
+    def do_POST(self):
+        document = self.document()
+        if not document:
+            return
+        try:
+            length = int(self.headers.get('Content-Length', '0'))
+            if not 0 < length <= 256 * 1024:
+                raise ValueError('反馈为空或过长。')
+            form = parse_qs(self.rfile.read(length).decode('utf-8'), max_num_fields=42)
+            record_feedback(document, form, self.server.workspace)
+        except ValueError as error:
+            self.respond(page('无法提交反馈', f'<p>{escape(str(error))}</p><p>请返回问卷修改后重试。</p>'), 400)
+        except OSError:
+            self.respond(page('无法保存反馈', '<p>请联系会议负责人后重试。</p>'), 503)
+        else:
+            self.respond(page('反馈已提交', '<p>你的回答已送达会议负责人。</p>'))
