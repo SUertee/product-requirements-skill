@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Generate a reviewed form/list prototype with local simulated interactions."""
 import json
+import sys
 from pathlib import Path
 
 PACKAGE = Path(__file__).resolve().parent.parent
+SCRIPTS = str(Path(__file__).resolve().parent)
+if SCRIPTS not in sys.path:
+    sys.path.insert(0, SCRIPTS)
 
 
 def validate_prototype(project):

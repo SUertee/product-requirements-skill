@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path, PurePosixPath
 import re
 import shutil
@@ -11,6 +12,9 @@ import tempfile
 from datetime import datetime, timezone
 
 PACKAGE = Path(__file__).resolve().parent.parent
+SCRIPTS = str(Path(__file__).resolve().parent)
+if SCRIPTS not in sys.path:
+    sys.path.insert(0, SCRIPTS)
 PROFILE = {
     'customer_and_roles': '客户与角色',
     'business_scenario': '业务场景',
@@ -28,6 +32,14 @@ DETAILS = {
     'inputs': '输入', 'outputs': '输出', 'rules': '业务规则',
     'exceptions': '异常处理', 'acceptance_criteria': '验收标准',
 }
+
+
+VAGUE_TERMS = ('智能', '快速', '友好', '尽量', '尽快', '方便', '及时', '高效', '合理', '适当', '灵活', '更好', '大概', '一些')
+
+
+def vague_terms(value):
+    text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False) if value else ''
+    return [term for term in VAGUE_TERMS if term in text]
 
 
 def require(condition, message):
@@ -217,6 +229,10 @@ def collect_questions(project):
         for key, label in DETAILS.items():
             if readable(req.get(key)) == '待确认':
                 questions.append({'target': req['requirement_id'], 'field': key, 'reason': f'{label}待补全'})
+        for key, label in [('behavior', '功能行为'), ('rules', '业务规则'), ('acceptance_criteria', '验收标准')]:
+            terms = vague_terms(req.get(key))
+            if terms:
+                questions.append({'target': req['requirement_id'], 'field': key, 'reason': f'{label}中的「{"」「".join(terms)}」无法验收，需要可观察的标准'})
         for question in req.get('open_questions', []):
             questions.append({'target': req['requirement_id'], 'reason': str(question)})
         if req['review_status'] != 'confirmed' or req['evidence_type'] != 'explicit':
@@ -224,6 +240,9 @@ def collect_questions(project):
     for nfr in project.get('nfrs', []):
         if nfr['review_status'] != 'confirmed':
             questions.append({'target': nfr['nfr_id'], 'reason': '确认非功能需求：' + nfr['title']})
+        terms = vague_terms(nfr.get('statement'))
+        if terms:
+            questions.append({'target': nfr['nfr_id'], 'reason': f'「{"」「".join(terms)}」无法验收，需要具体阈值或可观察结果'})
         elif not nfr.get('prototype_treatment'):
             questions.append({'target': nfr['nfr_id'], 'reason': '说明原型怎样体现，或写明不适用的原因'})
     for key in ['business_model', 'pages']:
@@ -359,6 +378,81 @@ def copy_artifacts(project, sources, artifact_root, records, stage):
     return metadata
 
 
+def render_agent_prompt(project, sources, questions):
+    """Hand-off prompt for a coding agent, derived only from this version's data."""
+    name = project.get('name') or project['project_id']
+    requirements = [item for item in project['requirements'] if item.get('lifecycle_status') != 'cancelled']
+    confirmed = [item for item in requirements if item['review_status'] == 'confirmed']
+    pending = [item for item in requirements if item['review_status'] != 'confirmed']
+    profile = project['requirement_profile']
+    lines = [f'# {name} · 开发提示词', '', f'> 复制给负责实施的 Coding Agent。由产品需求落地 Skill 根据 {project["artifact_version"]} 生成，只包含本版本已有的数据。', '',
+             '## 你的任务', '', '在现有代码库中实现下列已确认需求：先审阅代码与规范，给出最小可行路径，实际编码、运行测试，并如实报告结果。不要只输出建议或伪代码。', '',
+             '## 授权边界', '',
+             '- 已确认的需求按验收标准实现；草稿需求只做没有歧义的部分，并记录你的假设；冲突或暂缓的需求先提问，不要当成已确认功能。',
+             '- 未给出的指标、预算、日期、接口字段和业务规则不要编造。非关键默认值写进实施记录，关键阻塞集中提问。',
+             '- 不要修改需求状态，不要对外发布。真实外部写入、客户数据传输和部署需另行授权。外部接口未接通时用清楚的适配层或模拟，并如实说明。', '',
+             '## 执行原则', '',
+             '1. 先读仓库已有的 AGENTS.md、README 和开发规范，保留已有成果，不为套模板重写。',
+             '2. 建立 REQ ID → 模块 → 修改文件 → 测试的对应关系，REQ ID 写进实现说明和测试名。',
+             '3. 先打通一条可操作的端到端主流程，再扩展相邻能力。',
+             '4. 每完成一个模块运行相关测试；最后跑单元、集成和主流程验证，没跑的检查写明未验证。',
+             '5. 实现与需求冲突时，回到下面的验收标准和原话核对。', '']
+    background = [(label, profile.get(key)) for key, label in PROFILE.items() if readable(profile.get(key)) != '待确认']
+    if background:
+        lines += ['## 项目背景', ''] + [f'- **{label}**：' + ('、'.join(map(str, value)) if isinstance(value, list) else readable(value)) for label, value in background] + ['']
+    lines += ['## 已确认需求', '']
+    if not confirmed:
+        lines += ['暂无已确认需求。先完成需求评审，再开始实现。', '']
+    for item in confirmed:
+        lines += [f'### {item["requirement_id"]} · {item["title"]}', '']
+        for key, label in DETAILS.items():
+            if readable(item.get(key)) != '待确认':
+                value = item[key]
+                lines.append(f'- **{label}**：' + ('；'.join(map(str, value)) if isinstance(value, list) else str(value)))
+        quotes = [sources[ref]['text'] for ref in item.get('source_refs', []) if ref in sources][:2]
+        lines += [f'- **会议原话**：“{quote[:120]}”' for quote in quotes]
+        lines.append('')
+    nfrs = [item for item in project.get('nfrs', []) if item['review_status'] == 'confirmed']
+    if nfrs:
+        lines += ['## 非功能需求', ''] + [f'- **{item["nfr_id"]} {item["title"]}**：{item["statement"]}' for item in nfrs] + ['']
+    design = project.get('prototype_design') or {}
+    pages = design.get('pages') or project.get('pages') or []
+    if pages:
+        lines += ['## 页面与交互', '']
+        if design:
+            lines += ['交互原型见本版本的 prototype/index.html，页面结构和状态以它为参考，视觉可按现有设计系统调整。', '']
+        for page in pages:
+            refs = '、'.join(page.get('requirement_ids', [])) or '无'
+            states = '、'.join({'empty': '空数据', 'loading': '加载中', 'error': '出错', 'denied': '无权限', 'success': '成功'}.get(state, state) for state in page.get('states', []))
+            lines.append(f'- **{page.get("name") or page["page_id"]}**：{page.get("purpose") or page.get("task") or ""}（需求 {refs}' + (f'；状态 {states}' if states else '') + '）')
+        lines.append('')
+    entities = (project.get('business_model') or {}).get('entities') or []
+    if entities:
+        lines += ['## 业务数据模型', '', '候选模型，字段与关系以现有数据库为准。', '']
+        for entity in entities:
+            fields = '、'.join(field.get('name', '') for field in entity.get('fields', []) if isinstance(field, dict))
+            lines.append(f'- **{entity.get("name")}**：{fields or "字段待确认"}')
+        lines.append('')
+    architecture = project.get('technical_architecture') or {}
+    if architecture.get('components'):
+        lines += ['## 技术架构', '', '候选设计，开始前与现有代码核对。', '']
+        for component in architecture['components']:
+            lines.append(f'- **{component["name"]}**' + (f'：{component["responsibility"]}' if component.get('responsibility') else ''))
+            lines += [f'  - 开发：{entry}' for entry in component.get('development_items', [])]
+            lines += [f'  - 交付标准：{entry}' for entry in component.get('delivery_criteria', [])]
+        lines.append('')
+    if pending:
+        lines += ['## 尚未确认', '', '下列需求还没确认，不要按已确认功能实现：', ''] + [f'- {item["requirement_id"]} {item["title"]}（{ {"draft": "草稿", "disputed": "冲突", "parked": "暂缓"}.get(item["review_status"], item["review_status"]) }）' for item in pending] + ['']
+    titles = {item['requirement_id']: item['title'] for item in project['requirements']}
+    titles.update({item['nfr_id']: item['title'] for item in project.get('nfrs', [])})
+    open_items = list(dict.fromkeys((titles[question['target']] + '：' if question['target'] in titles else '') + question['reason']
+                                    for question in questions if question['reason'] != '核对依据、范围与确认状态'))[:12]
+    if open_items:
+        lines += ['## 待确认问题', ''] + [f'- {reason}' for reason in open_items] + ['']
+    lines += ['## 交付时请报告', '', '- 每条需求对应的修改文件与测试。', '- 实际运行过的命令和结果，未验证的部分单独列出。', '- 你做出的假设和仍需负责人确认的问题。', '']
+    return '\n'.join(lines)
+
+
 def render_workbench(project, sources, review, documents, artifacts, extra=None, module_diagram=None, architecture_diagram=None, generated_at=None):
     attachments = [{'material_id': item['material_id'], 'path': item['path']} for item in artifacts if item.get('material_id')]
     payload = json.dumps({'project': project, 'sources': list(sources.values()), 'review': review, 'documents': documents, 'artifacts': artifacts, 'attachments': attachments, 'module_diagram': module_diagram, 'architecture_diagram': architecture_diagram, 'diff': (extra or {}).get('diff.json'), 'generation': (extra or {}).get('generation.json'), 'generated_at': generated_at}, ensure_ascii=False)
@@ -394,6 +488,8 @@ def publish(project, sources, destination, materials_root=None, *, review_data=N
         prd, proposal = documents['prd.md'], documents['proposal.md']
         (stage / 'prd.md').write_text(prd, encoding='utf-8')
         (stage / 'proposal.md').write_text(proposal, encoding='utf-8')
+        agent_prompt = render_agent_prompt(project, sources, questions)
+        (stage / 'agent-prompt.md').write_text(agent_prompt, encoding='utf-8')
         review = {'project_id': project['project_id'], 'artifact_version': project['artifact_version'], 'review_status': 'draft', 'questions': questions, 'decisions': []}
         if review_data is not None:
             require(review_data.get('project_id') == project['project_id'] and review_data.get('artifact_version') == project['artifact_version'], 'Review project/version mismatch')
@@ -424,7 +520,7 @@ def publish(project, sources, destination, materials_root=None, *, review_data=N
         module_diagram = (stage / 'diagrams/modules.html').read_text(encoding='utf-8') if module_record and module_record.get('generator') == 'Archify' else None
         architecture_record = artifact_metadata.get('diagrams/architecture.html')
         architecture_diagram = (stage / 'diagrams/architecture.html').read_text(encoding='utf-8') if architecture_record and architecture_record.get('generator') == 'Archify' else None
-        workbench.write_text(render_workbench(project, sources, review, {'proposal.md': proposal, 'prd.md': prd}, artifacts, extra, module_diagram, architecture_diagram, generated_at), encoding='utf-8')
+        workbench.write_text(render_workbench(project, sources, review, {'proposal.md': proposal, 'prd.md': prd, 'agent-prompt.md': agent_prompt}, artifacts, extra, module_diagram, architecture_diagram, generated_at), encoding='utf-8')
         artifacts.append({'path': 'workbench/index.html', 'generation_status': 'success', 'review_status': 'draft', 'artifact_version': project['artifact_version'], 'depends_on': [item['path'] for item in artifacts], 'source_ids': list(sources), 'audience': 'internal', 'sha256': hashlib.sha256(workbench.read_bytes()).hexdigest(), 'generator': 'build_documents/0.1', 'validation_results': ['Embedded data encoded for inert JSON script']})
         manifest = {'schema_version': '0.1', 'project_id': project['project_id'], 'artifact_version': project['artifact_version'], 'generated_at': generated_at, 'artifacts': artifacts}
         (stage / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')

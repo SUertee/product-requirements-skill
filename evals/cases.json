@@ -1,0 +1,145 @@
+{
+  "schema_version": "1.0",
+  "source": "场景改编自 fix/incremental-safety-and-package 分支（HankGrimm）的 evals/test-cases.json，对齐本仓库的数据结构与测试。",
+  "layers": {
+    "automated": "evals/run_evals.py 运行每个场景对应的回归测试，验证确定性的保护与校验行为。",
+    "model_review": "真实宿主模型对 input 执行 SKILL.md，保留实际输出，按 model_checks 人工或模型复核。固定测试结果不能代替这一层。"
+  },
+  "cases": [
+    {
+      "id": "ordinary-meeting",
+      "title": "普通会议整理成需求",
+      "input": "销售主管：管理员查看全部客户，销售只看本人客户。销售在客户列表输入名称查询。",
+      "expected": "生成客户权限、客户名称查询两条草稿需求，原话可回查；日期与预算列入待确认。",
+      "model_checks": ["引用的原话是来源片段的原文", "每条需求引用真实来源", "没有补造指标或日期"],
+      "tests": [
+        "tests.test_intake.IntakeTests.test_text_keeps_original_and_creates_traceable_sources",
+        "tests.test_build_documents.DocumentBundleTests.test_bundle_keeps_evidence_and_locked_fields",
+        "tests.test_build_documents.DocumentBundleTests.test_unknown_source_rejected"
+      ]
+    },
+    {
+      "id": "vague-expression",
+      "title": "模糊表述不臆造功能",
+      "input": "客户：系统最好更智能一点，具体还没有想清楚。",
+      "expected": "不生成具体 AI 功能；“智能”进入待确认，需求暂缓或保持草稿。",
+      "model_checks": ["没有生成具体 AI 功能", "提出“智能指什么业务行为”的问题"],
+      "tests": [
+        "tests.test_build_documents.VagueWordingTests.test_vague_terms_enter_review_questions_for_requirements_and_nfrs",
+        "tests.test_prototype_design.PrototypeDesignChecks.test_unconfirmed_requirement_blocks_generation"
+      ]
+    },
+    {
+      "id": "history-conflict",
+      "title": "与历史资料冲突",
+      "input": "历史资料：所有角色均可查看全部客户。新会议：普通销售只能查看本人负责的客户。",
+      "expected": "保留双方来源，标为冲突，人工裁决前不覆盖旧规则。",
+      "model_checks": ["双方来源都保留", "状态为 disputed，没有静默择一"],
+      "tests": [
+        "tests.test_workflow.WorkflowTests.test_analysis_cannot_promote_unreviewed_requirements",
+        "tests.test_workflow.WorkflowTests.test_changed_requirement_requires_new_confirmation"
+      ]
+    },
+    {
+      "id": "multiple-roles",
+      "title": "多角色观点不同",
+      "input": "销售：希望查看全部客户。销售主管：普通销售只能看本人客户。管理员：管理员可以看全部。",
+      "expected": "三种观点分别记录，不合并成一致事实。",
+      "model_checks": ["不同观点没有合并成一致事实", "没有把匿名角色推断为真实身份"],
+      "tests": []
+    },
+    {
+      "id": "duplicate-requirement",
+      "title": "重复表达不重复建需求",
+      "input": "客户：需要按名称查询客户。后续：还是要支持客户名称查询。",
+      "expected": "只有一条需求，两段原话都作为依据保留。",
+      "model_checks": ["只有一条 REQ", "复述的原话保留为依据"],
+      "tests": [
+        "tests.test_build_documents.DocumentBundleTests.test_duplicate_requirement_rejected",
+        "tests.test_workflow.WorkflowTests.test_same_transcript_from_another_origin_retains_canonical_source"
+      ]
+    },
+    {
+      "id": "missing-acceptance-metric",
+      "title": "缺少验收指标",
+      "input": "客户：希望减少查找客户的时间，具体指标没定。",
+      "expected": "指标待确认，只验收已描述的行为；缺验收标准时不能生成原型。",
+      "model_checks": ["指标标为待确认", "没有编造百分比或性能阈值"],
+      "tests": [
+        "tests.test_prototype_design.PrototypeDesignChecks.test_missing_acceptance_blocks_generation",
+        "tests.test_build_documents.VagueWordingTests.test_vague_terms_enter_review_questions_for_requirements_and_nfrs"
+      ]
+    },
+    {
+      "id": "new-meeting-modifies-old",
+      "title": "新会议修改已有需求",
+      "input": "已有：REQ-002 按客户名称查询。新会议：增加按负责人筛选，无结果显示空状态。",
+      "expected": "生成新版本，旧值新值并列，修改后的需求回到草稿等待确认。",
+      "model_checks": ["沿用 REQ-002 而不是新建", "只更新受影响内容"],
+      "tests": [
+        "tests.test_end_to_end.EndToEndTests.test_intake_review_generation_release_and_locked_feedback",
+        "tests.test_workflow.WorkflowTests.test_changed_requirement_requires_new_confirmation"
+      ]
+    },
+    {
+      "id": "human-lock-conflict",
+      "title": "人工锁定字段遇到新要求",
+      "input": "REQ-001 的约束已人工锁定为“不接入短信”。新会议要求接入短信通知。",
+      "expected": "自动分析不覆盖锁定字段，记录冲突；人工解锁后才能修改并留痕。",
+      "model_checks": ["冲突说明清楚新旧两种要求"],
+      "tests": [
+        "tests.test_workflow.WorkflowTests.test_analysis_preserves_locked_field_and_records_conflict",
+        "tests.test_workflow.WorkflowTests.test_explicit_unlock_allows_edit_and_preserves_manual_evidence",
+        "tests.test_workflow.WorkflowTests.test_locked_edit_retains_value_and_proposed_manual_evidence"
+      ]
+    },
+    {
+      "id": "prototype-feedback",
+      "title": "客户对原型的反馈",
+      "input": "已确认 REQ-002 名称查询。客户反馈：列表增加负责人筛选，并保留空状态。",
+      "expected": "形成新版本后重新生成原型；对外发布需要同一版本的最终复核。",
+      "model_checks": ["原型与需求验收一致", "没有自动对外发布"],
+      "tests": [
+        "tests.test_artifacts.ArtifactTests.test_generation_is_published_as_new_version",
+        "tests.test_release.ReleaseTests.test_release_requires_final_review_of_the_same_version",
+        "tests.test_release.ReleaseTests.test_cannot_release_internal_files_even_if_marked_confirmed"
+      ]
+    },
+    {
+      "id": "transcription-failure",
+      "title": "没有转写能力",
+      "input": "只有 meeting.mp3，宿主没有可用的转写服务。",
+      "expected": "不虚构逐字稿，等待逐字稿或可用转写；其他可读材料继续处理。",
+      "model_checks": ["明确说明缺少转写能力", "请求 TXT／SRT／VTT"],
+      "tests": [
+        "tests.test_intake.IntakeTests.test_missing_ffmpeg_waits_for_transcript",
+        "tests.test_runner.RunnerTests.test_host_failure_keeps_task_and_explicit_retry"
+      ]
+    },
+    {
+      "id": "manual-edit-protection",
+      "title": "保护人工修改",
+      "input": "PRD 已被人工修改，随后又生成了一次。",
+      "expected": "人工正文保留；基线不一致的保存被拒绝；被改动的原型需重新生成并复核。",
+      "model_checks": [],
+      "tests": [
+        "tests.test_workflow.WorkflowTests.test_document_edit_rejects_stale_hash_paths_and_competing_version",
+        "tests.test_workflow.WorkflowTests.test_document_edit_retains_generated_module_map",
+        "tests.test_release.ReleaseTests.test_tampered_prototype_requires_regeneration_and_review"
+      ]
+    },
+    {
+      "id": "designed-prototype-fr-nfr",
+      "title": "按 FR 与 NFR 设计原型",
+      "input": "售后服务台会议：客服建单、查询，主管指派，手机号脱敏，提交失败可重试，操作留痕。",
+      "expected": "确认 FR／NFR 后生成原型；每条需求落到页面或写明排除原因，每条 NFR 有体现或写明不适用。",
+      "model_checks": ["页面结构符合产品类型与目标设备", "NFR 的体现方式在原型中可操作", "页面脚本无运行错误"],
+      "tests": [
+        "tests.test_prototype_design.DesignedPrototypeEndToEnd.test_meeting_to_confirmed_fr_nfr_to_designed_prototype",
+        "tests.test_prototype_design.PrototypeDesignChecks.test_confirmed_requirement_must_be_covered_or_excluded",
+        "tests.test_prototype_design.PrototypeDesignChecks.test_confirmed_nfr_must_be_shown_or_marked_not_applicable",
+        "tests.test_prototype_design.PrototypeDesignChecks.test_markup_rejects_scripts_external_resources_and_inline_handlers"
+      ]
+    }
+  ]
+}

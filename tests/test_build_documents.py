@@ -1,5 +1,6 @@
 """Regression checks for evidence integrity and preserving existing review work."""
 import copy
+import sys
 import hashlib
 import importlib.util
 import json
@@ -72,7 +73,8 @@ class DocumentBundleTests(unittest.TestCase):
         self.assertIn('SRC-001', (destination / 'prd.md').read_text())
         self.assertIn('希望按状态查工单', (destination / 'prd.md').read_text())
         manifest = json.loads((destination / 'manifest.json').read_text())
-        self.assertEqual(len(manifest['artifacts']), 6)
+        self.assertEqual(len(manifest['artifacts']), 7)
+        self.assertIn('agent-prompt.md', {item['path'] for item in manifest['artifacts']})
         for artifact in manifest['artifacts']:
             self.assertEqual(artifact['review_status'], 'draft')
             self.assertEqual(artifact['sha256'], hashlib.sha256((destination / artifact['path']).read_bytes()).hexdigest())
@@ -230,6 +232,20 @@ class DocumentBundleTests(unittest.TestCase):
         self.save()
         with self.assertRaisesRegex(ValueError, 'invalid material_ids'):
             self.read()
+
+
+class VagueWordingTests(unittest.TestCase):
+    def test_vague_terms_enter_review_questions_for_requirements_and_nfrs(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'product-requirements/scripts'))
+        from build_documents import collect_questions
+        project = {'requirement_profile': {}, 'business_model': {'entities': []}, 'pages': [{}],
+                   'requirements': [{'requirement_id': 'REQ-001', 'title': '推荐', 'review_status': 'draft', 'evidence_type': 'explicit',
+                                     'behavior': '系统更智能一点', 'acceptance_criteria': '按客户名称返回匹配客户'}],
+                   'nfrs': [{'nfr_id': 'NFR-001', 'title': '查询速度', 'statement': '查询要快速', 'review_status': 'draft'}]}
+        reasons = {(item['target'], item.get('field')): item['reason'] for item in collect_questions(project)}
+        self.assertIn('「智能」', reasons[('REQ-001', 'behavior')])
+        self.assertNotIn(('REQ-001', 'acceptance_criteria'), {key for key, reason in reasons.items() if '无法验收' in reason})
+        self.assertTrue(any(target == 'NFR-001' and '「快速」' in reason for (target, _), reason in reasons.items()))
 
 
 if __name__ == '__main__':

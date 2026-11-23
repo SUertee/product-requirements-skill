@@ -24,7 +24,7 @@
   let moduleFrame = null;
   let selectDiagramModule = null;
   const requestedDocument = new URLSearchParams(location.search).get('document');
-  let selectedDocument = ['proposal.md', 'prd.md'].includes(requestedDocument) ? requestedDocument : 'proposal.md';
+  let selectedDocument = ['proposal.md', 'prd.md', 'agent-prompt.md'].includes(requestedDocument) ? requestedDocument : 'proposal.md';
   const documentDrafts = {};
   let documentEditing = false;
   let documentSaving = false;
@@ -1116,7 +1116,7 @@
     frame.setAttribute('sandbox', 'allow-same-origin allow-modals');
     document.body.append(frame);
     const page = frame.contentDocument;
-    page.title = (project.name || project.project_id) + (name === 'prd.md' ? ' · PRD' : ' · 项目方案');
+    page.title = (project.name || project.project_id) + ({'prd.md': ' · PRD', 'agent-prompt.md': ' · 开发提示词'}[name] || ' · 项目方案');
     page.documentElement.lang = 'zh-CN';
     const style = element('style');
     style.textContent = document.querySelector('head style').textContent + '\n@page {size:A4;margin:18mm} body{background:white;color:#202d40} .document-body{max-width:none;margin:0} h2,h3,h4{break-after:avoid} p,li{orphans:3;widows:3}';
@@ -1127,7 +1127,9 @@
   }
   function documents() {
     const name = selectedDocument;
-    const items = [['proposal.md', '项目方案'], ['prd.md', 'PRD']];
+    const items = [['proposal.md', '项目方案'], ['prd.md', 'PRD'], ...(data.documents['agent-prompt.md'] ? [['agent-prompt.md', '开发提示词']] : [])];
+    const derived = name === 'agent-prompt.md';
+    if (derived) documentEditing = false;
     content.append(sectionTabs(items, name, '文档类型', key => { selectedDocument = key; documentChapter = 0; documentEntry = 0; documentEditing = false; documentMessage = ''; render(); }));
     const text = documentDrafts[name] ?? data.documents[name] ?? '';
     const chunks = text.split(/(?=^## )/m);
@@ -1151,10 +1153,18 @@
       const link = element('a'); link.href = url; link.download = name; document.body.append(link); link.click(); link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     });
-    actions.append(edit, print, download);
+    if (derived) {
+      const copy = element('button', '复制全文', 'button primary small'); copy.type = 'button';
+      copy.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(data.documents[name]); documentMessage = '已复制，可直接粘贴给 Coding Agent'; }
+        catch { documentMessage = '浏览器未允许复制，请用“下载正文”'; }
+        render();
+      });
+      actions.append(copy, download);
+    } else actions.append(edit, print, download);
     const save = element('button', '保存新版本', 'button primary small'); save.type = 'button';
     save.disabled = documentSaving || !Object.hasOwn(documentDrafts, name) || documentDrafts[name] === data.documents[name];
-    if (serverState) {
+    if (serverState && !derived) {
       actions.append(save);
       save.addEventListener('click', async () => {
         const value = documentDrafts[name];

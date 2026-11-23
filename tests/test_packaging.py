@@ -1,4 +1,5 @@
 """Run an extracted Skill package through its normal CLI outside the source tree."""
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -9,6 +10,8 @@ import wave
 import zipfile
 
 PACKAGE = Path(__file__).resolve().parents[1] / 'product-requirements'
+sys.path.insert(0, str(PACKAGE / 'scripts'))
+from package_skill import build
 
 
 class PackageTests(unittest.TestCase):
@@ -16,10 +19,13 @@ class PackageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
             archive_path = root / 'skill.zip'
-            with zipfile.ZipFile(archive_path, 'w') as archive:
-                for file in PACKAGE.rglob('*'):
-                    if file.is_file() and '__pycache__' not in file.parts and not file.name.startswith('.'):
-                        archive.write(file, Path(PACKAGE.name) / file.relative_to(PACKAGE))
+            first = build(archive_path)
+            self.assertEqual(build(root / 'again.zip')['sha256'], first['sha256'], 'package bytes are reproducible')
+            with zipfile.ZipFile(archive_path) as archive:
+                manifest = json.loads(archive.read(PACKAGE.name + '/PACKAGE_MANIFEST.json'))
+                for item in manifest['files']:
+                    self.assertEqual(hashlib.sha256(archive.read(PACKAGE.name + '/' + item['path'])).hexdigest(), item['sha256'])
+                self.assertFalse(any('__pycache__' in name or '/.' in name for name in archive.namelist()))
             skills = root / '.codeartsdoer/skills'
             with zipfile.ZipFile(archive_path) as archive:
                 archive.extractall(skills)
