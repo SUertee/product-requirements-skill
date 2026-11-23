@@ -24,6 +24,8 @@ def styled_sources():
     for name in ('prototype-shell.html', 'prototype-template.html'):
         page = (ASSETS / name).read_text(encoding='utf-8')
         yield name, '\n'.join(re.findall(r'<style[^>]*>(.*?)</style>', page, flags=re.S)).replace('__PROTOTYPE_STYLE__', '')
+    review = (ASSETS.parent / 'scripts/customer_review.py').read_text(encoding='utf-8')
+    yield 'customer_review.py', re.search(r'PAGE_STYLE = """(.*?)"""', review, flags=re.S)[1]
 
 
 class UiTokenTests(unittest.TestCase):

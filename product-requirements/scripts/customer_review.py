@@ -37,15 +37,29 @@ def validate_questions(project, questions):
     return result
 
 
+UI_STYLE = (Path(__file__).resolve().parent.parent / 'assets' / 'ui.css').read_text(encoding='utf-8')
+# Customer-facing, usually opened on a phone during the meeting: built-in tokens, one column, large targets.
+PAGE_STYLE = """
+.cr-main{max-width:680px;margin:0 auto;padding:24px 16px 48px}
+.cr-main h1{margin:0 0 8px;font-size:var(--ui-text-xl);line-height:1.3}
+.cr-meta{margin:0 0 24px;color:var(--ui-muted);font-size:var(--ui-text-sm)}
+.cr-form{display:grid;gap:16px}
+.cr-question{margin:0;display:grid;gap:8px}
+.cr-question legend{float:left;width:100%;padding:0;margin-bottom:8px;font-weight:600;font-size:var(--ui-text-md)}
+.cr-choice{display:flex;align-items:center;gap:12px;min-height:44px;padding:8px 12px;border:1px solid var(--ui-border);border-radius:var(--ui-radius-sm);cursor:pointer}
+.cr-choice:has(input:checked){border-color:var(--ui-accent-border);background:var(--ui-accent-soft);color:var(--ui-accent-ink)}
+.cr-choice input{width:18px;height:18px;margin:0;accent-color:var(--ui-accent)}
+.cr-note{display:grid;gap:4px;color:var(--ui-muted);font-size:var(--ui-text-sm)}
+.cr-note textarea,.cr-name input{width:100%;min-height:44px;padding:8px 12px;border:1px solid var(--ui-border-strong);border-radius:var(--ui-radius-sm);color:var(--ui-ink);background:var(--ui-surface)}
+.cr-name{display:grid;gap:4px;color:var(--ui-muted);font-size:var(--ui-text-sm)}
+.cr-submit{justify-self:start}
+"""
+
+
 def page(title, body):
     return f"""<!doctype html><html lang="zh-CN"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{escape(title)}</title>
-<style>
-body{{font:16px/1.6 system-ui,sans-serif;background:#f4f6fa;color:#16243b;max-width:680px;margin:2rem auto;padding:0 1rem}}
-fieldset{{background:white;border:1px solid #c8d3e2;border-radius:8px;margin:1rem 0;padding:1rem}}
-legend{{font-weight:700}}label{{display:block;margin:.45rem 0}}textarea{{width:100%;box-sizing:border-box;font:inherit}}
-button{{background:#184d97;color:white;border:0;border-radius:6px;padding:.65rem 1rem;font:inherit;cursor:pointer}}
-</style><main><h1>{escape(title)}</h1>{body}</main></html>"""
+<style>{UI_STYLE}{PAGE_STYLE}</style><main class="cr-main"><h1>{escape(title)}</h1>{body}</main></html>"""
 
 
 def questionnaire(document):
@@ -53,16 +67,16 @@ def questionnaire(document):
     for index, question in enumerate(document['questions']):
         options = [*question['options'], *OTHER_ANSWERS]
         choices = ''.join(
-            f'<label><input type="radio" name="answer-{index}" value="{choice}" required> {escape(label)}</label>'
+            f'<label class="cr-choice"><input type="radio" name="answer-{index}" value="{choice}" required> {escape(label)}</label>'
             for choice, label in enumerate(options)
         )
-        sections.append(f'<fieldset><legend>{escape(question["prompt"])}</legend>{choices}'
-                        f'<label>补充说明<textarea name="note-{index}" maxlength="1000" rows="2"></textarea></label></fieldset>')
+        sections.append(f'<fieldset class="ui-card cr-question"><legend>{index + 1}. {escape(question["prompt"])}</legend>{choices}'
+                        f'<label class="cr-note">补充说明（选填）<textarea name="note-{index}" maxlength="1000" rows="2"></textarea></label></fieldset>')
     submission = secrets.token_urlsafe(12)
-    return page('客户复核', f'<p>版本 {escape(document["artifact_version"])}</p>'
-                '<p>选择一项并按需补充。选择「都不合适」时请写下你的建议。</p>'
-                f'<form method="post"><input type="hidden" name="submission" value="{submission}">'
-                f'<label>称呼（选填）<input name="respondent" maxlength="100"></label>{"".join(sections)}<button>提交反馈</button></form>')
+    return page('客户复核', f'<p class="cr-meta">方案版本 {escape(document["artifact_version"])} · 每题选一项；选「都不合适」时请写下建议。</p>'
+                f'<form method="post" class="cr-form"><input type="hidden" name="submission" value="{submission}">'
+                f'<label class="cr-name">称呼（选填）<input name="respondent" maxlength="100"></label>{"".join(sections)}'
+                '<button class="ui-button primary cr-submit">提交反馈</button></form>')
 
 
 def record_feedback(document, form, workspace):
