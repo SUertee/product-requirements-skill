@@ -675,7 +675,7 @@
     workflowBusy = true; workflowMessage = '正在处理任务…'; render();
     try {
       const result = await action();
-      workflowMessage = result.release ? '客户交付包已生成，可预览或下载' : result.task.status === 'completed' ? '新版本已生成，可从任务记录打开' : '分析请求已准备，等待宿主执行 Skill 并返回项目结果';
+      workflowMessage = result.message ? result.message : result.release ? '客户交付包已生成，可预览或下载' : result.task.status === 'completed' ? '新版本已生成，可从任务记录打开' : '分析请求已准备，等待宿主执行 Skill 并返回项目结果';
       const failures = result.task?.generation_results?.filter(item => item.generation_status === 'failed') || [];
       if (failures.length) workflowMessage = '版本已生成，成果生成失败 · ' + failures.map(item => item.error).join('；');
     } catch (error) { workflowMessage = error.message; }
@@ -1759,126 +1759,41 @@
       content.append(card);
     }
   }
-  function reviewForm(host = content, phase = 'definition') {
-    const section = panel('记录评审意见', 'edit');
-    section.classList.add('review-editor');
-    if (!serverState) {
-      section.append(element('p', '当前为只读分享版，评审意见请在本机工作台中记录。', 'inline-note'));
-      host.append(section);
-      return;
-    }
-    const form = element('form', null, 'intake-form review-opinion-form');
-    const stage = element('select'); stage.id = 'review-stage';
-    for (const [value, title] of [['definition', '需求定义'], ['release', '客户发布']]) { const option = element('option', title); option.value = value; stage.append(option); }
-    stage.value = phase;
-    const target = element('select'); target.id = 'review-target';
-    let targets;
-    function fillTargets() {
-      targets = new Set(stage.value === 'release' ? data.artifacts.filter(item => item.path.startsWith('prototype/') && item.path.endsWith('.html')).map(item => item.path) : [...requirements.map(item => item.requirement_id), ...data.review.questions.map(item => item.target)]);
-      target.replaceChildren();
-      targets.forEach(value => { const req = requirements.find(item => item.requirement_id === value); const option = element('option', req ? req.title : nfrTitle(value) || value); option.value = value; target.append(option); });
-      if (reviewTarget && targets.has(reviewTarget)) target.value = reviewTarget;
-    }
-    fillTargets(); stage.addEventListener('change', () => { fillTargets(); save.disabled = !targets.size; });
-    const outcome = element('input'); outcome.type = 'hidden'; outcome.id = 'review-outcome'; outcome.value = 'needs_changes';
-    const outcomeChoices = element('div', null, 'outcome-choices'); outcomeChoices.setAttribute('role', 'group'); outcomeChoices.setAttribute('aria-label', '结论');
-    for (const [value, label] of [['confirmed', '确认'], ['needs_changes', '需要修改'], ['parked', '暂缓']]) {
-      const choice = element('button', label, 'button small'); choice.type = 'button'; choice.dataset.outcome = value;
-      choice.setAttribute('aria-pressed', String(value === outcome.value));
-      choice.addEventListener('click', () => { outcome.value = value; outcomeChoices.querySelectorAll('button').forEach(item => item.setAttribute('aria-pressed', String(item === choice))); });
-      outcomeChoices.append(choice);
-    }
-    const reviewer = element('input'); reviewer.id = 'review-author'; reviewer.maxLength = 200;
-    const comment = element('textarea'); comment.id = 'review-comment'; comment.rows = 3; comment.maxLength = 10000;
-    form.append(outcome);
-    for (const [input, title, marker] of [...(phase === 'release' ? [[target, '评审对象', 'prototype']] : []), [outcomeChoices, '结论', 'decided'], [comment, '意见', 'edit'], [reviewer, '记录人（选填）', 'actors']]) {
-      const field = element('div', null, 'review-field'); field.dataset.field = input.id || 'outcome';
-      const label = iconLabel(element(input === outcomeChoices ? 'span' : 'label', title), marker); if (input !== outcomeChoices) label.htmlFor = input.id;
-      field.append(label, input === target ? selectControl(input) : input);
-      form.append(field);
-    }
-    const save = iconLabel(element('button', '保存意见', 'button primary'), 'decided'); save.type = 'submit'; save.disabled = !targets.size;
-    const revision = serverState.review.revision;
-    form.addEventListener('submit', async event => {
-      event.preventDefault(); save.disabled = true;
-      try {
-        const result = await localRequest('/api/review', {method: 'POST', body: JSON.stringify({revision, review_stage: stage.value, target: target.value, outcome: outcome.value, comment: comment.value, reviewer: reviewer.value})});
-        serverState.review = result.review;
-        reviewMessage = '意见已保存，绑定当前版本。通过 Skill 修订后生成新的需求和成果版本。';
-        render();
-      } catch (error) { reviewMessage = error.message; message.textContent = reviewMessage; save.disabled = false; }
-    });
-    const message = element('p', reviewMessage, 'inline-note'); message.setAttribute('role', 'status');
-    form.append(save, message); section.append(form);
-    const recordActions = element('div', null, 'review-record-actions');
-    const refresh = iconLabel(element('button', '刷新记录', 'button small'), 'refresh');
-    refresh.type = 'button';
-    refresh.addEventListener('click', async () => {
-      try { await refreshLocal(); render(); } catch (error) { message.textContent = error.message; }
-    });
-    recordActions.append(refresh);
-    const records = serverState.review.decisions;
-    if (records.length) {
-      const exportButton = iconLabel(element('button', '导出评审记录', 'button small'), 'download');
-      exportButton.type = 'button';
-      exportButton.addEventListener('click', () => downloadJson({project_id: project.project_id, artifact_version: project.artifact_version, ...serverState.review, review_stage: stage.value, decisions: serverState.review.decisions.filter(item => (item.review_stage || 'definition') === stage.value)}, 'review-notes.json'));
-      recordActions.append(exportButton);
-    }
-    section.append(recordActions);
-    if (phase === 'release') { host.append(section); return; }
-    const apply = element('form', null, 'intake-form review-apply-form');
-    const label = iconLabel(element('label', '评审后的目标版本'), 'history'); label.htmlFor = 'review-version';
-    const version = element('input'); version.id = 'review-version'; version.value = nextVersion(); version.required = true;
-    const submit = iconLabel(element('button', '应用意见与修订', 'button'), 'history'); submit.type = 'submit'; submit.disabled = workflowBusy || (!records.some(item => (item.review_stage || 'definition') === 'definition') && !pendingChanges.length);
-    apply.append(label, version, submit);
-    for (const change of pendingChanges) {
-      const row = element('div', null, 'inbox-row');
-      const value = change.field === 'locked_fields' && !change.value.length ? '无锁定字段' : change.value;
-      fields(row, [['需求', change.target], ['修改字段', change.field], ['新内容', value]]);
-      apply.append(row);
-    }
-    apply.addEventListener('submit', event => {
-      event.preventDefault(); const targetVersion = version.value; const changes = pendingChanges.slice(); const revision = serverState.review.revision;
-      workflowAction(async () => {
-        const result = await localRequest('/api/review/apply', {method: 'POST', body: JSON.stringify({version: targetVersion, revision, changes})});
-        pendingChanges = []; return result;
-      });
-    });
-    section.append(apply);
-    if (workflowMessage) section.append(element('p', workflowMessage, 'inline-note'));
-    (serverState.tasks || []).filter(task => task.kind === 'review' && task.status === 'completed').forEach(task => {
-      const link = element('a', '打开修订版本 ' + task.version, 'button'); link.href = '/versions/' + task.id + '/workbench/index.html'; link.target = '_blank'; link.rel = 'noopener'; section.append(link);
-    });
-    host.append(section);
-  }
+  // Delivery = send the confirmed prototype to the customer: confirm this version, then build the package.
   function releasePanel() {
-    if (!serverState) return;
-    const card = panel('客户交付');
+    const card = panel('发给客户', 'package');
     const files = data.artifacts.filter(item => item.path.startsWith('prototype/') && item.path.endsWith('.html'));
-    if (files.length) {
-      const form = element('form', null, 'intake-form');
-      const choices = [];
-      for (const file of files) {
-        const label = element('label', null, 'workflow-check');
-        const checkbox = element('input'); checkbox.type = 'checkbox'; checkbox.checked = true; checkbox.disabled = workflowBusy;
-        label.append(checkbox, element('span', file.path)); form.append(label); choices.push([file.path, checkbox]);
+    if (!files.length) {
+      card.append(element('p', '这里用来把确认过的原型打包发给客户。当前版本还没有原型：需求确认后先在“原型预览”生成原型。', 'inline-note'));
+      content.append(card); return;
+    }
+    if (!serverState) { card.append(element('p', '当前为只读分享版，打包请在本机工作台中进行。', 'inline-note')); content.append(card); return; }
+    const confirmed = new Set((serverState.review.decisions || []).filter(item => item.review_stage === 'release' && item.outcome === 'confirmed').map(item => item.target));
+    const allConfirmed = files.every(file => confirmed.has(file.path));
+    card.append(element('p', '1. 打开原型核对一遍，确认这一版可以给客户看；2. 生成交付包，可预览或下载 ZIP 发给客户。', 'inline-note'));
+    const steps = element('div', null, 'document-actions delivery-steps');
+    const confirm = iconLabel(element('button', allConfirmed ? '已确认可对外' : '确认可以给客户看', 'button small'), 'decided'); confirm.type = 'button';
+    confirm.disabled = allConfirmed || workflowBusy;
+    confirm.addEventListener('click', () => workflowAction(async () => {
+      for (const file of files) if (!confirmed.has(file.path)) {
+        const result = await localRequest('/api/review', {method: 'POST', body: JSON.stringify({revision: serverState.review.revision, review_stage: 'release', target: file.path, outcome: 'confirmed', comment: '', reviewer: ''})});
+        serverState.review = result.review;
       }
-      const submit = iconLabel(element('button', '生成客户交付包', 'button primary'), 'package'); submit.type = 'submit'; submit.disabled = workflowBusy;
-      form.append(submit);
-      form.addEventListener('submit', event => {
-        event.preventDefault(); const selected = choices.filter(([, checkbox]) => checkbox.checked).map(([path]) => path); const revision = serverState.review.revision;
-        workflowAction(() => localRequest('/api/release', {method: 'POST', body: JSON.stringify({files: selected, revision})}));
-      });
-      card.append(form, element('p', '先在客户发布阶段复核选定原型。交付包可用于静态部署，部署结果另行记录。', 'inline-note'));
-    } else card.append(element('p', '当前版本尚无可交付原型'));
+      return {message: '已确认，可以生成交付包'};
+    }));
+    const build = iconLabel(element('button', '生成交付包', 'button primary small'), 'package'); build.type = 'button';
+    build.disabled = !allConfirmed || workflowBusy;
+    build.addEventListener('click', () => workflowAction(() => localRequest('/api/release', {method: 'POST', body: JSON.stringify({files: files.map(file => file.path), revision: serverState.review.revision})})));
+    steps.append(fileLink(files[0].path, '打开原型'), confirm, build);
+    card.append(steps);
     if (workflowMessage) card.append(element('p', workflowMessage, 'inline-note'));
     for (const release of serverState.releases || []) {
-      const row = element('section', null, 'inbox-row delivery-package');
-      row.append(iconLabel(element('h3', release.artifact_version + ' · 客户交付包'), 'package'));
-      const preview = iconLabel(element('a', '预览客户包', 'button small'), 'external'); preview.href = '/customer/' + release.release_id + '/index.html'; preview.target = '_blank'; preview.rel = 'noopener';
+      const row = element('div', null, 'intake-row');
+      const info = element('div', null, 'intake-row-info'); info.append(element('strong', release.artifact_version + ' 交付包'), element('span', '只含原型，不含内部资料'));
+      const actions = element('div', null, 'intake-row-actions');
+      const preview = iconLabel(element('a', '预览', 'button small'), 'external'); preview.href = '/customer/' + release.release_id + '/index.html'; preview.target = '_blank'; preview.rel = 'noopener';
       const download = iconLabel(element('a', '下载 ZIP', 'button small'), 'download'); download.href = '/api/releases/' + release.release_id + '/package'; download.download = project.project_id + '-' + release.artifact_version + '.zip';
-      const actions = element('div', null, 'document-actions'); actions.append(preview, download);
-      row.append(actions); card.append(row);
+      actions.append(preview, download); row.append(info, actions); card.append(row);
     }
     content.append(card);
   }
@@ -2020,7 +1935,7 @@
     tabs.classList.add('review-tabs');
     content.append(tabs);
     if (reviewTab === 'customer') { customerReview(); return; }
-    if (reviewTab === 'delivery') { releasePanel(); reviewForm(content, 'release'); return; }
+    if (reviewTab === 'delivery') { releasePanel(); return; }
     if (reviewTab === 'records') {
       // One log: what changed in this version (if anything), then each recorded verdict.
       const changes = data.diff?.changes || [];
