@@ -227,6 +227,14 @@ class LocalServiceTests(unittest.TestCase):
         self.assertEqual(json.loads((self.run / 'project.json').read_text()), self.project)
         self.assertEqual(len(self.server.review()['decisions']), 1)
 
+    def test_non_functional_requirement_can_be_reviewed(self):
+        project = json.loads((self.run / 'project.json').read_text())
+        project['nfrs'] = [{'nfr_id': 'NFR-001', 'category': 'performance', 'title': '列表分页', 'statement': '超过 50 条分页', 'review_status': 'draft'}]
+        (self.run / 'project.json').write_text(json.dumps(project, ensure_ascii=False))
+        payload = {'revision': 0, 'target': 'NFR-001', 'outcome': 'confirmed', 'comment': ''}
+        self.assertEqual(self.request('POST', '/api/review', json.dumps(payload), {'X-Workbench-Request': '1'})[0], 200)
+        self.assertEqual(self.server.review()['decisions'][-1]['target'], 'NFR-001')
+
     def test_analysis_api_and_new_version_scoped_review(self):
         headers = {'X-Workbench-Request': '1'}
         status, raw = self.request('POST', '/api/analysis', json.dumps({'version': 'v2', 'job_ids': []}), headers)
