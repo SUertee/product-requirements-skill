@@ -4,6 +4,16 @@
 
 减少会后信息遗漏和转述偏差，让团队围绕同一份需求、来源和模型讨论，加快从客户沟通到产品落地的过程。
 
+## 安装
+
+Skill 位于仓库的 `product-requirements/` 目录，标识为 `product-requirements`。
+
+```bash
+npx skills add SUertee/product-requirements-skill
+```
+
+也可以手动把 `product-requirements/` 目录复制到所用工具的 Skill 目录，例如 Claude Code 的 `~/.claude/skills/product-requirements`。运行需要 `python3`；接飞书妙记需要 `lark-cli`，处理音视频需要 `ffmpeg`。
+
 ## 工作流程
 
 **会议录制／上传音视频 → 妙记处理完成 → Connector 获取素材 → 需求分析与建模 → 方案、PRD 和工作台 → 人工确认 → 交互原型 → 复核与客户分享。**
