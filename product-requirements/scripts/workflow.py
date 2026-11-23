@@ -217,7 +217,7 @@ class Workflow:
                     stage.rename(folder)
                 try:
                     db.execute('INSERT INTO tasks (id,identity,project,version,kind,status,attempt,pid,result_hash,error,created,updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                               (request_id, identity, baseline['project_id'], version, 'document' if document_edit is not None else 'generation' if generation else 'review' if review_notes is not None else 'analysis', 'waiting_host', 0, None, None, None, now(), now()))
+                               (request_id, identity, baseline['project_id'], version, 'document' if document_edit is not None else 'review' if review_notes is not None else 'generation' if generation else 'analysis', 'waiting_host', 0, None, None, None, now(), now()))
                 except sqlite3.IntegrityError as error:
                     raise WorkflowConflict('This project version was reserved concurrently.') from error
             return self.task(request_id)
@@ -360,23 +360,14 @@ class Workflow:
         baseline = read_json(run / 'project.json')
         edit = {'document': document, 'content': content, 'base_sha256': base_sha256,
                 'source_id': 'SRC-DOC-' + digest([baseline['project_id'], version, document, content])[:24]}
-        kinds = []
-        previous = run / 'generation.json'
-        if previous.is_file():
-            kinds = list(dict.fromkeys(item['capability'] for item in read_json(previous).get('results', [])
-                                       if item.get('generation_status') == 'success' and item.get('capability') in {'modules', 'architecture', 'workflow', 'erd', 'prototype'}))
-        task = self.prepare(run, [], version, generation=kinds, document_edit=edit)
+        task = self.prepare(run, [], version, generation=retained_generation(run), document_edit=edit)
         return self.complete(task['id'], document_revision(baseline, version, edit))
 
     def generate(self, run_dir, version, kinds):
         if not isinstance(kinds, list) or not kinds or any(kind not in {'modules', 'architecture', 'workflow', 'erd', 'prototype'} for kind in kinds):
             raise ValueError('Choose modules, architecture, workflow, erd or prototype generation.')
         baseline = read_json(Path(run_dir) / 'project.json')
-        previous_generation = Path(run_dir) / 'generation.json'
-        if previous_generation.is_file():
-            previous = read_json(previous_generation).get('results', [])
-            retained = [item['capability'] for item in previous if item.get('generation_status') == 'success' and item.get('capability') in {'modules', 'architecture', 'workflow', 'erd', 'prototype'}]
-            kinds = list(dict.fromkeys([*kinds, *retained]))
+        kinds = list(dict.fromkeys([*kinds, *retained_generation(run_dir)]))
         project = copy.deepcopy(baseline)
         project.update(artifact_version=version, baseline_version=baseline['artifact_version'])
         task = self.prepare(run_dir, [], version, generation=kinds)
@@ -385,8 +376,18 @@ class Workflow:
     def apply_review(self, run_dir, notes, version, changes=None):
         baseline = read_json(Path(run_dir) / 'project.json')
         result, _ = apply_review(baseline, notes, version, changes)
-        task = self.prepare(run_dir, [], version, review_notes=notes, changes=changes)
+        # Applying verdicts must not drop the diagrams / prototype the reviewed version already had.
+        task = self.prepare(run_dir, [], version, review_notes=notes, changes=changes, generation=retained_generation(Path(run_dir)))
         return self.complete(task['id'], result)
+
+
+def retained_generation(run):
+    """Artifacts the given version generated successfully; a derived version regenerates them from its own data."""
+    previous = Path(run) / 'generation.json'
+    if not previous.is_file():
+        return []
+    return list(dict.fromkeys(item['capability'] for item in read_json(previous).get('results', [])
+                              if item.get('generation_status') == 'success' and item.get('capability') in {'modules', 'architecture', 'workflow', 'erd', 'prototype'}))
 
 
 def initialize(project_id, name, destination):

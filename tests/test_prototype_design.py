@@ -142,5 +142,14 @@ class DesignedPrototypeEndToEnd(unittest.TestCase):
             self.assertFalse((Path(generation['result_dir']) / 'prototype/index.html').exists())
 
 
+    def test_applying_review_keeps_the_generated_prototype(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            result = exercise_designed(Path(temporary))
+            from workflow import Workflow
+            notes = {'project_id': 'desk', 'artifact_version': 'v3', 'review_stage': 'definition', 'decisions': []}
+            task = Workflow(result['workspace']).apply_review(result['v3'], notes, 'v4')
+            self.assertEqual([item['capability'] for item in task['generation_results'] if item['generation_status'] == 'success'], ['prototype'])
+            self.assertTrue((Path(task['result_dir']) / 'prototype/index.html').is_file())
+
 if __name__ == '__main__':
     unittest.main()
