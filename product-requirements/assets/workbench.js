@@ -446,11 +446,17 @@
     const columns = element('div', null, 'overview-sections');
     columns.append(outputs);
     const followUp = panel('待确认事项', 'pending');
-    const questions = [...explicit, ...(data.review.questions || []).filter(item => item.reason !== '核对依据、范围与确认状态')];
+    // Two origins: questions the AI raised while reading the meeting (open_questions on a requirement),
+    // and gaps found by the generator's checks (missing acceptance, vague wording, unconfirmed items).
+    const questions = [...explicit.map(item => ({...item, origin: 'AI 读会议时提出'})), ...(data.review.questions || []).filter(item => item.reason !== '核对依据、范围与确认状态').map(item => ({...item, origin: '规则检查发现'}))];
     const unique = questions.filter((item, index) => questions.findIndex(other => item.reason === other.reason) === index);
+    if (unique.length) followUp.append(element('p', '共 ' + unique.length + ' 项，显示前 3 项；点开到评审记录回答', 'inline-note'));
     for (const question of unique.slice(0, 3)) {
-      const item = element('button', null, 'output-row'); item.type = 'button';
-      item.append(element('span', question.reason), element('span', '→'));
+      const item = element('button', null, 'output-row question-item'); item.type = 'button';
+      const text = element('span', null, 'question-text');
+      const owner = requirements.find(req => req.requirement_id === question.target);
+      text.append(element('span', question.reason), element('small', question.origin + (owner ? ' · 需求「' + owner.title + '」' : ''), 'question-origin'));
+      item.append(text, element('span', '→'));
       item.addEventListener('click', () => { reviewTarget = question.target; reviewTab = 'questions'; navigate('review'); });
       followUp.append(item);
     }
@@ -1410,7 +1416,7 @@
     const layout = element('div', null, 'selection-layout document-workspace');
     const toc = element('nav', null, 'selection-list doc-toc'); toc.setAttribute('aria-label', '文档章节');
     const reader = element('div', null, 'selection-detail');
-    const card = element('article', null, 'panel document-reader');
+    const card = element('article', null, 'panel requirement-card document-reader');
     const tools = element('header', null, 'document-reader-head');
     tools.append(element('h2', ({'prd.md': 'PRD', 'proposal.md': '项目方案'})[name]));
     const actions = element('div', null, 'document-actions');
