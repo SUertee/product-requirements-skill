@@ -30,6 +30,7 @@
   let handoffOpen = requestedDocument === 'agent-prompt.md';
   let handoffMessage = '';
   let intakeSource = 'file';
+  let requirementMore = false;
   const documentDrafts = {};
   let documentEditing = false;
   let documentSaving = false;
@@ -223,12 +224,12 @@
     const detail = element('section');
     const form = element('form', null, 'intake-form');
     const select = element('select'); select.id = 'edit-field-' + req.requirement_id;
-    const labels = {title: '标题', role: '角色', trigger: '触发', behavior: '行为', inputs: '输入', outputs: '输出', rules: '规则', exceptions: '异常', acceptance_criteria: '验收', lifecycle_status: '生命周期'};
+    const labels = {behavior: '功能内容', acceptance_criteria: '验收标准', rules: '业务规则', exceptions: '出错时怎么处理', role: '使用者', title: '需求名称'};
     for (const [key, label] of Object.entries(labels)) { const option = element('option', label); option.value = key; select.append(option); }
-    const fieldLabel = element('label', '字段'); fieldLabel.htmlFor = select.id;
+    const fieldLabel = element('label', '改哪一项'); fieldLabel.htmlFor = select.id;
     const text = element('textarea'); text.id = 'edit-value-' + req.requirement_id; text.rows = 4;
-    const textLabel = element('label', '新内容'); textLabel.htmlFor = text.id;
-    const lockLabel = element('label', null, 'workflow-check'); const lock = element('input'); lock.type = 'checkbox'; lockLabel.append(lock, element('span', '锁定此字段'));
+    const textLabel = element('label', '改成'); textLabel.htmlFor = text.id;
+    const lockLabel = element('label', null, 'workflow-check'); const lock = element('input'); lock.type = 'checkbox'; lockLabel.append(lock, element('span', '锁定：以后分析新会议时不改这一项（锁定时需先取消勾选才能编辑）'));
     const message = element('p', '', 'inline-note'); message.setAttribute('role', 'status');
     function loadField() {
       const pending = pendingChanges.find(item => item.target === req.requirement_id && item.field === select.value);
@@ -238,14 +239,13 @@
       lock.checked = locks.includes(select.value); text.readOnly = lock.checked;
     }
     select.addEventListener('change', loadField); lock.addEventListener('change', () => { text.readOnly = lock.checked; }); loadField();
-    const submit = iconLabel(element('button', '加入修订草稿', 'button primary'), 'edit'); submit.type = 'submit';
+    const submit = iconLabel(element('button', '保存修改', 'button primary'), 'edit'); submit.type = 'submit';
     form.append(fieldLabel, select, textLabel, text, lockLabel, submit, message);
     form.addEventListener('submit', event => {
       event.preventDefault();
       try {
         const raw = text.value.trim();
         let value = raw.startsWith('[') || raw.startsWith('{') ? JSON.parse(raw) : raw || null;
-        if (select.value === 'lifecycle_status' && value !== null && !['active', 'cancelled'].includes(value)) throw new Error('生命周期使用 active 或 cancelled');
         const key = select.value;
         pendingChanges = pendingChanges.filter(item => !(item.target === req.requirement_id && item.field === key));
         if (JSON.stringify(req[key] ?? null) !== JSON.stringify(value)) pendingChanges.push({target: req.requirement_id, field: key, value});
@@ -254,7 +254,7 @@
         if (lock.checked) current.add(key); else current.delete(key);
         pendingChanges = pendingChanges.filter(item => !(item.target === req.requirement_id && item.field === 'locked_fields'));
         if (JSON.stringify([...current].sort()) !== JSON.stringify([...original].sort())) pendingChanges.push({target: req.requirement_id, field: 'locked_fields', value: [...current].sort()});
-        message.textContent = '已暂存，前往评审记录应用修订并生成新版本';
+        message.textContent = '已保存为草稿。到“评审记录”确认后生成新版本';
       } catch (error) { message.textContent = error.message; }
     });
     detail.append(form); return detail;
@@ -319,16 +319,14 @@
         const questions = section('需要确认', 'pending', 'requirement-questions');
         questions.append(valueNode(req.open_questions)); body.append(questions);
       }
-      const known = [['使用者', req.role], ['触发条件', req.trigger], ['输入', req.inputs], ['输出', req.outputs], ['处理约束', req.rules]].filter(([, value]) => display(value) !== '待确认');
+      const known = [['使用者', req.role], ['触发条件', req.trigger], ['输入', req.inputs], ['输出', req.outputs], ['业务规则', req.rules], ['出错时', req.exceptions]].filter(([, value]) => display(value) !== '待确认');
       if (known.length) {
-        const rules = section('业务规则', 'modules', 'requirement-rules');
-        fields(rules, known); body.append(rules);
+        const more = element('button', (requirementMore ? '收起' : '展开') + '使用者、规则等 ' + known.length + ' 项', 'button ghost small requirement-more'); more.type = 'button';
+        more.setAttribute('aria-expanded', String(requirementMore));
+        more.addEventListener('click', () => { requirementMore = !requirementMore; card.replaceWith(requirementCard(req)); });
+        body.append(more);
+        if (requirementMore) { const rules = section('细节', 'modules', 'requirement-rules'); fields(rules, known); body.append(rules); }
       }
-      if (display(req.exceptions) !== '待确认') {
-        const exceptions = section('异常处理', 'conditional', 'requirement-exceptions');
-        exceptions.append(valueNode(req.exceptions)); body.append(exceptions);
-      }
-
       const sources = section('会议原话', 'quote', 'requirement-sources');
       if (!(req.source_refs || []).length) sources.append(element('p', '来源待补充', 'inline-note'));
       for (const sourceId of req.source_refs || []) {
@@ -341,12 +339,12 @@
       appendCustomerFeedback(body, req.requirement_id);
     }
     const actions = element('div', null, 'requirement-actions');
-    const reviewButton = iconLabel(element('button', '记录评审意见', 'button ghost small'), 'review');
+    const reviewButton = iconLabel(element('button', '提意见', 'button ghost small'), 'review');
     reviewButton.type = 'button';
     reviewButton.addEventListener('click', () => { reviewTarget = req.requirement_id; reviewTab = 'questions'; navigate('review'); });
     actions.append(reviewButton);
     if (serverState) {
-      const edit = iconLabel(element('button', editing ? '返回需求' : '修改', 'button ghost small'), editing ? 'back' : 'edit'); edit.type = 'button';
+      const edit = iconLabel(element('button', editing ? '返回需求' : '修改', 'button small'), editing ? 'back' : 'edit'); edit.type = 'button';
       edit.addEventListener('click', () => { requirementTab = editing ? 'detail' : 'edit'; card.replaceWith(requirementCard(req)); });
       actions.append(edit);
     }
@@ -1017,7 +1015,8 @@
   function moduleDetails(group, host) {
     host.replaceChildren();
     const head = element('div', null, 'module-detail-head');
-    head.append(element('h2', group.title));
+    const heading = element('h2'); heading.append(element('span', '模块', 'module-kicker'), document.createTextNode(group.title));
+    head.append(heading, element('span', group.items.length + ' 条需求，左侧选择一条查看', 'module-count'));
     head.append(sectionTabs([['requirements', '需求'], ['related', '相关内容']], moduleDetailTab, '模块内容', key => { moduleDetailTab = key; moduleDetails(group, host); }));
     host.append(head);
     if (moduleDetailTab === 'related') {
@@ -1728,11 +1727,10 @@
     if (artifact) { artifactPreviews('prototype/', '暂无原型'); return; }
     prototypeChecklist();
   }
+  // Entities and fields render directly in the page; the Schema Canvas ERD opens as its own page when generated.
   function database() {
-    if (data.artifacts.some(item => item.path.startsWith('data-model/') && item.path.endsWith('.html'))) {
-      artifactPreviews('data-model/', '交互式 ERD 待生成');
-      return;
-    }
+    const erd = data.artifacts.find(item => item.path.startsWith('data-model/') && item.path.endsWith('.html'));
+    if (erd) { const bar = element('div', null, 'document-actions database-actions'); bar.append(fileLink(erd.path, '打开交互式 ERD')); content.append(bar); }
     const model = project.business_model;
     const entities = Array.isArray(model.entities) ? model.entities : [];
     if (!entities.length) { content.append(empty('业务数据模型待整理')); return; }

@@ -843,3 +843,7 @@ video { width: 100%; max-height: 520px; margin-top: 20px; background: var(--ui-n
 .main-shell .select-control select { background-image: none; }
 .meeting-name { font-size: var(--ui-text-md); }
 .meeting-highlights.without-status th:first-child { width: auto; }
+
+.module-kicker { display: inline-block; margin-inline-end: 8px; padding: 1px 8px; border-radius: var(--ui-radius-pill); background: var(--ui-surface-muted); color: var(--ui-muted); font-size: var(--ui-text-xs); font-weight: 500; vertical-align: middle; }
+.module-detail-head .module-count { color: var(--ui-muted); font-size: var(--ui-text-sm); }
+.requirement-more { justify-self: start; margin: 4px 0 8px; }

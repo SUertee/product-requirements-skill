@@ -184,7 +184,7 @@ async function settle() {
   assert.equal(text.readOnly, false);
   text.value = '主题必填，提交后显示唯一编号';
   submit(text.closest('form'));
-  button('记录评审意见').click();
+  button('提意见').click();
   assert(document.querySelector('[aria-label="评审事项"]'));
   assert(document.querySelector('.selection-detail #review-comment'));
   document.getElementById('review-comment').value = '合成评审：需要核对验收';
