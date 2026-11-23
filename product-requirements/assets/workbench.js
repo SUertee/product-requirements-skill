@@ -748,7 +748,10 @@
     if (materialTab === 'import') { intakePanel(); return; }
     const entries = [];
     const assigned = new Set();
+    // A recording linked from a transcript plays inside that transcript; it is not a meeting of its own.
+    const linkedRecordings = new Set((project.materials || []).map(item => item.provenance?.related_job_id).filter(Boolean));
     for (const material of project.materials || []) {
+      if (material.kind === 'recording' && linkedRecordings.has(material.job_id)) continue;
       const sources = data.sources.filter(source => (material.source_ids || []).includes(source.source_id) || source.material_id === material.material_id);
       sources.forEach(source => assigned.add(source.source_id));
       const meetings = (project.meetings || []).filter(meeting => (meeting.material_ids || []).includes(material.material_id));
