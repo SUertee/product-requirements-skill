@@ -4,7 +4,26 @@
 
 从本 Skill 包目录运行 `python3 scripts/resolve_capability.py archify` 或 `python3 scripts/resolve_capability.py schema-canvas` 获取对应 Skill 的入口，随后读取该 SKILL.md。Archify 可以通过 ARCHIFY_SKILL_DIR 指向其 archify/ 包目录，Schema Canvas 使用 SCHEMA_CANVAS_SKILL_DIR。未指定环境变量时，依次查找当前 Skill 的同级包、工程旁 skill-dependencies/ 和个人级 ~/.codeartsdoer/skills/。显式配置的路径缺失时报告错误。
 
-Archify 固定提交见 integrations.json。完整仓库与自有 Schema Canvas 的开发副本保存在工程旁。分发包需单独处理宿主依赖和比赛文件数量、体积限制。
+### 缺少 Archify 时按需下载
+
+生成业务模块图、技术架构图或流程图前先运行定位命令。找到可用的 Archify 入口时直接读取。找不到时，由 Agent 在当前任务中按下列命令下载 [integrations.json](../integrations.json) 指定的提交到临时目录。Archify 作为外部依赖留在 Skill 包外。
+
+从 `product-requirements/` 运行以下 Bash 命令。下载完成并定位成功后，读取返回的 `SKILL.md` 和该任务需要的上游参考，再在带有同一 `ARCHIFY_SKILL_DIR` 的环境中运行生成器。若下一条工具调用启动了新 shell，显式传入这个环境变量。
+
+```bash
+archify_repo=$(python3 -c 'import json; print(json.load(open("integrations.json"))["archify"]["repository"])') &&
+archify_commit=$(python3 -c 'import json; print(json.load(open("integrations.json"))["archify"]["commit"])') &&
+archify_subdir=$(python3 -c 'import json; print(json.load(open("integrations.json"))["archify"]["skill_subdirectory"])') &&
+archify_checkout=$(mktemp -d "${TMPDIR:-/tmp}/archify-skill.XXXXXXXX") &&
+git -C "$archify_checkout" init --quiet &&
+git -C "$archify_checkout" fetch --depth 1 "$archify_repo" "$archify_commit" &&
+git -C "$archify_checkout" checkout --quiet --detach FETCH_HEAD &&
+test "$(git -C "$archify_checkout" rev-parse HEAD)" = "$archify_commit" &&
+export ARCHIFY_SKILL_DIR="$archify_checkout/$archify_subdir" &&
+python3 scripts/resolve_capability.py archify
+```
+
+网络、权限或入口校验失败时，记录错误和受影响的图示，继续生成可独立完成的成果。此下载流程只适用于 Archify。Schema Canvas 沿用已有定位方式。
 
 ## 输入到产品定义
 

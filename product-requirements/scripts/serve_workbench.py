@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Run the local workbench with a material inbox and version-bound review notes."""
 import argparse
+from threading import Thread
+from ipaddress import IPv4Address
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import mimetypes
@@ -19,6 +21,7 @@ from feishu_connector import import_minutes
 from workflow import Workflow, WorkflowConflict
 from release_package import build_release
 from intake_runner import transcribe
+from customer_review import CustomerReviewServer
 
 MAX_UPLOAD = 256 * 1024 * 1024
 
@@ -31,6 +34,7 @@ class WorkbenchServer(ThreadingHTTPServer):
     daemon_threads = True
 
     def __init__(self, address, run_dir, workspace, analysis_config=None, asr_config=None):
+        self.customer_server = None
         self.analysis_config = analysis_config
         self.asr_config = asr_config
         self.run_dir = Path(run_dir).resolve(strict=True)
@@ -199,6 +203,7 @@ class Handler(BaseHTTPRequestHandler):
                 'ffmpeg_available': bool(shutil.which('ffmpeg')),
                 'lark_cli_available': bool(shutil.which('lark-cli')),
                 'jobs': jobs,
+                'customer_review_enabled': self.server.customer_server is not None,
                 'review': self.server.review(self.project),
                 'tasks': self.server.workflow.tasks(self.project['project_id']),
                 'releases': releases,
@@ -322,6 +327,11 @@ class Handler(BaseHTTPRequestHandler):
                 original = directory / previous['files']['original']
                 result = ingest(original, self.server.workspace, self.project['project_id'], previous['provenance'], retry=True)
                 self.json_response({'job': result}, 201)
+            elif parsed.path == '/api/customer-review':
+                if self.server.customer_server is None:
+                    raise ValueError('请启动客户复核服务。')
+                url = self.server.customer_server.publish(self.project, payload.get('questions'))
+                self.json_response({'url': url}, 201)
             elif parsed.path == '/api/review':
                 self.json_response({'review': self.server.save_review(payload, self.run_dir)})
             elif parsed.path == '/api/analysis':
@@ -388,13 +398,26 @@ def main():
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--analysis-config', type=Path, help='Trusted local host command configuration')
     parser.add_argument('--asr-config', type=Path, help='Authorized ASR command configuration')
+    parser.add_argument('--customer-host', type=IPv4Address, help='Reachable IPv4 address for the separate customer review listener')
+    parser.add_argument('--customer-port', type=int, default=8766)
     args = parser.parse_args()
+    if args.customer_host and args.customer_host.is_unspecified:
+        parser.error('Use a specific customer-facing IPv4 address.')
     with WorkbenchServer(('127.0.0.1', args.port), args.run_dir, args.workspace, json.loads(args.analysis_config.read_text()) if args.analysis_config else None, json.loads(args.asr_config.read_text()) if args.asr_config else None) as server:
+        customer = None
+        if args.customer_host:
+            customer = CustomerReviewServer((str(args.customer_host), args.customer_port), server.workspace)
+            server.customer_server = customer
+            Thread(target=customer.serve_forever, daemon=True).start()
         print(f'http://127.0.0.1:{server.server_address[1]}/workbench/index.html', flush=True)
         try:
             server.serve_forever()
         except KeyboardInterrupt:
             pass
+        finally:
+            if customer:
+                customer.shutdown()
+                customer.server_close()
 
 
 if __name__ == '__main__':
