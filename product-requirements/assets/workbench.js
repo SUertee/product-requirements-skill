@@ -1049,9 +1049,10 @@
     if (!architecture?.components?.length) { content.append(empty('技术架构待确认')); return; }
     if (data.architecture_diagram) {
       const card = element('section', null, 'panel diagram-card'); card.setAttribute('aria-label', '技术架构');
-      const head = element('div', null, 'module-surface-head');
-      head.append(iconLabel(element('h2', architecture.review_status === 'confirmed' ? '系统组件' : '候选系统组件'), 'technical'));
-      head.append(fileLink('diagrams/architecture.html', '独立打开')); card.append(head);
+      // The diagram speaks for itself: no title bar, just an icon to open it on its own page.
+      const open = element('a', null, 'diagram-open'); open.href = '../diagrams/architecture.html'; open.target = '_blank'; open.rel = 'noopener';
+      open.setAttribute('aria-label', '在新页面打开技术架构图'); open.title = '独立打开'; open.append(icon('external'));
+      card.append(open);
       const frame = element('iframe', null, 'architecture-preview'); frame.title = 'Archify 技术架构'; frame.setAttribute('sandbox', 'allow-scripts');
       const details = architectureDetails(architecture, frame);
       const bridge = `(() => {
