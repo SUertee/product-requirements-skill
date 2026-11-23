@@ -24,4 +24,4 @@
 
 检查来源追溯、关键遗漏、无依据新增、需求与页面一致、人工锁定保护、失败恢复和对外内容范围。耗时包括生成、核对与纠错，成本包括人工、ASR、模型与实际托管投入。具体阈值以实际样本基线确定。
 
-使用流程与字段规则见 [主 Skill](../product-requirements/SKILL.md)和[输出合同](../product-requirements/references/output-contract.md)。
+使用流程与字段规则见 [主 Skill](../product-requirements/SKILL.md)和[输出合同](../product-requirements/references/project-data.md)。

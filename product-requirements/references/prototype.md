@@ -46,7 +46,7 @@
 | start_page_id | 默认打开的页面 |
 | sample_data | 示例数据，页面脚本通过 `P.data` 读写 |
 | excluded_requirements | 不在原型中的已确认需求及原因 |
-| feedback_form_url | 可选，客户意见表单的飞书多维表格分享链接，见 [外部接入](connectors.md) |
+| feedback_form_url | 可选，客户意见表单的飞书多维表格分享链接，见 [外部接入](ingestion.md) |
 | pages | 见下表 |
 
 页面字段：`page_id`、`name`、`purpose`、`requirement_ids`、`nfr_ids`、`states`、`markup`，可选 `roles`（可访问的角色）、`nav`（false 表示不进导航，如详情页）、`script`、`css`。
@@ -72,7 +72,7 @@ python3 product-requirements/scripts/workflow.py --workspace <workspace> generat
 
 ## 客户意见
 
-设置 `feedback_form_url` 后，客户直接打开原型时右下角显示“提意见”按钮。点击后进入点选模式，客户点中要评论的元素（或选“对整页提意见”，Esc 取消），飞书表单打开并自动带入页面、位置、所点元素的需求、原型版本和项目，客户只需写意见。位置描述取标签、按钮文字和表头，不取用户输入或示例数据。因此实现需求的元素都要标 `data-req`，意见才能挂到正确的需求。在工作台内预览时不显示该按钮。收回意见的方式见 [外部接入](connectors.md)。
+设置 `feedback_form_url` 后，客户直接打开原型时右下角显示“提意见”按钮。点击后进入点选模式，客户点中要评论的元素（或选“对整页提意见”，Esc 取消），飞书表单打开并自动带入页面、位置、所点元素的需求、原型版本和项目，客户只需写意见。位置描述取标签、按钮文字和表头，不取用户输入或示例数据。因此实现需求的元素都要标 `data-req`，意见才能挂到正确的需求。在工作台内预览时不显示该按钮。收回意见的方式见 [外部接入](ingestion.md)。
 
 ## 复核
 

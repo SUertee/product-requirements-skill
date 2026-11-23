@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'product-requirements/scripts'))
-import prototype_feedback as feedback
+import feishu_connector as feedback
 from customer_review import read_feedback
 
 
@@ -53,7 +53,7 @@ class PrototypeFeedbackTests(unittest.TestCase):
             calls.append(arguments)
             return pages[len(calls) - 1]
         with patch.object(feedback, 'call_cli', side_effect=fake):
-            rows = feedback.fetch('baseToken0001', 'tblTable0001')
+            rows = feedback.fetch_feedback('baseToken0001', 'tblTable0001')
         self.assertEqual([item['意见'] for item in rows], ['好用', '太慢'])
         self.assertEqual(calls[1][calls[1].index('--offset') + 1], '1')
 

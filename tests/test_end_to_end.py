@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'product-requiremen
 from ingest_material import ingest
 from release_package import build_release
 from workflow import Workflow, initialize
-from resolve_capability import resolve
+from generate_artifacts import resolve
 
 
 def host_project(request, baseline, sources):

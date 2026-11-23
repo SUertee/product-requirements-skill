@@ -1,14 +1,37 @@
 #!/usr/bin/env python3
-"""Adapt project evidence to configured diagram skills and registered HTML artifacts."""
+"""Adapt project evidence to configured diagram skills and registered HTML artifacts.
+
+Run `python3 scripts/generate_artifacts.py --locate archify` (or schema-canvas) to print a dependency's SKILL.md entrypoint.
+"""
+import argparse
 from datetime import datetime, timezone
 import hashlib
 import html
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
 
-from resolve_capability import resolve
+# Locate configured dependency Skills without executing third-party code.
+def resolve(capability):
+    root = Path(__file__).resolve().parent.parent
+    configuration = json.loads((root / 'integrations.json').read_text())
+    entry = configuration[capability]
+    default = root.parent.parent / 'skill-dependencies' / capability
+    if capability == 'archify':
+        default = default / 'archify'
+    configured = os.environ.get(entry['environment_variable'])
+    candidates = [Path(configured).expanduser()] if configured else [
+        root.parent / capability,
+        default,
+        Path.home() / '.codeartsdoer' / 'skills' / capability,
+    ]
+    for candidate in candidates:
+        package = candidate.resolve()
+        if (package / 'SKILL.md').is_file():
+            return package
+    raise ValueError(f"Missing Skill entrypoint. Set {entry['environment_variable']} to its package directory.")
 
 
 def safe_json(value):
@@ -252,3 +275,17 @@ def generate(project, sources, root, kinds):
         except (OSError, ValueError, TypeError, KeyError, subprocess.TimeoutExpired) as error:
             results.append({'capability': kind, **input_details, 'generation_status': 'failed', 'error': str(error)})
     return records, {'project_id': project['project_id'], 'artifact_version': project['artifact_version'], 'results': results}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--locate', choices=['archify', 'schema-canvas'], required=True)
+    args = parser.parse_args()
+    try:
+        print(json.dumps({'capability': args.locate, 'entrypoint': str(resolve(args.locate) / 'SKILL.md')}, ensure_ascii=False))
+    except (OSError, ValueError, KeyError) as error:
+        parser.exit(1, str(error) + '\n')
+
+
+if __name__ == '__main__':
+    main()

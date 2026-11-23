@@ -28,11 +28,11 @@ M06 可在业务模型草稿阶段先生成候选图示，最终工作台以对�
 | --- | --- |
 | 文档生成与输入校验 | product-requirements/scripts/build_documents.py、references/project-data.md |
 | 文本标准化 | product-requirements/scripts/normalize_transcript.py |
-| 依赖定位 | product-requirements/scripts/resolve_capability.py、integrations.json |
+| 依赖定位 | product-requirements/scripts/generate_artifacts.py --locate、integrations.json |
 | 需求与评审 | product-requirements/references/workflow.md |
 | 录音与后台接入 | product-requirements/references/ingestion.md |
-| 生成能力接入 | product-requirements/references/capabilities.md |
-| 原型与工作台样式 | product-requirements/references/ui-design.md、references/workbench.md、assets/ui.css、assets/workbench-*、assets/workbench.js |
-| 产物与字段 | product-requirements/references/output-contract.md |
+| 生成能力接入 | product-requirements/references/execution.md |
+| 原型与工作台样式 | product-requirements/references/ui-design.md、references/ui-design.md、assets/ui.css、assets/workbench-*、assets/workbench.js |
+| 产物与字段 | product-requirements/references/project-data.md |
 
 新脚本随实际实现增加到包内 scripts/，共同字段先更新输出合同并核对消费者。功能验证后在 features 中记录实际行为与限制。

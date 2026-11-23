@@ -20,17 +20,17 @@
 | 任务 | 优先读取与修改的位置 |
 | --- | --- |
 | 文件、录屏、转写和妙记接入 | references/ingestion.md、scripts/ingest_material.py、scripts/feishu_connector.py |
-| 需求、前情、模型和人工确认 | references/workflow.md、references/project-data.md、references/output-contract.md |
-| 方案、PRD 和成果清单 | scripts/build_documents.py、assets/prd-template.md |
-| 工作台页面与本地交互 | references/workbench.md、references/ui-design.md、assets/workbench-*、assets/workbench.js、scripts/serve_workbench.py |
-| 外部图示与 ERD | integrations.json、references/capabilities.md、scripts/resolve_capability.py |
+| 需求、前情、模型和人工确认 | references/workflow.md、references/project-data.md、references/project-data.md |
+| 方案、PRD 和成果清单 | scripts/build_documents.py、assets/document-templates.md |
+| 工作台页面与本地交互 | references/ui-design.md、references/ui-design.md、assets/workbench-*、assets/workbench.js、scripts/serve_workbench.py |
+| 外部图示与 ERD | integrations.json、references/execution.md、scripts/generate_artifacts.py --locate |
 
 表内路径均相对 `product-requirements/`。模块职责和交接数据见 [模块拆分](docs/architecture/modules.md) 与 [数据契约](docs/architecture/contracts.md)。
 
 ## Skill 组合与 UI
 
 - 主 Skill 负责需求到交付的流程编排。Archify 生成流程与架构图，Schema Canvas 生成交互式业务数据模型，二者的输入和产物关联同一项目版本与需求依据。
-- 修改集成前核对 `integrations.json`，运行 resolve_capability.py 定位入口，再读取对应 SKILL.md 及本次所需参考。依赖通过宿主、环境变量或工程旁 skill-dependencies 提供。
+- 修改集成前核对 `integrations.json`，运行 generate_artifacts.py --locate 定位入口，再读取对应 SKILL.md 及本次所需参考。依赖通过宿主、环境变量或工程旁 skill-dependencies 提供。
 - 保留 Archify 固定提交、许可证及适用第三方声明。Schema Canvas 的来源与采用范围维护在 docs/references。依赖定位、生成完成和实际验收分别记录。
 - 工作台默认参考 ParTrace Vision 的 workbench，沿用已确认的七页导航与技术设计标签。有效页面约定在包内 references，实际实现更新到 assets。
 - 原型与工作台采用包内 UI 规范，根据客户产品类型、目标设备和已有样式适配。卡片优先展示内容、状态和操作，辅助文案保留帮助判断或操作的信息。

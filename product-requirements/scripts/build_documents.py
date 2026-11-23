@@ -278,7 +278,7 @@ def render(project, sources, questions, generated_at):
         '质量约束与集成': document_value({key: project['requirement_profile'].get(key) for key in ['constraints', 'integrations']}) + '\n\n' + document_value({'接口草案': project.get('apis', [])}),
         '验收与待确认': question_text + '\n\n' + document_value(project['requirement_profile'].get('evidence_and_questions')),
     }
-    template = (PACKAGE / 'assets/prd-template.md').read_text()
+    template = document_template('prd')
     chunks = re.split(r'(?m)^## ', template)
     document = [f'# {title} 产品需求文档']
     for chunk in chunks[1:]:
@@ -314,7 +314,7 @@ def render(project, sources, questions, generated_at):
         ('模板参考', '- [Asana 项目方案指南](https://asana.com/resources/project-proposal)'),
     ]
     proposal_content = dict(proposal_sections)
-    proposal_template = (PACKAGE / 'assets/proposal-template.md').read_text()
+    proposal_template = document_template('proposal')
     proposal_chunks = re.split(r'(?m)^## ', proposal_template)
     proposal_parts = [f'# {title} 项目方案草稿']
     for chunk in proposal_chunks[1:]:
@@ -376,6 +376,16 @@ def copy_artifacts(project, sources, artifact_root, records, stage):
     for record in records:
         require(isinstance(record.get('depends_on', []), list) and all(path in available for path in record.get('depends_on', [])), 'Artifact has an unavailable dependency')
     return metadata
+
+
+def document_template(name):
+    """Return one template section of assets/document-templates.md."""
+    text = (PACKAGE / 'assets/document-templates.md').read_text(encoding='utf-8')
+    parts = re.split(r'(?m)^<!-- template: ([a-z]+) -->\n', text)
+    templates = dict(zip(parts[1::2], parts[2::2]))
+    if name not in templates:
+        raise ValueError(f'Missing document template: {name}')
+    return templates[name]
 
 
 def render_agent_prompt(project, sources, questions):

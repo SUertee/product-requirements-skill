@@ -3,7 +3,10 @@
 
 The archive has a single root directory named after the Skill, so it can be extracted straight into a
 host skills directory such as .codeartsdoer/skills. Caches, dotfiles and editor leftovers are excluded.
-Adapted from the fix/incremental-safety-and-package branch (HankGrimm) for this package layout.
+The competition allows at most 30 files per Skill, so the SHA-256 manifest is written beside the zip
+(<name>.manifest.json) instead of inside it, and packaging fails when the limit is exceeded.
+Development tool: lives outside the Skill package. Adapted from the fix/incremental-safety-and-package
+branch (HankGrimm).
 """
 import argparse
 import hashlib
@@ -11,17 +14,19 @@ import json
 from pathlib import Path
 import zipfile
 
-PACKAGE = Path(__file__).resolve().parent.parent
+PACKAGE = Path(__file__).resolve().parent.parent / 'product-requirements'
+MAX_FILES = 30
 NAME = PACKAGE.name
 FIXED_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 EXCLUDED_PARTS = {'__pycache__', 'node_modules', '.git', 'runs', 'dist', 'recordings', '.pytest_cache'}
 EXCLUDED_SUFFIXES = {'.pyc', '.pyo', '.tmp', '.log'}
 REQUIRED = (
     'SKILL.md', 'integrations.json',
-    'assets/workbench-template.html', 'assets/workbench.css', 'assets/workbench.js',
+    'assets/workbench-template.html', 'assets/workbench.css', 'assets/workbench.js', 'assets/document-templates.md',
     'assets/prototype-template.html', 'assets/prototype-shell.html', 'assets/ui.css',
-    'references/execution.md', 'references/prototype.md',
+    'references/execution.md', 'references/prototype.md', 'references/ui-design.md',
     'scripts/workflow.py', 'scripts/build_documents.py', 'scripts/prototype_design.py', 'scripts/serve_workbench.py',
+    'scripts/feishu_connector.py', 'scripts/generate_artifacts.py',
 )
 
 
@@ -37,6 +42,8 @@ def collect():
     missing = [name for name in REQUIRED if name not in files]
     if missing:
         raise ValueError('Package is missing required files: ' + ', '.join(missing))
+    if len(files) > MAX_FILES:
+        raise ValueError(f'Package has {len(files)} files; the limit is {MAX_FILES}')
     skill = files['SKILL.md'].read_text(encoding='utf-8')
     if f'name: {NAME}\n' not in skill:
         raise ValueError(f'SKILL.md name must match the package directory {NAME}')
@@ -49,16 +56,18 @@ def build(output):
                 'files': [{'path': key, 'bytes': path.stat().st_size, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()} for key, path in files.items()]}
     output = Path(output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
-    entries = [(key, path.read_bytes()) for key, path in files.items()]
-    entries.append(('PACKAGE_MANIFEST.json', (json.dumps(manifest, ensure_ascii=False, indent=2) + '\n').encode('utf-8')))
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
-        for key, content in entries:
+        for key, path in files.items():
             info = zipfile.ZipInfo(f'{NAME}/{key}', date_time=FIXED_TIMESTAMP)
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16
-            archive.writestr(info, content)
-    return {'status': 'packaged', 'output': str(output), 'package': NAME, 'files': len(entries), 'bytes': output.stat().st_size,
-            'sha256': hashlib.sha256(output.read_bytes()).hexdigest()}
+            archive.writestr(info, path.read_bytes())
+    digest = hashlib.sha256(output.read_bytes()).hexdigest()
+    manifest['package_sha256'] = digest
+    sidecar = output.with_name(output.stem + '.manifest.json')
+    sidecar.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    return {'status': 'packaged', 'output': str(output), 'manifest': str(sidecar), 'package': NAME, 'files': len(files),
+            'limit': MAX_FILES, 'bytes': output.stat().st_size, 'sha256': digest}
 
 
 def main():

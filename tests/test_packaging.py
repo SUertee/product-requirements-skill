@@ -11,7 +11,8 @@ import zipfile
 
 PACKAGE = Path(__file__).resolve().parents[1] / 'product-requirements'
 sys.path.insert(0, str(PACKAGE / 'scripts'))
-from package_skill import build
+sys.path.insert(0, str(PACKAGE.parent / 'tools'))
+from package_skill import build, MAX_FILES
 
 
 class PackageTests(unittest.TestCase):
@@ -22,7 +23,10 @@ class PackageTests(unittest.TestCase):
             first = build(archive_path)
             self.assertEqual(build(root / 'again.zip')['sha256'], first['sha256'], 'package bytes are reproducible')
             with zipfile.ZipFile(archive_path) as archive:
-                manifest = json.loads(archive.read(PACKAGE.name + '/PACKAGE_MANIFEST.json'))
+                self.assertLessEqual(len(archive.namelist()), MAX_FILES, 'competition file limit')
+                manifest = json.loads(Path(first['manifest']).read_text())
+                self.assertEqual(manifest['package_sha256'], first['sha256'])
+                self.assertEqual(len(manifest['files']), len(archive.namelist()))
                 for item in manifest['files']:
                     self.assertEqual(hashlib.sha256(archive.read(PACKAGE.name + '/' + item['path'])).hexdigest(), item['sha256'])
                 self.assertFalse(any('__pycache__' in name or '/.' in name for name in archive.namelist()))

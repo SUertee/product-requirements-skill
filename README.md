@@ -38,11 +38,11 @@ Archify 的上游为 tt-a1i/archify，当前固定提交为 `e37848822238e3a61b1
 ```bash
 export ARCHIFY_SKILL_DIR="/path/to/archify/archify"
 export SCHEMA_CANVAS_SKILL_DIR="/path/to/schema-canvas"
-python3 product-requirements/scripts/resolve_capability.py archify
-python3 product-requirements/scripts/resolve_capability.py schema-canvas
+python3 product-requirements/scripts/generate_artifacts.py --locate archify
+python3 product-requirements/scripts/generate_artifacts.py --locate schema-canvas
 ```
 
-定位成功表示入口可读。执行生成时还需读取对应 Skill 的入口、准备实际输入并完成其检查。完整调用规则见 [能力接入](product-requirements/references/capabilities.md)。
+定位成功表示入口可读。执行生成时还需读取对应 Skill 的入口、准备实际输入并完成其检查。完整调用规则见 [能力接入](product-requirements/references/execution.md)。
 
 ## 工作台内容
 
@@ -56,7 +56,7 @@ python3 product-requirements/scripts/resolve_capability.py schema-canvas
 | 技术设计 | 可点选技术组件的架构图、开发内容／交付标准、数据模型和接口 |
 | 评审记录 | 待确认问题、版本绑定的意见、结论和导出 |
 
-默认视觉参考用户已有的 ParTrace Vision workbench。工作台和原型使用包内 UI 规范及模板，卡片通过实际内容、状态和操作表达用途。有效规范见 [页面设计](product-requirements/references/workbench.md) 和 [UI 规范](product-requirements/references/ui-design.md)，原始样式参考见 [可编辑副本](docs/references/partrace-workbench/workbench.html)。
+默认视觉参考用户已有的 ParTrace Vision workbench。工作台和原型使用包内 UI 规范及模板，卡片通过实际内容、状态和操作表达用途。有效规范见 [页面设计](product-requirements/references/ui-design.md) 和 [UI 规范](product-requirements/references/ui-design.md)，原始样式参考见 [可编辑副本](docs/references/partrace-workbench/workbench.html)。
 
 ## 当前能力
 

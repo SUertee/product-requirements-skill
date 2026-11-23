@@ -77,6 +77,6 @@ node tests/check_workbench.cjs /path/to/synthetic/version
 
 ### 会议现场复核
 
-评审记录分为负责人复核和客户复核。负责人保存内部决定，并可生成一份绑定当前版本的客户问卷。客户在独立的局域网端口点选或补充，回答进入同项目接收箱。使用方法见[工作台规范](../../product-requirements/references/workbench.md#会议中的客户复核)。
+评审记录分为负责人复核和客户复核。负责人保存内部决定，并可生成一份绑定当前版本的客户问卷。客户在独立的局域网端口点选或补充，回答进入同项目接收箱。使用方法见[工作台规范](../../product-requirements/references/ui-design.md#会议中的客户复核)。
 
 本地 Python HTTP 回归验证了选项补充、反馈入箱、重复提交去重、版本绑定，以及客户端口无法访问内部工作台。工作台脚本已通过 GJS 语法解析。多设备局域网和浏览器交互尚未验收。

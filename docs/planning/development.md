@@ -67,7 +67,7 @@
 | 技术设计 | 三类标签、字段表、关系、接口草案与需求回查 | 已实现业务流程和 ERD 适配与登记，补充复杂模型验收 |
 | 评审记录 | 对象、结论、意见、记录人、版本绑定保存、导出、并发冲突反馈 | 已实现应用决定与发布复核，补充公网客户验收 |
 
-页面规范统一在 [Skill references/workbench.md](../../product-requirements/references/workbench.md)，实际模板统一在包内 assets。
+页面规范统一在 [Skill references/ui-design.md](../../product-requirements/references/ui-design.md)，实际模板统一在包内 assets。
 
 ## 分析与生成的执行方式
 

@@ -13,7 +13,7 @@
 从仓库根目录执行以下命令获取实际入口，再读取对应 SKILL.md。
 
 ```bash
-python3 product-requirements/scripts/resolve_capability.py archify
+python3 product-requirements/scripts/generate_artifacts.py --locate archify
 ```
 
 实现副本位于工程旁的 skill-dependencies/archify/，可使用 ARCHIFY_SKILL_DIR 指向其他安装位置。当前固定版本采用 Apache-2.0，分发时遵守上游 LICENSE、NOTICE 和适用第三方声明。上游文件与许可证保存在该实现副本中。

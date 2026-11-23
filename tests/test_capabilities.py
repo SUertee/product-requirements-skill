@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'product-requirements/scripts'))
-import resolve_capability
+import generate_artifacts as resolve_capability
 
 
 class CapabilityLookupTests(unittest.TestCase):
@@ -15,7 +15,7 @@ class CapabilityLookupTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             skills = Path(directory) / '.codeartsdoer/skills'
             root = skills / 'product-requirements'
-            script = root / 'scripts/resolve_capability.py'
+            script = root / 'scripts/generate_artifacts.py'
             script.parent.mkdir(parents=True)
             (root / 'integrations.json').write_text(json.dumps({'archify': {'environment_variable': 'ARCHIFY_SKILL_DIR'}}))
             dependency = skills / 'archify'

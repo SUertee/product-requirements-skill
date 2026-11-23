@@ -37,7 +37,7 @@ PM／FDE 从客户会议、录音或逐字稿创建项目，结合前情形成�
 | 技术设计 | 图示生成状态、流程架构／数据库／API、来源与版本 | 缺依赖、字段一致、关系、嵌入、键盘标签 |
 | 评审记录 | 定义／发布两个阶段、意见保存与应用、差异、客户包选择 | revision 冲突、版本匹配、重复应用、内部资料范围 |
 
-页面视觉与内容规范沿用 [工作台规范](../../product-requirements/references/workbench.md)，实现资源继续维护在包内 assets。
+页面视觉与内容规范沿用 [工作台规范](../../product-requirements/references/ui-design.md)，实现资源继续维护在包内 assets。
 
 ## 执行与数据协议
 
