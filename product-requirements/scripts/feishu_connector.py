@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import tempfile
 from urllib.parse import urlparse
@@ -71,6 +72,45 @@ def call_cli(arguments, cwd=None):
     return data
 
 
+TRANSCRIPT_SCOPES = ['minutes:minutes.basic:read', 'minutes:minutes.transcript:export']
+OPTIONAL_SCOPES = ['minutes:minutes.search:read', 'minutes:minutes.media:export']
+
+
+def _json_command(arguments):
+    result = subprocess.run(['lark-cli', *arguments, '--json'], capture_output=True, text=True, timeout=60)
+    try:
+        return json.loads(result.stdout or result.stderr)
+    except ValueError:
+        return {}
+
+
+def check():
+    """Report whether Minutes import can run here, with the fix for each failed item."""
+    items = []
+    def add(name, ok, detail, fix=None, required=True):
+        items.append({'name': name, 'ok': ok, 'required': required, 'detail': detail, **({'fix': fix} if fix and not ok else {})})
+    if not shutil.which('lark-cli'):
+        add('lark-cli', False, 'lark-cli is not on PATH.', 'npm install -g @larksuite/cli, then lark-cli config init')
+    else:
+        add('lark-cli', True, 'lark-cli is installed.')
+        try:
+            status = _json_command(['auth', 'status'])
+            user = (status.get('identities') or {}).get('user') or {}
+            add('user identity', bool(user.get('available')), user.get('message') or user.get('status') or 'no user login',
+                'lark-cli auth login --scope "' + ' '.join(TRANSCRIPT_SCOPES + OPTIONAL_SCOPES) + '"')
+            if user.get('available'):
+                scopes = _json_command(['auth', 'check', '--scope', ' '.join(TRANSCRIPT_SCOPES + OPTIONAL_SCOPES)])
+                granted = set(scopes.get('granted') or [])
+                for scope in TRANSCRIPT_SCOPES + OPTIONAL_SCOPES:
+                    add(scope, scope in granted, 'granted' if scope in granted else 'missing',
+                        'lark-cli auth login --scope "' + scope + '"', required=scope in TRANSCRIPT_SCOPES)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            add('user identity', False, f'lark-cli did not answer: {error}', 'Run lark-cli auth status to see the problem.')
+    ready = all(item['ok'] for item in items if item['required'])
+    return {'status': 'ready' if ready else 'not_ready', 'connector': 'feishu-minutes', 'checks': items,
+            'fallback': None if ready else 'Import a TXT, SRT or VTT transcript exported from the meeting tool instead.'}
+
+
 def import_minutes(value, workspace, project_id, media=False):
     token = minute_token(value)
     workspace = Path(workspace).resolve()
@@ -97,11 +137,18 @@ def import_minutes(value, workspace, project_id, media=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--minutes', required=True)
-    parser.add_argument('--workspace', type=Path, required=True)
-    parser.add_argument('--project-id', required=True)
+    parser.add_argument('--check', action='store_true', help='Only report whether lark-cli, login and Minutes scopes are ready.')
+    parser.add_argument('--minutes')
+    parser.add_argument('--workspace', type=Path)
+    parser.add_argument('--project-id')
     parser.add_argument('--media', action='store_true', help='Import the original recording instead of the transcript.')
     args = parser.parse_args()
+    if args.check:
+        result = check()
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        raise SystemExit(0 if result['status'] == 'ready' else 1)
+    if not (args.minutes and args.workspace and args.project_id):
+        parser.error('--minutes, --workspace and --project-id are required unless --check is used')
     try:
         job = import_minutes(args.minutes, args.workspace, args.project_id, args.media)
         print(json.dumps(job, ensure_ascii=False))

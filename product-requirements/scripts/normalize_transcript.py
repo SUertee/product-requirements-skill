@@ -12,6 +12,9 @@ TIMING = re.compile(
     r'^(?P<start>(?:\d{2}:)?\d{2}:\d{2}[.,]\d{3})\s+-->\s+'
     r'(?P<end>(?:\d{2}:)?\d{2}:\d{2}[.,]\d{3})(?:\s+.*)?$'
 )
+# Feishu Minutes and most meeting tools prefix each line with "名字: " or "Speaker 1: ".
+SPEAKER = re.compile(r'^(?P<name>[^\s:：，。,.!?！？()（）\[\]【】/\\\d][^\n:：，。,.!?！？()（）\[\]【】/\\]{0,19}?)\s*[:：]\s*')
+SPEAKER_SHARE = 0.6
 
 
 def seconds(value):
@@ -43,6 +46,19 @@ def segments(text, subtitles):
             yield body, {'start_seconds': start, 'end_seconds': end, 'cue': index}
 
 
+def speakers(bodies):
+    """Speaker per segment, only when most segments carry the same "name: " convention.
+
+    The text itself is kept verbatim so quotes stay exact; a stray "注意：" line in an
+    ordinary document does not turn into a speaker because the share check fails.
+    """
+    names = [match['name'].strip() if (match := SPEAKER.match(body)) and body[match.end():].strip() else None for body in bodies]
+    labelled = sum(name is not None for name in names)
+    if not bodies or labelled / len(bodies) < SPEAKER_SHARE:
+        return [None] * len(bodies)
+    return names
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--input', required=True, type=Path)
@@ -61,9 +77,9 @@ def main():
         text = raw.decode('utf-8-sig').replace('\r\n', '\n').replace('\r', '\n')
         material_id = hashlib.sha256(raw).hexdigest()
         rows = []
-        for index, (body, locator) in enumerate(segments(text, extension in {'.srt', '.vtt'}), 1):
-            if not body:
-                continue
+        parsed = [(body, locator) for body, locator in segments(text, extension in {'.srt', '.vtt'}) if body]
+        labels = speakers([body for body, _ in parsed])
+        for index, ((body, locator), speaker) in enumerate(zip(parsed, labels), 1):
             identity = f'{args.project_id}\0{material_id}\0{index}'
             rows.append({
                 'source_id': 'SRC-' + hashlib.sha256(identity.encode()).hexdigest()[:24],
@@ -73,7 +89,7 @@ def main():
                 'source_type': 'transcript',
                 'text': body,
                 'locator': locator,
-                'speaker': None,
+                'speaker': speaker,
                 'schema_version': '0.1',
             })
         if not rows:

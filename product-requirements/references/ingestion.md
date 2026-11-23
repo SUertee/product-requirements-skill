@@ -8,7 +8,7 @@
 python3 scripts/normalize_transcript.py --input meeting.txt --project-id demo --output runs/demo/sources.jsonl
 ```
 
-支持 UTF-8 TXT、Markdown、SRT、VTT。输出逐段来源 JSONL，包含稳定片段 ID、原文和时间或段落定位。该脚本负责文本标准化，音频通过宿主中已配置且获授权的 ASR 服务取得逐字稿。
+支持 UTF-8 TXT、Markdown、SRT、VTT。输出逐段来源 JSONL，包含稳定片段 ID、原文、时间或段落定位，以及从“名字: ”前缀识别的说话人。该脚本负责文本标准化，音频通过宿主中已配置且获授权的 ASR 服务取得逐字稿。
 
 对于 DOCX、PDF 或会议链接，使用宿主可用的读取能力提取文本并保留原始定位。若读取失败，报告具体环节与可用导出方式。
 
@@ -22,7 +22,7 @@ python3 scripts/serve_workbench.py --run-dir runs/demo/v0.1 --workspace runs/dem
 
 接收器保留原件、内容摘要与任务状态。文本生成 sources.jsonl 和 analysis-request.md，进入 ready_for_analysis。音视频在 ffmpeg 可用时提取单声道 16kHz WAV，进入 awaiting_transcript。录屏画面中的页面和操作理解仍待实现。失败保留原件与错误，通过 --retry 建立新尝试并保留 retry_of。逐字稿可使用 --related-job 关联同项目已接收的录音，网页提供对应选择。
 
-飞书 Connector 默认获取所选妙记的逐字稿，--media 获取原始音视频。沿用本机 lark-cli 用户身份，要求已有资源访问与对应只读导出权限。指定链接即可获取，搜索、长连接事件与自动授权配置按实际宿主能力接入。权限不足时报告具体 scope。
+飞书 Connector 默认获取所选妙记的逐字稿，--media 获取原始音视频。依赖、权限与自检见 [外部接入](connectors.md)。指定链接即可获取，搜索、长连接事件与自动授权配置按实际宿主能力接入。权限不足时报告具体 scope。
 
 本地工作台提供文件导入、Connector、接收箱及版本绑定的评审意见存储。分析请求交给主 Skill 执行，结合关联前情和已有基线整理 project.json，随后运行 build_documents.py 生成新版本。预处理完成后仍需执行语义分析。
 

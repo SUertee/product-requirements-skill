@@ -41,6 +41,21 @@ class IntakeTests(unittest.TestCase):
         self.assertEqual((folder / 'original.txt').read_bytes(), self.file.read_bytes())
         self.assertFalse((folder / 'project.json').exists())
 
+    def test_meeting_speakers_are_recorded_and_text_kept_verbatim(self):
+        subtitle = self.root / 'minutes.srt'
+        cues = ['徐泽华: 对，我发出来那个', '说话人 2：先看工单列表', '徐泽华:', 'Speaker 1: export later', '徐嘉成: 注意：这里要脱敏']
+        subtitle.write_text('\n\n'.join(f'{i}\n00:00:0{i},000 --> 00:00:0{i},900\n{text}' for i, text in enumerate(cues, 1)), encoding='utf-8')
+        job = intake.ingest(subtitle, self.workspace, 'demo')
+        rows = [json.loads(line) for line in (self.workspace / 'jobs' / job['job_id'] / 'sources.jsonl').read_text().splitlines()]
+        self.assertEqual([row['speaker'] for row in rows], ['徐泽华', '说话人 2', None, 'Speaker 1', '徐嘉成'])
+        self.assertEqual([row['text'] for row in rows], cues)
+
+    def test_occasional_label_in_a_document_is_not_a_speaker(self):
+        self.file.write_text('注意：统计口径待确认。\n\n客户需要按状态查询工单。\n\n导出功能放到二期。', encoding='utf-8')
+        job = intake.ingest(self.file, self.workspace, 'demo')
+        rows = [json.loads(line) for line in (self.workspace / 'jobs' / job['job_id'] / 'sources.jsonl').read_text().splitlines()]
+        self.assertEqual({row['speaker'] for row in rows}, {None})
+
     def test_duplicate_concurrent_imports_publish_one_job(self):
         with ThreadPoolExecutor(max_workers=2) as executor:
             jobs = list(executor.map(lambda _: intake.ingest(self.file, self.workspace, 'demo'), range(2)))
@@ -118,6 +133,28 @@ class IntakeTests(unittest.TestCase):
             with self.assertRaisesRegex(connector.ConnectorError, 'minutes:minutes.media:export') as error:
                 connector.call_cli([])
         self.assertNotIn('private URL', str(error.exception))
+
+    def test_connector_check_reports_missing_cli_with_fallback(self):
+        with patch.object(connector.shutil, 'which', return_value=None):
+            result = connector.check()
+        self.assertEqual(result['status'], 'not_ready')
+        self.assertIn('fix', result['checks'][0])
+        self.assertIn('transcript', result['fallback'])
+
+    def test_connector_check_separates_required_and_optional_scopes(self):
+        answers = {'status': {'identities': {'user': {'available': True, 'message': 'ready'}}},
+                   'check': {'granted': connector.TRANSCRIPT_SCOPES}}
+        with patch.object(connector.shutil, 'which', return_value='/usr/bin/lark-cli'), \
+             patch.object(connector, '_json_command', side_effect=lambda arguments: answers[arguments[1]]):
+            result = connector.check()
+        self.assertEqual(result['status'], 'ready')
+        missing = [item for item in result['checks'] if not item['ok']]
+        self.assertEqual({item['name'] for item in missing}, set(connector.OPTIONAL_SCOPES))
+        self.assertTrue(all(not item['required'] and 'auth login' in item['fix'] for item in missing))
+        answers['check'] = {'granted': ['minutes:minutes.basic:read']}
+        with patch.object(connector.shutil, 'which', return_value='/usr/bin/lark-cli'), \
+             patch.object(connector, '_json_command', side_effect=lambda arguments: answers[arguments[1]]):
+            self.assertEqual(connector.check()['status'], 'not_ready')
 
 
 class LocalServiceTests(unittest.TestCase):

@@ -1,6 +1,11 @@
 ---
 name: product-requirements
 description: 将客户会议录音、逐字稿与前情资料整理为带依据的产品需求，生成内部 PRD、HTML 工作台及经确认的交互原型，并处理后续反馈与需求变更。适用于 PM、FDE 的客户需求沟通和开发准备。
+metadata:
+  requires:
+    bins: ["python3"]
+  optional:
+    bins: ["lark-cli", "ffmpeg"]
 ---
 
 # 产品需求落地 Skill
@@ -9,7 +14,7 @@ description: 将客户会议录音、逐字稿与前情资料整理为带依据�
 
 ## 任务路由
 
-- 新会议或后台接收材料，读取 [输入与预处理](references/ingestion.md)。本地文件使用 `scripts/ingest_material.py`，飞书妙记使用 `scripts/feishu_connector.py`。运行前查看 `--help`。纯文本标准化可直接运行 `scripts/normalize_transcript.py`。
+- 新会议或后台接收材料，读取 [输入与预处理](references/ingestion.md)。本地文件使用 `scripts/ingest_material.py`。飞书妙记先读 [外部接入](references/connectors.md)，运行 `scripts/feishu_connector.py --check` 确认可用后再导入。运行前查看 `--help`。纯文本标准化可直接运行 `scripts/normalize_transcript.py`。
 - 首次需求整理，读取 [需求建模与评审](references/workflow.md)。
 - 生成业务模块图、技术架构图、流程图或 ERD 前，读取 [能力接入与设计路由](references/capabilities.md)。需要 Archify 且本地缺失时，按其中步骤下载固定版本，读取入口后再运行。
 - 生成客户原型，读取 [原型设计与生成](references/prototype.md) 和 [内置 UI 规范](references/ui-design.md)，使用 assets/ui.css 与 assets/prototype-shell.html。
