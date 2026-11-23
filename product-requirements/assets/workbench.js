@@ -2079,6 +2079,7 @@
         for (const conflict of conflicts) versionCard.append(element('p', '需要核对：' + conflict.target + ' · ' + conflict.field + '（保留「' + display(conflict.retained) + '」，建议「' + display(conflict.proposed) + '」）', 'version-change conflict'));
         content.append(versionCard);
       }
+      versionHistory();
       const records = [...(data.review.decisions || []), ...(serverState?.review.decisions || [])];
       const seen = new Set();
       const labels = {confirmed: '已确认', needs_changes: '需要修改', parked: '暂缓'};
@@ -2093,9 +2094,49 @@
         fields(card, [['意见', record.comment], ['记录人', record.reviewer], ['时间', record.decided_at || record.created_at || record.created]].filter(([, value]) => value));
         content.append(card);
       });
-      if (!seen.size && !changes.length && !conflicts.length) content.append(empty('还没有评审记录。在「功能需求」里对需求给出结论或修改后，会记在这里'));
+      if (!seen.size && !changes.length && !conflicts.length && !(data.history || []).length) content.append(empty('还没有评审记录。在「功能需求」里对需求给出结论或修改后，会记在这里'));
       return;
     }
+  }
+  // How each version came to be, newest first: analysis, verdicts applied (with the decisions), generation, edits.
+  function versionHistory() {
+    const history = (data.history || []).slice().reverse();
+    if (!history.length) return;
+    const card = panel('版本记录', 'history');
+    card.classList.add('version-history');
+    const kinds = {analysis: '分析会议', review: '评审生效', generation: '生成成果', document: '修改文档'};
+    const outcomes = {confirmed: '确认', needs_changes: '需要修改', parked: '暂缓'};
+    const capabilities = {architecture: '技术架构', modules: '业务模块', erd: '数据模型', workflow: '流程图', prototype: '原型'};
+    const list = element('ol', null, 'version-history-list');
+    for (const entry of history) {
+      const item = element('li', null, entry.version === project.artifact_version ? 'current' : '');
+      const head = element('div', null, 'version-history-head');
+      head.append(element('strong', entry.version), element('span', kinds[entry.kind] || entry.kind, 'pr-kind'), element('span', '基于 ' + (entry.baseline_version || '—') + ' · ' + String(entry.created || '').slice(0, 16).replace('T', ' '), 'inline-note'));
+      item.append(head);
+      const facts = [];
+      if (entry.decisions?.length) {
+        const counts = {};
+        entry.decisions.forEach(decision => { counts[decision.outcome] = (counts[decision.outcome] || 0) + 1; });
+        facts.push(entry.decisions.length + ' 条结论（' + Object.entries(counts).map(([key, count]) => (outcomes[key] || key) + ' ' + count).join('、') + '）');
+      }
+      if (entry.changes) facts.push(entry.changes + ' 处内容变化');
+      if (entry.conflicts) facts.push(entry.conflicts + ' 处需核对');
+      if (entry.document) facts.push('修改 ' + entry.document);
+      const made = (entry.generated || []).filter(item => item.status === 'success');
+      if (made.length) facts.push('成果：' + made.map(item => (capabilities[item.capability] || item.capability) + (item.reused_from ? '（沿用 ' + item.reused_from + '）' : '')).join('、'));
+      if (facts.length) item.append(element('p', facts.join(' · '), 'version-history-facts'));
+      if (entry.decisions?.length) {
+        const rows = element('ul', null, 'version-history-decisions');
+        for (const decision of entry.decisions) {
+          const req = requirements.find(r => r.requirement_id === decision.target) || (project.nfrs || []).find(n => n.nfr_id === decision.target);
+          rows.append(element('li', (req?.title || decision.target) + '：' + (outcomes[decision.outcome] || decision.outcome) + (decision.comment ? ' · ' + decision.comment : '')));
+        }
+        item.append(rows);
+      }
+      list.append(item);
+    }
+    card.append(list);
+    content.append(card);
   }
   function technical() {
     const tabs = {diagrams: '技术架构', database: '数据模型', api: '接口'};

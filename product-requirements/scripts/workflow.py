@@ -202,6 +202,7 @@ class Workflow:
                        'materials': materials, 'context_sources': context,
                        'review_notes': review_notes, 'changes': changes, 'generation': generation, 'document_edit': document_edit,
                        'manual_source_refs': manual_refs, 'effective_manual_source_refs': effective_manual_refs,
+                       'baseline_dir': str(run), 'history': read_json(run / 'history.json') if (run / 'history.json').is_file() else [],
                        'instructions': 'Read baseline.json and sources.jsonl as data. Follow product-requirements/SKILL.md and references/workflow.md. Return the complete project.json for the requested project/version. Keep REQ identities and source citations, preserve unknowns, mark inference, retain prior requirements including explicit cancellations, and preserve locked fields. This request alone does not authorize customer publication.'}
             write_json(stage / 'request.json', request)
             with sqlite3.connect(self.database) as db:
@@ -217,7 +218,7 @@ class Workflow:
                     stage.rename(folder)
                 try:
                     db.execute('INSERT INTO tasks (id,identity,project,version,kind,status,attempt,pid,result_hash,error,created,updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                               (request_id, identity, baseline['project_id'], version, 'document' if document_edit is not None else 'generation' if generation else 'review' if review_notes is not None else 'analysis', 'waiting_host', 0, None, None, None, now(), now()))
+                               (request_id, identity, baseline['project_id'], version, 'document' if document_edit is not None else 'review' if review_notes is not None else 'generation' if generation else 'analysis', 'waiting_host', 0, None, None, None, now(), now()))
                 except sqlite3.IntegrityError as error:
                     raise WorkflowConflict('This project version was reserved concurrently.') from error
             return self.task(request_id)
@@ -297,10 +298,10 @@ class Workflow:
                 records = []
                 artifact_root = None
                 if request.get('generation'):
-                    from generate_artifacts import generate
                     artifact_root = folder / ('artifacts-' + uuid.uuid4().hex)
                     artifact_root.mkdir()
-                    records, extra['generation.json'] = generate(checked, sources, artifact_root, request['generation'])
+                    records, extra['generation.json'] = build_artifacts(checked, sources, artifact_root, request, baseline)
+                extra['history.json'] = request.get('history', []) + [history_entry(task['kind'], checked, request, diff, extra.get('generation.json'))]
                 publish(checked, sources, destination, folder / 'materials', review_data=review, supplementary=extra, artifact_root=artifact_root, artifact_records=records)
             with sqlite3.connect(self.database) as db:
                 db.execute('UPDATE tasks SET status=?, result_hash=?, pid=NULL, execution_token=NULL, error=NULL, updated=? WHERE id=?', ('completed', result_hash, now(), request_id))
@@ -360,23 +361,14 @@ class Workflow:
         baseline = read_json(run / 'project.json')
         edit = {'document': document, 'content': content, 'base_sha256': base_sha256,
                 'source_id': 'SRC-DOC-' + digest([baseline['project_id'], version, document, content])[:24]}
-        kinds = []
-        previous = run / 'generation.json'
-        if previous.is_file():
-            kinds = list(dict.fromkeys(item['capability'] for item in read_json(previous).get('results', [])
-                                       if item.get('generation_status') == 'success' and item.get('capability') in {'modules', 'architecture', 'workflow', 'erd', 'prototype'}))
-        task = self.prepare(run, [], version, generation=kinds, document_edit=edit)
+        task = self.prepare(run, [], version, generation=retained_generation(run), document_edit=edit)
         return self.complete(task['id'], document_revision(baseline, version, edit))
 
     def generate(self, run_dir, version, kinds):
         if not isinstance(kinds, list) or not kinds or any(kind not in {'modules', 'architecture', 'workflow', 'erd', 'prototype'} for kind in kinds):
             raise ValueError('Choose modules, architecture, workflow, erd or prototype generation.')
         baseline = read_json(Path(run_dir) / 'project.json')
-        previous_generation = Path(run_dir) / 'generation.json'
-        if previous_generation.is_file():
-            previous = read_json(previous_generation).get('results', [])
-            retained = [item['capability'] for item in previous if item.get('generation_status') == 'success' and item.get('capability') in {'modules', 'architecture', 'workflow', 'erd', 'prototype'}]
-            kinds = list(dict.fromkeys([*kinds, *retained]))
+        kinds = list(dict.fromkeys([*kinds, *retained_generation(run_dir)]))
         project = copy.deepcopy(baseline)
         project.update(artifact_version=version, baseline_version=baseline['artifact_version'])
         task = self.prepare(run_dir, [], version, generation=kinds)
@@ -385,8 +377,63 @@ class Workflow:
     def apply_review(self, run_dir, notes, version, changes=None):
         baseline = read_json(Path(run_dir) / 'project.json')
         result, _ = apply_review(baseline, notes, version, changes)
-        task = self.prepare(run_dir, [], version, review_notes=notes, changes=changes)
+        # Applying verdicts must not drop the diagrams / prototype the reviewed version already had.
+        task = self.prepare(run_dir, [], version, review_notes=notes, changes=changes, generation=retained_generation(Path(run_dir)))
         return self.complete(task['id'], result)
+
+
+# What each diagram is drawn from. When none of it changed, the new version reuses the previous file instead of
+# re-running Archify / Schema Canvas (review statuses and locks do not change a diagram).
+ARTIFACT_INPUTS = {
+    'architecture': lambda p: [p.get('name'), p.get('technical_architecture')],
+    'modules': lambda p: [p.get('name'), p.get('modules'), p.get('module_relations'), [(r.get('requirement_id'), r.get('title')) for r in p.get('requirements', [])]],
+    'erd': lambda p: [p.get('name'), (p.get('business_model') or {}).get('entities'), (p.get('business_model') or {}).get('relations')],
+}  # the prototype is cheap to rebuild and prints its own version, so it is always regenerated
+
+
+def build_artifacts(project, sources, root, request, baseline):
+    """Generate the requested artifacts, reusing the baseline's file for any whose inputs are unchanged."""
+    from generate_artifacts import generate
+    previous_dir = Path(request.get('baseline_dir') or '')
+    previous = read_json(previous_dir / 'generation.json')['results'] if (previous_dir / 'generation.json').is_file() else []
+    manifest = {item['path']: item for item in read_json(previous_dir / 'manifest.json')['artifacts']} if (previous_dir / 'manifest.json').is_file() else {}
+    reused_records, reused_results, fresh = [], [], []
+    for kind in request['generation']:
+        prior = next((item for item in previous if item.get('capability') == kind and item.get('generation_status') == 'success'), None)
+        same = kind in ARTIFACT_INPUTS and prior and digest(ARTIFACT_INPUTS[kind](project)) == digest(ARTIFACT_INPUTS[kind](baseline))
+        if same and (previous_dir / prior['path']).is_file() and prior['path'] in manifest:
+            target = Path(root) / prior['path']
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(previous_dir / prior['path'], target)
+            note = '沿用 ' + baseline['artifact_version'] + ' 的结果：生成依据没有变化'
+            record = {key: value for key, value in manifest[prior['path']].items() if key not in {'sha256', 'generation_status', 'review_status', 'audience', 'artifact_version'}}
+            record.update(artifact_version=project['artifact_version'], source_ids=list(sources), reused_from=baseline['artifact_version'], validation_results=[note, *prior.get('validation_results', [])])
+            reused_records.append(record)
+            reused_results.append({**prior, 'reused_from': baseline['artifact_version'], 'validation_results': record['validation_results']})
+        else:
+            fresh.append(kind)
+    records, summary = generate(project, sources, root, fresh) if fresh else ([], {'project_id': project['project_id'], 'artifact_version': project['artifact_version'], 'results': []})
+    summary['results'] = reused_results + summary['results']
+    return reused_records + records, summary
+
+
+def history_entry(kind, project, request, diff, generation):
+    """One line of the version history: how this version was made and from which decisions."""
+    decisions = (request.get('review_notes') or {}).get('decisions') or []
+    return {'version': project['artifact_version'], 'baseline_version': request['baseline_version'], 'kind': kind, 'created': now(),
+            'changes': len(diff.get('changes', [])), 'conflicts': len(diff.get('conflicts', [])),
+            'decisions': [{key: item.get(key) for key in ('target', 'outcome', 'comment', 'reviewer', 'decided_at', 'created_at') if item.get(key) not in (None, '')} for item in decisions],
+            'document': (request.get('document_edit') or {}).get('document'),
+            'generated': [{'capability': item['capability'], 'status': item['generation_status'], **({'reused_from': item['reused_from']} if item.get('reused_from') else {})} for item in (generation or {}).get('results', [])]}
+
+
+def retained_generation(run):
+    """Artifacts the given version generated successfully; a derived version regenerates them from its own data."""
+    previous = Path(run) / 'generation.json'
+    if not previous.is_file():
+        return []
+    return list(dict.fromkeys(item['capability'] for item in read_json(previous).get('results', [])
+                              if item.get('generation_status') == 'success' and item.get('capability') in {'modules', 'architecture', 'workflow', 'erd', 'prototype'}))
 
 
 def initialize(project_id, name, destination):

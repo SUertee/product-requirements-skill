@@ -465,7 +465,7 @@ def render_agent_prompt(project, sources, questions):
 
 def render_workbench(project, sources, review, documents, artifacts, extra=None, module_diagram=None, architecture_diagram=None, generated_at=None, data_model_diagram=None):
     attachments = [{'material_id': item['material_id'], 'path': item['path']} for item in artifacts if item.get('material_id')]
-    payload = json.dumps({'project': project, 'sources': list(sources.values()), 'review': review, 'documents': documents, 'artifacts': artifacts, 'attachments': attachments, 'module_diagram': module_diagram, 'architecture_diagram': architecture_diagram, 'data_model_diagram': data_model_diagram, 'diff': (extra or {}).get('diff.json'), 'generation': (extra or {}).get('generation.json'), 'generated_at': generated_at}, ensure_ascii=False)
+    payload = json.dumps({'project': project, 'sources': list(sources.values()), 'review': review, 'documents': documents, 'artifacts': artifacts, 'attachments': attachments, 'module_diagram': module_diagram, 'architecture_diagram': architecture_diagram, 'data_model_diagram': data_model_diagram, 'diff': (extra or {}).get('diff.json'), 'generation': (extra or {}).get('generation.json'), 'history': (extra or {}).get('history.json'), 'generated_at': generated_at}, ensure_ascii=False)
     payload = payload.replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
     values = {
         '__WORKBENCH_STYLE__': (PACKAGE / 'assets/ui.css').read_text() + '\n' + (PACKAGE / 'assets/workbench.css').read_text(),
@@ -506,7 +506,7 @@ def publish(project, sources, destination, materials_root=None, *, review_data=N
             review.update(review_data)
             review['questions'] = questions
         extra = supplementary or {}
-        require(set(extra).issubset({'diff.json', 'generation.json', 'definition.json', 'release.json'}), 'Invalid supplementary output filename')
+        require(set(extra).issubset({'diff.json', 'generation.json', 'definition.json', 'release.json', 'history.json'}), 'Invalid supplementary output filename')
         for name, value in [('project.json', project), ('review.json', review), *extra.items()]:
             (stage / name).write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         (stage / 'sources.jsonl').write_text(''.join(json.dumps(value, ensure_ascii=False) + '\n' for value in sources.values()), encoding='utf-8')
