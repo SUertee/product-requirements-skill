@@ -64,7 +64,7 @@ class WorkbenchServer(ThreadingHTTPServer):
         stage = payload.get('review_stage', 'definition')
         if stage not in {'definition', 'release'}:
             raise ValueError('Choose definition or release review.')
-        allowed = {item['requirement_id'] for item in project['requirements']}
+        allowed = {item['requirement_id'] for item in project['requirements']} | {item['nfr_id'] for item in project.get('nfrs', []) if isinstance(item, dict) and item.get('nfr_id')}
         review = json.loads((run_dir / 'review.json').read_text(encoding='utf-8'))
         allowed.update(item['target'] for item in review['questions'])
         if stage == 'release':

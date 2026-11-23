@@ -285,7 +285,6 @@ video { width: 100%; max-height: 520px; margin-top: 20px; background: var(--ui-n
 .filter-panel .section-tabs:last-child { border-bottom: 0; padding-bottom: 4px; }
 .preview-pages { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 12px; }
 .preview-pages [aria-pressed="true"] { color: var(--ui-accent-ink); background: var(--ui-accent-soft); border-color: var(--ui-accent-border); }
-.module-toolbar { margin-top: -4px; }
 
 .document-entry-picker { margin-top: 20px; max-height: 200px; overflow-y: auto; }
 .document-entry-picker .section-tabs { border: 0; }
@@ -471,8 +470,6 @@ video { width: 100%; max-height: 520px; margin-top: 20px; background: var(--ui-n
 .prototype-checklist span { font-size: var(--ui-text-sm); color: var(--ui-muted); }
 .prototype-checklist .check-mark { display: inline-grid; place-items: center; width: 22px; height: 22px; border: 1.5px solid var(--ui-border-strong); border-radius: 50%; font-size: var(--ui-text-xs); color: var(--ui-on-accent); }
 .prototype-checklist li.done .check-mark { background: var(--ui-success-mark); border-color: var(--ui-success-mark); }
-.prototype-checklist + .document-actions { margin-top: 16px; align-items: center; }
-.prototype-checklist + .document-actions input { min-height: 42px; width: 96px; padding: 8px 12px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius-sm); font: inherit; }
 .prototype-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .prototype-summary { font-size: var(--ui-text-sm); color: var(--ui-muted); }
 .prototype-toolbar [aria-pressed="true"] { color: var(--ui-accent-ink); background: var(--ui-accent-soft); border-color: var(--ui-accent-border); }
@@ -986,5 +983,13 @@ video { width: 100%; max-height: 520px; margin-top: 20px; background: var(--ui-n
 .page-tabs [aria-pressed="true"], .page-tabs [aria-selected="true"] { background: transparent; color: var(--ui-accent-ink); border-bottom-color: var(--ui-accent); font-weight: 600; }
 .page-tabs .label-icon { color: currentColor; }
 .module-toolbar .page-tabs { border-bottom: 0; }
-.technical-tabs + #technical-panel { margin-top: 20px; }
 .api-related .source-link, .entity-reqs .source-link { display: inline; padding: 0; font-size: var(--ui-text-sm); }
+/* Every page header is the same height whether or not it carries search / filter buttons, so tabs start at the same line. */
+.page-header { min-height: 44px; margin-bottom: 18px; }
+.page-header .workbench-toolbar { min-height: 0; }
+.prototype-handoff { margin-top: 18px; }
+.prototype-handoff .handoff-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.requirement-choice-status[data-pending="true"], .requirement-identity .status-tag[data-pending="true"] { outline: 1px dashed currentColor; outline-offset: -1px; }
+.panel > .review-pending-bar { margin: 0 0 14px; }
+.prototype-checklist + .prototype-handoff, .panel > .review-pending-bar { margin-top: 14px; }
+.panel > .review-pending-bar { padding: 10px 14px; }

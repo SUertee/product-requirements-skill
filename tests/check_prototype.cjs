@@ -103,8 +103,24 @@ if (process.argv[3]) {
   const empty = new JSDOM(fs.readFileSync(path.join(other, 'workbench/index.html'), 'utf8'), {url: 'http://127.0.0.1:8765/workbench/index.html#prototype', runScripts: 'outside-only', virtualConsole: quiet});
   empty.window.eval(fs.readFileSync(path.join(__dirname, '../product-requirements/assets/workbench.js'), 'utf8'));
   const items = [...empty.window.document.querySelectorAll('.prototype-checklist li strong')].map(node => node.textContent);
-  assert.deepEqual(items, ['确认功能需求', '补全验收标准', '确认非功能需求', '原型设计']);
+  assert.deepEqual(items, ['确认功能需求', '补全验收标准', '确认非功能需求']);
   assert.equal(empty.window.document.querySelector('.prototype-frame'), null);
+  // No in-page generate button: the page hands a ready-to-paste instruction to the Skill.
+  const handoff = empty.window.document.querySelector('.prototype-handoff');
+  assert.ok(handoff, 'hand-off to the Skill is shown');
+  assert.match(handoff.querySelector('.handoff-text').textContent, /产品需求落地」Skill.*生成可交互原型/);
+  assert.equal([...empty.window.document.querySelectorAll('#page-content button')].some(node => /生成原型/.test(node.textContent)), false);
+}
+// 4. Non-functional requirements are reviewed on the 功能需求 page, in their own group.
+{
+  const nfrDom = new JSDOM(fs.readFileSync(path.join(run, 'workbench/index.html'), 'utf8'), {url: 'http://127.0.0.1:8765/workbench/index.html#modules', runScripts: 'outside-only', virtualConsole: quiet});
+  nfrDom.window.eval(fs.readFileSync(path.join(__dirname, '../product-requirements/assets/workbench.js'), 'utf8'));
+  const nd = nfrDom.window.document;
+  assert.ok([...nd.querySelectorAll('.requirement-group')].some(node => node.textContent === '非功能需求'), 'NFR group in the requirement list');
+  const choice = [...nd.querySelectorAll('.requirement-choice')].find(node => /^NFR-/.test(node.dataset.requirementId));
+  choice.click();
+  assert.match(nd.querySelector('.requirement-head').textContent, /NFR-/);
+  assert.match(nd.querySelector('.selection-detail').textContent, /原型中怎么体现/);
 }
 assert.deepEqual(errors.filter(message => !/Not implemented: (HTMLDialogElement|window.scrollTo)/.test(message)), []);
 console.log('Prototype checks passed: role filtering and denied view, states, annotations, workbench mapping, frame message isolation, checklist.');
