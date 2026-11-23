@@ -11,8 +11,8 @@ import prototype_feedback as feedback
 from customer_review import read_feedback
 
 
-def row(record_id, comment, version='v3', project='demo', page='工单列表', requirements='REQ-001 REQ-002', name=''):
-    return {'record_id': record_id, '意见': comment, '页面': page, '需求': requirements, '原型版本': version, '项目': project, '称呼': name}
+def row(record_id, comment, version='v3', project='demo', page='工单列表', requirements='REQ-001 REQ-002', name='', place='工单列表 › 状态（表头）'):
+    return {'record_id': record_id, '意见': comment, '页面': page, '位置': place, '需求': requirements, '原型版本': version, '项目': project, '称呼': name}
 
 
 class PrototypeFeedbackTests(unittest.TestCase):
@@ -39,6 +39,8 @@ class PrototypeFeedbackTests(unittest.TestCase):
         self.assertEqual(answers[0]['respondent'], '客服主管')
         original = (self.workspace / 'jobs' / jobs['v3']['job_id'] / 'original.txt').read_text()
         self.assertIn('客户意见：筛选应该默认显示未解决', original)
+        self.assertIn('位置：工单列表 › 状态（表头）', original)
+        self.assertEqual(answers[0]['prompt'], '原型「工单列表 › 状态（表头）」')
         again = feedback.import_feedback('baseToken0001', 'tblTable0001', self.workspace, 'demo', rows + [row('rec5', '导出放二期')])
         self.assertEqual([job['comments'] for job in again['jobs']], [1])
         self.assertEqual(len(self.jobs()), 3)

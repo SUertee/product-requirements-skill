@@ -33,15 +33,45 @@ assert.ok(section('create').querySelector('[data-state="error"]').hasAttribute('
 w.Prototype.setState('', 'create');
 assert.ok(!section('create').querySelector('[data-state="error"]').hasAttribute('data-state-active'));
 w.postMessage({type: 'prototype:annotate', on: true}, '*');
-// Customer feedback link: shown when the prototype is opened directly, pre-filled with page context.
+// Customer feedback: pick a spot on the prototype, then open the pre-filled form.
+const opened = [];
+w.open = (url, name, features) => { opened.push({url: new w.URL(url), features}); return null; };
+w.Prototype.go('tickets');
+w.dispatchEvent(new w.HashChangeEvent('hashchange'));
 const feedback = d.getElementById('feedback');
 assert.equal(feedback.hidden, false, 'feedback button shown for a standalone prototype');
-const feedbackUrl = new w.URL(feedback.href);
-assert.equal(feedbackUrl.origin + feedbackUrl.pathname, 'https://example.feishu.cn/share/base/shrcnSyntheticForm0001');
-assert.equal(feedbackUrl.searchParams.get('prefill_页面'), d.title.split(' · ').pop(), 'current page name is pre-filled');
-assert.match(feedbackUrl.searchParams.get('prefill_需求'), /REQ-/);
-assert.equal(feedbackUrl.searchParams.get('hide_项目'), '1');
-assert.equal(feedback.getAttribute('rel'), 'noopener noreferrer');
+feedback.click();
+assert.equal(d.getElementById('pickbar').hidden, false, 'pick mode shows its bar');
+const rowsBefore = section('tickets').querySelectorAll('#ticket-rows tr').length;
+const query = d.getElementById('ticket-query');
+query.dispatchEvent(new w.MouseEvent('mouseover', {bubbles: true}));
+assert.ok(query.classList.contains('pt-pick-target'), 'hovered element is highlighted');
+query.dispatchEvent(new w.MouseEvent('click', {bubbles: true, cancelable: true}));
+assert.equal(opened.length, 1);
+let form = opened[0].url;
+assert.equal(form.origin + form.pathname, 'https://example.feishu.cn/share/base/shrcnSyntheticForm0001');
+assert.equal(form.searchParams.get('prefill_位置'), '工单 › 主题或手机号（输入框）', 'location uses the label, not typed values');
+assert.equal(form.searchParams.get('prefill_需求'), 'REQ-002', 'requirement comes from the nearest data-req');
+assert.equal(form.searchParams.get('hide_项目'), '1');
+assert.equal(opened[0].features, 'noopener');
+assert.equal(d.getElementById('pickbar').hidden, true, 'pick mode ends after choosing');
+assert.ok(!query.classList.contains('pt-pick-target'));
+const firstRowLink = section('tickets').querySelector('#ticket-rows [data-goto]');
+if (firstRowLink) {
+  feedback.click();
+  firstRowLink.dispatchEvent(new w.MouseEvent('click', {bubbles: true, cancelable: true}));
+  assert.equal(w.Prototype.page, 'tickets', 'picking does not trigger the prototype action');
+  assert.match(opened[1].url.searchParams.get('prefill_位置'), /^工单 › /);
+}
+assert.equal(section('tickets').querySelectorAll('#ticket-rows tr').length, rowsBefore);
+feedback.click();
+d.dispatchEvent(new w.KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+assert.equal(d.getElementById('pickbar').hidden, true, 'Escape cancels picking');
+const count = opened.length;
+feedback.click();
+d.getElementById('pick-page').click();
+assert.equal(opened.length, count + 1);
+assert.equal(opened[count].url.searchParams.get('prefill_位置'), '工单（整页）');
 
 // 2. Workbench mapping
 const page = new JSDOM(fs.readFileSync(path.join(run, 'workbench/index.html'), 'utf8'), {url: 'http://127.0.0.1:8765/workbench/index.html#prototype', runScripts: 'outside-only', virtualConsole: quiet});

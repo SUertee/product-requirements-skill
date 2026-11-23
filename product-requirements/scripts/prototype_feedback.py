@@ -15,7 +15,7 @@ import tempfile
 from feishu_connector import ConnectorError, call_cli
 from ingest_material import ingest
 
-FIELDS = ('意见', '页面', '需求', '原型版本', '项目', '称呼')
+FIELDS = ('意见', '页面', '位置', '需求', '原型版本', '项目', '称呼')
 TOKEN = re.compile(r'[A-Za-z0-9]{10,64}')
 REQUIREMENT = re.compile(r'REQ-[A-Za-z0-9-]+')
 
@@ -46,11 +46,12 @@ def material(project_id, version, rows):
     answers = []
     for row in rows:
         targets = REQUIREMENT.findall(row.get('需求', ''))
-        lines += ['', f'页面：{row.get("页面") or "未注明"}。需求：{" ".join(targets) or "未注明"}。', f'客户意见：{row["意见"]}']
+        place = row.get('位置') or row.get('页面') or '未注明'
+        lines += ['', f'位置：{place}。需求：{" ".join(targets) or "未注明"}。', f'客户意见：{row["意见"]}']
         if row.get('称呼'):
             lines.append(f'客户称呼：{row["称呼"]}')
         for target in targets or [None]:
-            answers.append({'target': target, 'prompt': f'原型页面「{row.get("页面") or "未注明"}」', 'answer': row['意见'],
+            answers.append({'target': target, 'prompt': f'原型「{place}」', 'answer': row['意见'],
                             'note': '', 'respondent': row.get('称呼', '')})
     return '\n'.join(lines) + '\n', {'respondent': '', 'answers': answers}
 

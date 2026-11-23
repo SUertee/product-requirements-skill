@@ -28,10 +28,15 @@ html[data-annotate] [data-nfr]:not([data-req])::before{background:var(--ui-warni
 @media (max-width:899px){.ui-nav nav{display:flex;flex-wrap:wrap;gap:4px}.ui-nav nav a{padding:8px 10px}}
 .pt-feedback{position:fixed;right:24px;bottom:24px;z-index:15;box-shadow:var(--ui-shadow-overlay)}
 .pt-mobile .pt-feedback{right:16px;bottom:84px}
+.pt-pickbar{position:fixed;left:50%;top:16px;transform:translateX(-50%);z-index:30;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;max-width:calc(100vw - 32px);padding:10px 12px 10px 16px;border-radius:var(--ui-radius);background:var(--ui-nav);color:var(--ui-nav-ink);box-shadow:var(--ui-shadow-overlay);font-size:var(--ui-text-sm)}
+.pt-pickbar .ui-button{min-height:36px;padding:4px 12px;font-size:var(--ui-text-sm)}
+html[data-picking] #screen,html[data-picking] #screen *{cursor:crosshair !important}
+.pt-pick-target{outline:2px solid var(--ui-accent) !important;outline-offset:2px;background-color:var(--ui-accent-soft)}
 </style><style id="page-styles"></style></head>
 <body><div class="ui-shell"><aside class="ui-nav"><h1 id="project-name"></h1><label class="pt-role" id="role-picker" hidden>当前角色<select id="role"></select></label><nav id="pages" aria-label="原型页面"></nav></aside><main class="ui-main"><p class="pt-notice" id="notice"></p><div id="screen"></div></main></div>
 <div class="pt-toast" id="toast" role="status" aria-live="polite" hidden></div>
-<a class="ui-button primary pt-feedback" id="feedback" target="_blank" rel="noopener noreferrer" hidden>提意见</a>
+<button class="ui-button primary pt-feedback" id="feedback" type="button" hidden>提意见</button>
+<div class="pt-pickbar" id="pickbar" role="dialog" aria-label="选择要提意见的位置" hidden><span>点选原型上要提意见的位置</span><button class="ui-button" id="pick-page" type="button">对整页提意见</button><button class="ui-button" id="pick-cancel" type="button">取消</button></div>
 <script id="prototype-data" type="application/json">__PROTOTYPE_DATA__</script>
 <script>
 (() => {
@@ -116,19 +121,94 @@ html[data-annotate] [data-nfr]:not([data-req])::before{background:var(--ui-warni
       try { handler(sections.get(current), P.params); } catch (error) { report(current, error); }
     }
     if (parent !== window) parent.postMessage({type: 'prototype:page', page_id: current}, '*');
-    updateFeedback(page);
+    stopPicking();
+    updateFeedback();
   }
   // Customers open the released prototype directly; the workbench preview (an iframe) keeps the button hidden.
-  function updateFeedback(page) {
-    const link = document.getElementById('feedback');
-    if (!data.feedback || parent !== window) return;
+  function updateFeedback() {
+    document.getElementById('feedback').hidden = !data.feedback || parent !== window;
+  }
+  function feedbackUrl(location, requirementIds) {
+    const page = pages.get(current);
     const url = new URL(data.feedback.url);
-    const values = {'页面': page.name, '需求': (page.requirement_ids || []).join(' '), '原型版本': data.artifact_version, '项目': data.feedback.project_id};
+    const values = {'页面': page.name, '位置': location || page.name + '（整页）', '需求': requirementIds.join(' '),
+      '原型版本': data.artifact_version, '项目': data.feedback.project_id};
     for (const [field, value] of Object.entries(values)) url.searchParams.set('prefill_' + field, value);
     for (const field of ['需求', '原型版本', '项目']) url.searchParams.set('hide_' + field, '1');
-    link.href = url.toString();
-    link.hidden = false;
+    return url.toString();
   }
+  function openFeedback(location, requirementIds) {
+    stopPicking();
+    window.open(feedbackUrl(location, requirementIds), '_blank', 'noopener');
+  }
+  // Pick mode: describe what was clicked with labels and headers only, never the values a visitor typed or sample rows.
+  const POINTABLE = 'button, a, input, select, textarea, label, th, td, li, h1, h2, h3, h4, [data-req], [data-nfr], .ui-card, section';
+  const clean = value => String(value || '').replace(/\s+/g, ' ').trim().slice(0, 30);
+  function describe(element) {
+    const tag = element.tagName.toLowerCase();
+    if (['input', 'select', 'textarea'].includes(tag)) {
+      const label = element.labels?.[0] || element.closest('label');
+      const name = clean(element.getAttribute('aria-label') || (label && [...label.childNodes].filter(node => node.nodeType === 3).map(node => node.textContent).join('')) || label?.textContent || element.placeholder || element.name);
+      return name + (tag === 'select' ? '（下拉框）' : tag === 'textarea' ? '（文本框）' : element.type === 'checkbox' ? '（勾选框）' : '（输入框）');
+    }
+    if (tag === 'button' || tag === 'a') return clean(element.getAttribute('aria-label') || element.textContent) + (tag === 'a' ? '（链接）' : '（按钮）');
+    if (tag === 'th') return clean(element.textContent) + '（表头）';
+    if (tag === 'td') {
+      const table = element.closest('table');
+      const header = table && table.querySelectorAll('thead th')[element.cellIndex];
+      return (header ? clean(header.textContent) + '列' : '表格') + '（表格内容）';
+    }
+    if (/^h[1-4]$/.test(tag)) return clean(element.textContent) + '（标题）';
+    const heading = element.querySelector('h1, h2, h3, h4, legend');
+    return clean(element.getAttribute('aria-label') || heading?.textContent || element.textContent) || '页面区域';
+  }
+  function target(node) {
+    const section = sections.get(current);
+    const element = node instanceof Element ? node.closest(POINTABLE) : null;
+    return element && section && section.contains(element) && element !== section ? element : null;
+  }
+  let picking = false, hovered = null;
+  function highlight(element) {
+    hovered?.classList.remove('pt-pick-target');
+    hovered = element;
+    hovered?.classList.add('pt-pick-target');
+  }
+  function startPicking() {
+    picking = true;
+    document.documentElement.dataset.picking = '';
+    document.getElementById('pickbar').hidden = false;
+    document.getElementById('pick-page').focus();
+  }
+  function stopPicking() {
+    picking = false;
+    delete document.documentElement.dataset.picking;
+    document.getElementById('pickbar').hidden = true;
+    highlight(null);
+  }
+  function choose(element) {
+    const page = pages.get(current);
+    const marked = element.closest('[data-req]');
+    const ids = marked ? marked.dataset.req.split(/\s+/).filter(Boolean) : (page.requirement_ids || []);
+    openFeedback(page.name + ' › ' + describe(element), ids);
+  }
+  document.getElementById('feedback').addEventListener('click', () => (picking ? stopPicking() : startPicking()));
+  document.getElementById('pick-cancel').addEventListener('click', stopPicking);
+  document.getElementById('pick-page').addEventListener('click', () => openFeedback('', pages.get(current).requirement_ids || []));
+  document.addEventListener('mouseover', event => { if (picking) highlight(target(event.target)); });
+  document.addEventListener('focusin', event => { if (picking) highlight(target(event.target)); });
+  // Capture phase: while picking, a click selects the element instead of running the prototype's own action.
+  document.addEventListener('click', event => {
+    if (!picking) return;
+    const element = target(event.target);
+    if (!element) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    choose(element);
+  }, true);
+  document.addEventListener('keydown', event => {
+    if (!picking) return;
+    if (event.key === 'Escape') { stopPicking(); document.getElementById('feedback').focus(); }
+    else if (event.key === 'Enter' && target(document.activeElement)) { event.preventDefault(); choose(target(document.activeElement)); }
+  }, true);
   function report(pageId, error) {
     errors.push({page_id: pageId, message: String(error && error.message || error)});
     console.error('[prototype:' + pageId + ']', error);
