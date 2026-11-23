@@ -2022,17 +2022,19 @@
     if (reviewTab === 'customer') { customerReview(); return; }
     if (reviewTab === 'delivery') { releasePanel(); reviewForm(content, 'release'); return; }
     if (reviewTab === 'records') {
+      // One log: what changed in this version (if anything), then each recorded verdict.
       const changes = data.diff?.changes || [];
       const conflicts = data.diff?.conflicts || [];
-      const versionCard = panel('本版相对 ' + (project.baseline_version || '上一版') + ' 的变化', 'history');
-      versionCard.classList.add('version-changes');
-      if (!changes.length && !conflicts.length) versionCard.append(element('p', '当前版本 ' + project.artifact_version + '，没有内容变更', 'inline-note'));
-      for (const change of changes) {
-        const req = requirements.find(item => item.requirement_id === change.target);
-        versionCard.append(element('p', (req?.title || change.target) + ' · ' + change.field + '：' + display(change.old) + ' → ' + display(change.new), 'version-change'));
+      if (changes.length || conflicts.length) {
+        const versionCard = panel('本版相对 ' + (project.baseline_version || '上一版') + ' 的变化', 'history');
+        versionCard.classList.add('version-changes');
+        for (const change of changes) {
+          const req = requirements.find(item => item.requirement_id === change.target);
+          versionCard.append(element('p', (req?.title || change.target) + ' · ' + change.field + '：' + display(change.old) + ' → ' + display(change.new), 'version-change'));
+        }
+        for (const conflict of conflicts) versionCard.append(element('p', '需要核对：' + conflict.target + ' · ' + conflict.field + '（保留「' + display(conflict.retained) + '」，建议「' + display(conflict.proposed) + '」）', 'version-change conflict'));
+        content.append(versionCard);
       }
-      for (const conflict of conflicts) versionCard.append(element('p', '需要核对：' + conflict.target + ' · ' + conflict.field + '（保留「' + display(conflict.retained) + '」，建议「' + display(conflict.proposed) + '」）', 'version-change conflict'));
-      content.append(versionCard);
       const records = [...(data.review.decisions || []), ...(serverState?.review.decisions || [])];
       const seen = new Set();
       const labels = {confirmed: '已确认', needs_changes: '需要修改', parked: '暂缓'};
@@ -2047,7 +2049,7 @@
         fields(card, [['意见', record.comment], ['记录人', record.reviewer], ['时间', record.decided_at || record.created_at || record.created]].filter(([, value]) => value));
         content.append(card);
       });
-      if (!seen.size) content.append(empty('暂无评审记录'));
+      if (!seen.size && !changes.length && !conflicts.length) content.append(empty('还没有评审记录。在「功能需求」里对需求给出结论或修改后，会记在这里'));
       return;
     }
   }

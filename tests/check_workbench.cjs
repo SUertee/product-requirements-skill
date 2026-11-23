@@ -185,7 +185,6 @@ async function settle() {
   assert.equal(JSON.parse(requests.find(item => item.url === '/api/review').options.body).target, 'REQ-001');
   navigate('review');
   assert.match(document.getElementById('page-content').textContent, /合成评审：需要核对验收/);
-  assert.match(document.getElementById('page-content').textContent, /本版相对.*的变化/);
   navigate('modules');
   assert(document.querySelector('.review-pending-bar'), 'pending verdicts and edits shown on the requirement page');
   submit(document.getElementById('review-version').closest('form'));
