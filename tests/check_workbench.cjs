@@ -96,9 +96,7 @@ async function settle() {
   else assert.match(handoff.textContent, /确认需求后可生成/);
   navigate('documents');
   assert(![...document.querySelectorAll('button')].some(item => item.textContent === '开发提示词'), 'agent prompt left the documents tabs');
-  button('排期').click();
-  assert.match(document.getElementById('page-content').textContent, /工作包时间线[\s\S]*待确认/);
-  button('项目方案').click();
+  assert(![...document.querySelectorAll('button')].some(item => item.textContent === '排期'), 'schedule tab removed');
   navigate('materials');
   button('处理流程').click();
   assert.match(document.getElementById('page-content').textContent, /生成新版本/);
@@ -207,10 +205,12 @@ async function settle() {
   navigate('documents');
   assert(document.querySelectorAll('.selection-list button').length >= 3);
   button('PRD').click();
-  [...document.querySelectorAll('.selection-list button')].find(item => item.textContent === '功能需求').click();
-  assert.match(document.querySelector('.selection-detail').textContent, /REQ-001/);
-  assert.equal(document.querySelectorAll('.document-body h4').length, 1);
-  assert.equal(document.querySelector('.document-entry-picker [aria-pressed="true"]').textContent, 'REQ-001 · 创建工单');
+  const chapterButton = [...document.querySelectorAll('.doc-toc button')].find(item => item.textContent === '功能需求');
+  chapterButton.click();
+  assert.equal(chapterButton.getAttribute('aria-current'), 'true');
+  const chapter = document.getElementById('doc-sec-' + [...document.querySelectorAll('.doc-toc button')].indexOf(chapterButton));
+  assert.match(chapter.textContent, /REQ-001 · 创建工单/);
+  assert(document.querySelectorAll('.doc-section').length >= 3, 'all chapters render in one scroll');
   assert.equal(document.querySelectorAll('details').length, 0);
   button('编辑本节').click();
   const editor = document.getElementById('document-editor');

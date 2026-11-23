@@ -822,14 +822,6 @@ video { width: 100%; max-height: 520px; margin-top: 20px; background: var(--ui-n
 .handoff-head .inline-note { margin: 0; }
 .handoff-text { max-height: 360px; margin: 12px 0 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: var(--ui-text-sm); color: var(--ui-ink-2); }
 
-.schedule-phase { margin: 20px 0 8px; font-size: var(--ui-text-md); }
-.schedule-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; counter-reset: package; }
-.schedule-item { position: relative; padding: 12px 0 12px 36px; border-top: 1px solid var(--ui-border); counter-increment: package; }
-.schedule-item::before { content: counter(package); position: absolute; left: 0; top: 12px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--ui-accent-soft); color: var(--ui-accent-ink); font-size: var(--ui-text-xs); font-weight: 600; }
-.schedule-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; }
-.schedule-dates { color: var(--ui-warning); font-size: var(--ui-text-sm); }
-.schedule-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 4px 0 0; color: var(--ui-muted); font-size: var(--ui-text-sm); }
-.schedule-after { color: var(--ui-ink-2); }
 
 /* Overview: questions read as plain rows, the arrow carries the link affordance. */
 .overview-sections .output-row > span:first-child { color: var(--ui-ink); font-size: var(--ui-text-md); text-align: start; }
@@ -847,3 +839,30 @@ video { width: 100%; max-height: 520px; margin-top: 20px; background: var(--ui-n
 .module-kicker { display: inline-block; margin-inline-end: 8px; padding: 1px 8px; border-radius: var(--ui-radius-pill); background: var(--ui-surface-muted); color: var(--ui-muted); font-size: var(--ui-text-xs); font-weight: 500; vertical-align: middle; }
 .module-detail-head .module-count { color: var(--ui-muted); font-size: var(--ui-text-sm); }
 .requirement-more { justify-self: start; margin: 4px 0 8px; }
+
+/* Documents: continuous reading with a sticky chapter list. */
+.document-workspace.selection-layout { grid-template-columns: 220px minmax(0, 1fr); align-items: start; }
+.doc-toc { position: sticky; top: 16px; max-height: calc(100dvh - 32px); overflow-y: auto; gap: 2px; }
+.doc-toc button { display: block; width: 100%; min-height: 36px; padding: 6px 12px; border: 0; border-inline-start: 2px solid transparent; border-radius: 0; background: transparent; color: var(--ui-muted); text-align: start; font-size: var(--ui-text-sm); }
+.doc-toc button:hover { color: var(--ui-ink); }
+.doc-toc button[aria-current="true"] { color: var(--ui-accent-ink); border-inline-start-color: var(--ui-accent); background: var(--ui-accent-soft); font-weight: 600; }
+.document-scroll { padding: 8px 24px 32px; }
+.doc-section { padding-top: 20px; scroll-margin-top: 16px; }
+.doc-section + .doc-section { border-top: 1px solid var(--ui-border); margin-top: 20px; }
+.doc-section-title { margin: 0 0 12px; font-size: var(--ui-text-lg); }
+@media (max-width: 700px) { .document-workspace.selection-layout { grid-template-columns: minmax(0, 1fr); } .doc-toc { position: static; display: flex; overflow-x: auto; max-height: none; } .doc-toc button { width: auto; flex: 0 0 auto; white-space: nowrap; border-inline-start: 0; border-bottom: 2px solid transparent; } .doc-toc button[aria-current="true"] { border-bottom-color: var(--ui-accent); } }
+
+/* Compact search: a 36px magnifier that widens while focused or holding a query. */
+.compact-search { position: relative; display: inline-flex; align-items: center; flex: 0 0 auto; }
+.compact-search > .nav-icon { position: absolute; inset-inline-start: 10px; width: 16px; height: 16px; color: var(--ui-muted); pointer-events: none; }
+.compact-search input { width: 36px; min-height: 36px; padding: 6px 10px 6px 34px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius-sm); color: var(--ui-ink); background: var(--ui-surface); cursor: pointer; transition: width .18s ease; }
+.compact-search input::placeholder { color: transparent; }
+.compact-search:focus-within input, .compact-search.has-value input { width: min(260px, 60vw); cursor: text; }
+.compact-search:focus-within input::placeholder, .compact-search.has-value input::placeholder { color: var(--ui-muted); }
+.compact-search input::-webkit-search-cancel-button { cursor: pointer; }
+.page-header { flex-wrap: wrap; }
+.page-header .workbench-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 0 auto; }
+.page-header .workbench-toolbar[hidden] { display: none; }
+.page-header .workbench-toolbar input { flex: 0 0 auto; }
+.meeting-reading-tools .compact-search { margin-inline-start: auto; }
+.meeting-reading-tools .meeting-search { width: 36px; }

@@ -26,7 +26,7 @@
   let moduleFrame = null;
   let selectDiagramModule = null;
   const requestedDocument = new URLSearchParams(location.search).get('document');
-  let selectedDocument = ['proposal.md', 'prd.md', 'schedule'].includes(requestedDocument) ? requestedDocument : 'proposal.md';
+  let selectedDocument = ['proposal.md', 'prd.md'].includes(requestedDocument) ? requestedDocument : 'proposal.md';
   let handoffOpen = requestedDocument === 'agent-prompt.md';
   let handoffMessage = '';
   let intakeSource = 'file';
@@ -826,7 +826,7 @@
       const current = document.getElementById('meeting-search');
       current.focus(); current.setSelectionRange(cursor, cursor);
     });
-    readingTools.append(search); card.append(readingTools);
+    readingTools.append(compactSearch(search)); card.append(readingTools);
     if (transcriptMode) {
       meetingTranscript(card, selected, attached);
       if (selectedSource) card.querySelector('.source-selected')?.scrollIntoView?.({block: 'nearest'});
@@ -1394,86 +1394,29 @@
     frame.contentWindow.addEventListener('afterprint', () => frame.remove(), {once: true});
     frame.contentWindow.focus(); frame.contentWindow.print();
   }
-  // Minimal schedule: work packages from modules, ordered by module dependencies; dates and owners are left for people.
-  function workPackages() {
-    const later = req => ['deferred', 'parked'].includes(req.review_status) || ['deferred', 'parked'].includes(req.lifecycle_status);
-    const active = requirements.filter(req => req.lifecycle_status !== 'cancelled' && req.review_status !== 'cancelled');
-    const modules = (project.modules || []).filter(module => (module.requirement_ids || []).some(id => active.some(req => req.requirement_id === id)));
-    const packages = modules.length
-      ? modules.map(module => ({id: module.module_id, name: module.name || module.module_id, reqs: active.filter(req => module.requirement_ids.includes(req.requirement_id))}))
-      : active.map(req => ({id: req.requirement_id, name: req.title, reqs: [req]}));
-    const known = new Set(packages.map(item => item.id));
-    const after = new Map(packages.map(item => [item.id, new Set()]));
-    for (const relation of project.module_relations || []) if (known.has(relation.from) && known.has(relation.to) && relation.from !== relation.to) after.get(relation.to).add(relation.from);
-    const ordered = []; const placed = new Set();
-    while (ordered.length < packages.length) {
-      const next = packages.find(item => !placed.has(item.id) && [...after.get(item.id)].every(id => placed.has(id))) || packages.find(item => !placed.has(item.id));
-      placed.add(next.id); ordered.push(next);
-    }
-    return ordered.map(item => ({...item, after: [...after.get(item.id)].map(id => packages.find(other => other.id === id)?.name || id), phase: item.reqs.every(later) ? '后续' : '本期'}));
-  }
-  function schedulePanel() {
-    const card = panel('工作包时间线', 'pending');
-    const packages = workPackages();
-    if (!packages.length) { card.append(empty('整理出需求后显示工作包')); return card; }
-    card.append(element('p', '按模块依赖排序。日期、负责人和工期都待确认，评审时由人填写，不由 Skill 推测。', 'inline-note'));
-    for (const phase of ['本期', '后续']) {
-      const rows = packages.filter(item => item.phase === phase);
-      if (!rows.length) continue;
-      card.append(element('h3', phase, 'schedule-phase'));
-      const list = element('ol', null, 'schedule-list');
-      for (const item of rows) {
-        const row = element('li', null, 'schedule-item');
-        const head = element('div', null, 'schedule-head');
-        head.append(element('strong', item.name), element('span', '开始 待确认 · 结束 待确认 · 负责人 待确认', 'schedule-dates'));
-        row.append(head);
-        const meta = element('p', null, 'schedule-meta');
-        meta.append(element('span', item.reqs.map(req => req.title).join('、')));
-        if (item.after.length) meta.append(element('span', '依赖：' + item.after.join('、'), 'schedule-after'));
-        row.append(meta);
-        list.append(row);
-      }
-      card.append(list);
-    }
-    return card;
-  }
+  // Documents read top to bottom; the left list jumps to a chapter and follows the scroll position.
   function documents() {
+    if (!['proposal.md', 'prd.md'].includes(selectedDocument)) selectedDocument = 'proposal.md';
     const name = selectedDocument;
-    const items = [['proposal.md', '项目方案', 'documents'], ['prd.md', 'PRD', 'modules'], ['schedule', '排期', 'pending']];
-    if (name === 'schedule') {
-      const tabs = sectionTabs(items, name, '文档类型', key => { selectedDocument = key; documentChapter = 0; documentEntry = 0; documentEditing = false; documentMessage = ''; render(); });
-      tabs.classList.add('document-type-tabs');
-      content.append(tabs, schedulePanel());
-      return;
-    }
-    const derived = name === 'agent-prompt.md';
-    if (derived) documentEditing = false;
-    const tabs = sectionTabs(items, name, '文档类型', key => { selectedDocument = key; documentChapter = 0; documentEntry = 0; documentEditing = false; documentMessage = ''; render(); });
+    const tabs = sectionTabs([['proposal.md', '项目方案', 'documents'], ['prd.md', 'PRD', 'modules']], name, '文档类型', key => { selectedDocument = key; documentChapter = 0; documentEditing = false; documentMessage = ''; render(); });
     tabs.classList.add('document-type-tabs');
     content.append(tabs);
     const text = documentDrafts[name] ?? data.documents[name] ?? '';
     const chunks = text.split(/(?=^## )/m);
     let intro = chunks.shift() || '';
-    const chapterMarkers = {'文档信息': 'info', '模板参考': 'external', '原始依据': 'quote', '验收与待确认': 'decided', '验收与风险': 'pending', '功能需求': 'modules'};
-    let chapters = chunks.map((chunk, index) => {
-      const title = chunk.split('\n')[0].replace(/^## /, '');
-      return {key: String(index), title, marker: Object.hasOwn(chapterMarkers, title) ? chapterMarkers[title] : 'documents', text: chunk};
-    });
-    if (!chapters.length) { intro = ''; chapters = [{key: '0', title: '正文', marker: 'documents', text}]; }
+    let chapters = chunks.map((chunk, index) => ({key: String(index), title: chunk.split('\n')[0].replace(/^## /, ''), text: chunk}));
+    if (!chapters.length) { intro = ''; chapters = [{key: '0', title: '正文', text}]; }
     documentChapter = Math.min(documentChapter, chapters.length - 1);
-    const selectedIndex = documentChapter;
-    const selected = chapters[selectedIndex];
-    const detail = selectionLayout(chapters, String(selectedIndex), '文档章节', key => { documentChapter = Number(key); documentEntry = 0; documentEditing = false; });
-    detail.parentElement.classList.add('document-workspace');
-    const card = panel(selected.title, 'documents');
-    card.classList.add('document-reader');
+    const layout = element('div', null, 'selection-layout document-workspace');
+    const toc = element('nav', null, 'selection-list doc-toc'); toc.setAttribute('aria-label', '文档章节');
+    const reader = element('div', null, 'selection-detail');
+    const card = element('article', null, 'panel document-reader');
     const tools = element('header', null, 'document-reader-head');
-    tools.append(card.firstElementChild);
-    card.dataset.documentEditing = String(documentEditing);
+    tools.append(element('h2', ({'prd.md': 'PRD', 'proposal.md': '项目方案'})[name]));
     const actions = element('div', null, 'document-actions');
-    const edit = iconLabel(element('button', documentEditing ? '预览本节' : '编辑本节', 'button small'), documentEditing ? 'prototype' : 'edit');
+    const edit = iconLabel(element('button', documentEditing ? '完成编辑' : '编辑本节', 'button small'), documentEditing ? 'decided' : 'edit');
     edit.type = 'button'; edit.disabled = documentSaving;
-    edit.addEventListener('click', () => { documentEditing = !documentEditing; render(); });
+    edit.addEventListener('click', () => { documentEditing = !documentEditing; render(); document.getElementById('doc-sec-' + documentChapter)?.scrollIntoView?.({block: 'start'}); });
     const print = iconLabel(element('button', '打印 / PDF', 'button small'), 'print'); print.type = 'button';
     print.addEventListener('click', () => printDocument(name));
     const download = iconLabel(element('button', '下载正文', 'button small'), 'download'); download.type = 'button';
@@ -1482,18 +1425,10 @@
       const link = element('a'); link.href = url; link.download = name; document.body.append(link); link.click(); link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     });
-    if (derived) {
-      const copy = iconLabel(element('button', '复制全文', 'button primary small'), 'copy'); copy.type = 'button';
-      copy.addEventListener('click', async () => {
-        try { await navigator.clipboard.writeText(data.documents[name]); documentMessage = '已复制，可直接粘贴给 Coding Agent'; }
-        catch { documentMessage = '浏览器未允许复制，请用“下载正文”'; }
-        render();
-      });
-      actions.append(copy, download);
-    } else actions.append(edit, print, download);
+    actions.append(edit, print, download);
     const save = iconLabel(element('button', '保存新版本', 'button primary small'), 'decided'); save.type = 'button';
     save.disabled = documentSaving || !Object.hasOwn(documentDrafts, name) || documentDrafts[name] === data.documents[name];
-    if (serverState && !derived) {
+    if (serverState) {
       actions.append(save);
       save.addEventListener('click', async () => {
         const value = documentDrafts[name];
@@ -1508,29 +1443,49 @@
     }
     tools.append(actions); card.append(tools);
     if (documentMessage) { const message = element('p', documentMessage, 'inline-note'); message.setAttribute('role', 'status'); card.append(message); }
-    const heading = selected.text.startsWith('## ') ? selected.text.split('\n')[0] : '';
-    const chapterText = heading ? selected.text.split('\n').slice(1).join('\n') : selected.text;
-    if (documentEditing) {
-      const editor = element('textarea', null, 'document-editor');
-      editor.id = 'document-editor'; editor.setAttribute('aria-label', selected.title + '正文');
-      editor.rows = 18; editor.value = chapterText.trim(); editor.disabled = documentSaving;
-      editor.addEventListener('input', () => {
-        const revised = chapters.map((chapter, index) => index === selectedIndex ? (heading ? heading + '\n\n' : '') + editor.value + '\n\n' : chapter.text);
-        documentDrafts[name] = intro + revised.join('');
-        save.disabled = documentSaving || documentDrafts[name] === data.documents[name];
+    const body = element('div', null, 'document-scroll');
+    const tocButtons = [];
+    chapters.forEach((chapter, index) => {
+      const button = element('button', chapter.title); button.type = 'button';
+      button.setAttribute('aria-current', String(index === documentChapter));
+      button.addEventListener('click', () => {
+        documentChapter = index;
+        tocButtons.forEach((item, other) => item.setAttribute('aria-current', String(other === index)));
+        if (documentEditing) { render(); }
+        document.getElementById('doc-sec-' + index)?.scrollIntoView?.({behavior: 'smooth', block: 'start'});
       });
-      card.append(editor);
-    } else {
-      const entries = chapterText.split(/(?=^### )/m);
-      const introduction = entries.shift() || '';
-      if (entries.length > 1) {
-        documentEntry = Math.min(documentEntry, entries.length - 1);
-        const picker = element('div', null, 'document-entry-picker');
-        picker.append(sectionTabs(entries.map((entry, index) => [String(index), entry.split('\n')[0].replace(/^### /, '')]), String(documentEntry), '章节条目', key => { documentEntry = Number(key); render(); }));
-        card.append(picker, markdownDocument(introduction + entries[documentEntry]));
-      } else card.append(markdownDocument(chapterText));
+      tocButtons.push(button); toc.append(button);
+      const section = element('section', null, 'doc-section'); section.id = 'doc-sec-' + index; section.dataset.index = String(index);
+      const heading = chapter.text.startsWith('## ') ? chapter.text.split('\n')[0] : '';
+      const chapterText = heading ? chapter.text.split('\n').slice(1).join('\n') : chapter.text;
+      section.append(element('h2', chapter.title, 'doc-section-title'));
+      if (documentEditing && index === documentChapter) {
+        const editor = element('textarea', null, 'document-editor');
+        editor.id = 'document-editor'; editor.setAttribute('aria-label', chapter.title + '正文');
+        editor.rows = 16; editor.value = chapterText.trim(); editor.disabled = documentSaving;
+        editor.addEventListener('input', () => {
+          const revised = chapters.map((item, other) => other === index ? (heading ? heading + '\n\n' : '') + editor.value + '\n\n' : item.text);
+          documentDrafts[name] = intro + revised.join('');
+          save.disabled = documentSaving || documentDrafts[name] === data.documents[name];
+        });
+        section.append(editor);
+      } else section.append(markdownDocument(chapterText));
+      body.append(section);
+    });
+    card.append(body);
+    reader.append(card);
+    layout.append(toc, reader);
+    content.append(layout);
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver(entries => {
+        if (documentEditing) return;
+        const visible = entries.filter(entry => entry.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (!visible) return;
+        documentChapter = Number(visible.target.dataset.index);
+        tocButtons.forEach((item, index) => item.setAttribute('aria-current', String(index === documentChapter)));
+      }, {rootMargin: '0px 0px -70% 0px'});
+      body.querySelectorAll('.doc-section').forEach(section => observer.observe(section));
     }
-    detail.append(card);
   }
   function artifactPreviews(prefix, emptyMessage) {
     let files = data.artifacts.filter(item => item.path.startsWith(prefix) && item.path.endsWith('.html'));
@@ -2267,6 +2222,15 @@
     node.classList.add('icon-label'); node.prepend(marker);
     return node;
   }
+  // Every page search is a small magnifier that widens while focused or holding a query.
+  function compactSearch(input) {
+    const wrapper = element('label', null, 'compact-search');
+    wrapper.title = input.placeholder || '搜索';
+    const sync = () => wrapper.classList.toggle('has-value', Boolean(input.value));
+    input.addEventListener('input', sync); sync();
+    wrapper.append(icon('search'), input);
+    return wrapper;
+  }
   function selectControl(select) {
     const wrapper = element('span', null, 'select-control');
     wrapper.append(select, icon('chevron'));
@@ -2323,6 +2287,12 @@
   searchInput.addEventListener('input', runSearch);
   searchInput.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); searchResults.querySelector('.search-result')?.click(); } });
   searchDialog.addEventListener('click', event => { if (event.target === searchDialog) searchDialog.close(); });
+  {
+    const toolbar = document.querySelector('.workbench-toolbar');
+    const next = queryInput.nextSibling; const parent = queryInput.parentElement;
+    parent.insertBefore(compactSearch(queryInput), next);
+    document.querySelector('.page-header').append(toolbar);
+  }
   const searchButton = document.getElementById('open-search');
   searchButton.append(icon('search')); searchButton.addEventListener('click', openSearch);
   document.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); openSearch(); } });
