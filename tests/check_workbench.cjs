@@ -24,7 +24,7 @@ timedSource.locator = {start_seconds: 1, end_seconds: 2};
 transcriptMaterial.provenance.related_job_id = recordingId;
 payload.project.materials.push({material_id: 'synthetic-audio', job_id: recordingId, name: '合成录音.wav', kind: 'recording', path: 'synthetic-audio.wav', source_ids: []});
 payload.attachments.push({material_id: 'synthetic-audio', path: 'materials/synthetic-audio.wav'});
-payload.project.meetings = [{meeting_id: 'fixture-meeting', title: '测试会议', material_ids: [transcriptMaterial.material_id], highlights: [{text: '测试会议重点', source_refs: [timedSource.source_id]}]}];
+payload.project.meetings = [{meeting_id: 'fixture-meeting', title: '测试会议', material_ids: [transcriptMaterial.material_id], highlights: [{text: '测试会议重点', status: 'decided', source_refs: [timedSource.source_id]}]}];
 for (let index = 0; index < 35; index++) {
   const source = {...timedSource, source_id: 'SRC-PAGING-' + index, text: '测试分页原话 ' + index, locator: {start_seconds: index + 10}};
   payload.sources.push(source);
@@ -106,16 +106,21 @@ async function settle() {
   assert.match(document.querySelector('.meeting-highlights').textContent, /测试会议重点/);
   assert.equal(document.querySelector('.workbench-toolbar').hidden, true);
   assert(document.querySelector('.selection-detail').contains(document.getElementById('meeting-search')));
-  const selectedMeeting = document.querySelector('.selection-list [aria-current="true"]').textContent;
+  const selectedMeeting = document.getElementById('meeting-material').value;
   document.getElementById('meeting-search').value = '仅其他会议的词';
   document.getElementById('meeting-search').dispatchEvent(new window.Event('input'));
-  assert.equal(document.querySelector('.selection-list [aria-current="true"]').textContent, selectedMeeting);
+  assert.equal(document.getElementById('meeting-material').value, selectedMeeting);
   assert.match(document.querySelector('.selection-detail').textContent, /没有匹配的原话/);
   document.getElementById('meeting-search').value = '';
   document.getElementById('meeting-search').dispatchEvent(new window.Event('input'));
 
   assert.equal(document.querySelectorAll('.source-excerpt').length, 0);
-  button('00:01 查看原话 →').click();
+  const sourceTime = document.querySelector('.meeting-highlight [data-source-ref]');
+  sourceTime.click();
+  assert(document.querySelector('.meeting-evidence .source-selected'));
+  assert(document.querySelector('.meeting-highlight-selected'));
+  assert.match(document.querySelector('.meeting-highlight').textContent, /已明确/);
+  assert.equal(document.activeElement.id, 'meeting-evidence-title');
   const audio = document.querySelector('.selection-detail audio');
   assert(audio, 'Linked recording should be available beside its transcript');
   assert.match(audio.src, /materials\/synthetic-audio.wav$/);
@@ -131,7 +136,10 @@ async function settle() {
   Object.defineProperty(audio, 'duration', {value: 0.5, configurable: true});
   button('定位录音 00:01').click();
   assert.match(document.getElementById('page-content').textContent, /原话时间超出录音长度/);
-  assert(document.querySelectorAll('.source-excerpt').length <= 30);
+  assert(document.querySelectorAll('.meeting-evidence .source-excerpt').length <= 3);
+  document.getElementById('meeting-evidence-title').dispatchEvent(new window.KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+  assert.equal(document.querySelector('.meeting-evidence'), null);
+  assert.equal(document.activeElement.dataset.sourceRef, timedSource.source_id);
   navigate('modules');
   const feedback = document.querySelector('.requirement-feedback');
   assert.match(feedback.textContent, /电话必填吗？.*选填.*有回访需求时才必填.*客服主管/);
@@ -143,6 +151,9 @@ async function settle() {
   const citation = [...document.querySelectorAll('[data-source-ref]')].find(node => node.dataset.sourceRef === lastSourceId);
   assert.match(citation.textContent, /查看原话/);
   citation.click();
+  assert.equal(document.querySelector('.source-selected').dataset.sourceId, lastSourceId);
+  assert(document.querySelector('.meeting-evidence'));
+  button('打开完整逐字稿').click();
   assert.equal(document.querySelector('.source-selected').dataset.sourceId, lastSourceId);
   assert.match(document.querySelector('.transcript-paging').textContent, /2 \/ 2 页/);
   button('会议重点').click();

@@ -127,7 +127,7 @@ python3 scripts/generate_artifacts.py --locate archify
 先判断产品类型、使用者、核心任务和设备形态，按 [内置 UI 规范](ui-design.md) 与 ../assets/ui.css 生成页面。页面的布局、组件与交互状态由主 Skill 内部规范定义。
 优先读取客户已有样式、设计系统和历史产品。需要外部参考时，查找与核心任务相近的实际产品，记录来源与借鉴的具体模式。外部检索遵循当前用户的数据授权，保留公开检索与客户材料的来源标识。
 
-ParTrace Vision 的 workbench 工作台为用户指定的默认视觉参考。该工作台采用侧栏加预览区域、浅色纸面、深色导航、蓝色主操作与语义色状态。将这些模式适配当前客户产品的任务与设备，优化信息密度、层级和可读性。客户提供明确品牌规范时将其纳入页面规范。
+内部工作台的导航、内容布局与交互采用 [内置 UI 规范](ui-design.md)。客户产品原型按已确认的任务、目标设备和客户样式适配。客户提供明确品牌规范时将其纳入页面规范。
 
 页面规范保存到 project.json 的 design_context，包含 product_type、target_devices、existing_style_sources、reference_products、design_system_version 和 design_decisions。原型展示一条可操作主流程，并覆盖相关空态、加载和错误分支。
 

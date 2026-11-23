@@ -13,8 +13,10 @@
   const evidenceInput = document.getElementById('evidence');
   let active = 'overview';
   let selectedSource = null;
+  let selectedHighlight = null;
   let technicalTab = 'diagrams';
   let selectedArchitecture = null;
+  let selectedEntity = null;
   let selectedMaterial = null;
   let selectedModule = null;
   let moduleView = 'list';
@@ -57,8 +59,9 @@
     const navigation = element('div', null, 'section-tabs');
     navigation.setAttribute('role', 'group');
     navigation.setAttribute('aria-label', label);
-    for (const [key, title] of items) {
+    for (const [key, title, marker] of items) {
       const button = element('button', title);
+      if (marker) iconLabel(button, marker);
       button.type = 'button';
       button.setAttribute('aria-pressed', String(key === selected));
       button.addEventListener('click', () => {
@@ -81,9 +84,11 @@
   function hasTranscript(job) {
     return serverState.jobs.some(item => item.provenance.related_job_id === job.job_id && item.status === 'ready_for_analysis');
   }
-  function panel(title) {
+  function panel(title, marker) {
     const section = element('section', null, 'panel requirement-card');
-    section.append(element('h2', title));
+    const heading = element('h2', title);
+    if (marker) iconLabel(heading, marker);
+    section.append(heading);
     return section;
   }
   function valueNode(value, depth = 0) {
@@ -141,7 +146,7 @@
     link.href = '../' + path.split('/').map(encodeURIComponent).join('/');
     link.target = '_blank';
     link.rel = 'noopener';
-    return link;
+    return iconLabel(link, label.startsWith('下载') ? 'download' : 'external');
   }
   function selectionLayout(items, selectedKey, label, onSelect) {
     const layout = element('div', null, 'selection-layout');
@@ -152,7 +157,10 @@
       const button = element('button', null, 'selection-button');
       button.type = 'button';
       button.dataset.selectionKey = item.key;
-      button.append(element('strong', item.title), element('span', item.meta));
+      const title = element('strong', item.title);
+      if (item.marker) iconLabel(title, item.marker);
+      button.append(title);
+      if (item.meta) button.append(element('span', item.meta, 'selection-meta'));
       if (item.key === selectedKey) button.setAttribute('aria-current', 'true');
       button.addEventListener('click', () => {
         onSelect(item.key);
@@ -166,35 +174,46 @@
     content.append(layout);
     return detail;
   }
+  function openRequirement(req) {
+    selectedRequirement = req.requirement_id;
+    moduleView = 'list';
+    requirementTab = 'detail';
+    moduleDetailTab = 'requirements';
+    selectedModule = null;
+    queryInput.value = ''; statusInput.value = ''; evidenceInput.value = '';
+    navigate('modules');
+  }
   function requirementLink(req) {
     const button = element('button', req.title, 'source-link');
     button.dataset.requirementId = req.requirement_id;
     button.title = '需求编号 ' + req.requirement_id;
     button.type = 'button';
-    button.addEventListener('click', () => {
-      queryInput.value = '';
-      requirementTab = 'detail';
-      moduleDetailTab = 'requirements';
-      statusInput.value = '';
-      evidenceInput.value = '';
-      selectedModule = null;
-      navigate('modules');
-    });
+    button.addEventListener('click', () => openRequirement(req));
     return button;
   }
-  function sourceLink(sourceId) {
+  function openSource(sourceId, highlightIndex = null) {
+    selectedSource = sourceId;
+    selectedHighlight = highlightIndex;
+    queryInput.value = '';
+    materialTab = 'library';
+    materialReader = 'highlights';
+    materialQuery = '';
+    navigate('materials');
+    focusSource();
+  }
+  function focusSource() {
+    const target = document.getElementById('meeting-evidence-title') || content.querySelector('.source-selected');
+    target?.focus({preventScroll: true});
+    const compact = window.innerWidth <= 800;
+    const readingArea = compact ? target?.closest('.meeting-evidence') || target : target;
+    readingArea?.scrollIntoView?.({block: compact ? 'start' : 'nearest'});
+  }
+  function sourceLink(sourceId, highlightIndex = null) {
     const source = sourceMap.get(sourceId);
     const button = element('button', '查看原话 · ' + locatorLabel(source?.locator || {}), 'source-link');
     button.type = 'button';
     button.dataset.sourceRef = sourceId;
-    button.addEventListener('click', () => {
-      selectedSource = sourceId;
-      queryInput.value = '';
-      materialTab = 'library';
-      materialReader = 'transcript';
-      materialQuery = '';
-      navigate('materials');
-    });
+    button.addEventListener('click', () => openSource(sourceId, highlightIndex));
     return button;
   }
   function requirementEditor(req) {
@@ -216,7 +235,7 @@
       lock.checked = locks.includes(select.value); text.readOnly = lock.checked;
     }
     select.addEventListener('change', loadField); lock.addEventListener('change', () => { text.readOnly = lock.checked; }); loadField();
-    const submit = element('button', '加入修订草稿', 'button'); submit.type = 'submit';
+    const submit = iconLabel(element('button', '加入修订草稿', 'button primary'), 'edit'); submit.type = 'submit';
     form.append(fieldLabel, select, textLabel, text, lockLabel, submit, message);
     form.addEventListener('submit', event => {
       event.preventDefault();
@@ -255,38 +274,76 @@
     }
     parent.append(section);
   }
+  function requirementChoice(req, current, onSelect) {
+    const button = element('button', null, 'requirement-choice'); button.type = 'button';
+    button.dataset.requirementId = req.requirement_id;
+    button.title = '需求编号 ' + req.requirement_id;
+    button.setAttribute('aria-pressed', String(req === current));
+    const status = element('span', states[req.review_status] || '草稿', 'requirement-choice-status');
+    status.dataset.status = req.review_status;
+    button.append(element('strong', req.title), status);
+    button.addEventListener('click', onSelect);
+    return button;
+  }
   function requirementCard(req) {
     const card = panel(req.title);
     card.classList.add('requirement-inspector');
     const identity = element('div', null, 'requirement-identity');
-    const evidence = element('span', evidenceNames[req.evidence_type] || '待确认', 'evidence-tag');
+    const evidence = iconLabel(element('span', evidenceNames[req.evidence_type] || '待确认', 'evidence-tag'), 'quote');
     evidence.dataset.evidence = req.evidence_type || 'unknown';
-    identity.append(evidence, element('span', states[req.review_status] || '草稿', 'status-tag'), element('span', req.requirement_id, 'requirement-code'));
+    const statusMarker = {confirmed: 'decided', draft: 'clock', disputed: 'pending', parked: 'pause'};
+    const status = iconLabel(element('span', states[req.review_status] || '草稿', 'status-tag'), statusMarker[req.review_status] || 'clock');
+    status.dataset.status = req.review_status;
+    identity.append(evidence, status, element('span', req.requirement_id, 'requirement-code'));
     card.append(identity);
     const body = element('div', null, 'requirement-tab-body');
     const editing = requirementTab === 'edit' && serverState;
     if (editing) body.append(requirementEditor(req));
     else {
-      body.append(element('h3', '功能内容'), valueNode(req.behavior));
-      appendCustomerFeedback(body, req.requirement_id);
-      body.append(element('h3', '验收标准'), valueNode(req.acceptance_criteria));
-      if (req.open_questions?.length) body.append(element('h3', '需要确认'), valueNode(req.open_questions));
-      const known = [['使用者', req.role], ['触发条件', req.trigger], ['输入', req.inputs], ['输出', req.outputs], ['业务规则', req.rules], ['异常处理', req.exceptions]].filter(([, value]) => display(value) !== '待确认');
-      if (known.length) { body.append(element('h3', '业务规则')); fields(body, known); }
-      body.append(element('h3', '会议原话'));
-      if (!(req.source_refs || []).length) body.append(element('p', '来源待补充', 'inline-note'));
+      const section = (label, marker, style) => {
+        const entry = element('section', null, 'requirement-section ' + style);
+        entry.append(iconLabel(element('h3', label), marker));
+        return entry;
+      };
+      const summary = element('div', null, 'requirement-summary');
+      const behavior = section('功能内容', 'documents', 'requirement-behavior');
+      behavior.append(valueNode(req.behavior));
+      const acceptance = section('验收标准', 'decided', 'requirement-acceptance');
+      acceptance.append(valueNode(req.acceptance_criteria));
+      summary.append(behavior, acceptance); body.append(summary);
+
+      if (req.open_questions?.length) {
+        const questions = section('需要确认', 'pending', 'requirement-questions');
+        questions.append(valueNode(req.open_questions)); body.append(questions);
+      }
+      const known = [['使用者', req.role], ['触发条件', req.trigger], ['输入', req.inputs], ['输出', req.outputs], ['处理约束', req.rules]].filter(([, value]) => display(value) !== '待确认');
+      if (known.length) {
+        const rules = section('业务规则', 'modules', 'requirement-rules');
+        fields(rules, known); body.append(rules);
+      }
+      if (display(req.exceptions) !== '待确认') {
+        const exceptions = section('异常处理', 'conditional', 'requirement-exceptions');
+        exceptions.append(valueNode(req.exceptions)); body.append(exceptions);
+      }
+
+      const sources = section('会议原话', 'quote', 'requirement-sources');
+      if (!(req.source_refs || []).length) sources.append(element('p', '来源待补充', 'inline-note'));
       for (const sourceId of req.source_refs || []) {
         const source = sourceMap.get(sourceId);
-        body.append(sourceLink(sourceId), element('blockquote', source?.text || '来源待补充', 'source-quote'));
+        const citation = element('div', null, 'requirement-citation');
+        citation.append(sourceLink(sourceId), element('blockquote', source?.text || '来源待补充', 'source-quote'));
+        sources.append(citation);
       }
+      body.append(sources);
+      appendCustomerFeedback(body, req.requirement_id);
     }
     const actions = element('div', null, 'requirement-actions');
-    const reviewButton = element('button', '记录评审意见', 'button ghost small');
+    const reviewButton = iconLabel(element('button', '记录评审意见', 'button ghost small'), 'review');
     reviewButton.type = 'button';
     reviewButton.addEventListener('click', () => { reviewTarget = req.requirement_id; reviewTab = 'questions'; navigate('review'); });
     actions.append(reviewButton);
     if (serverState) {
-      const edit = element('button', editing ? '返回需求' : '修改', 'button ghost small'); edit.type = 'button';
+      const edit = iconLabel(element('button', editing ? '返回需求' : '修改', 'button ghost small'), editing ? 'back' : 'edit'); edit.type = 'button';
       edit.addEventListener('click', () => { requirementTab = editing ? 'detail' : 'edit'; card.replaceWith(requirementCard(req)); });
       actions.append(edit);
     }
@@ -334,16 +391,16 @@
     }
     content.append(stats);
 
-    const outputs = panel('成果');
+    const outputs = panel('成果', 'documents');
     outputs.classList.add('overview-outputs');
-    const explicit = requirements.flatMap(req => (req.open_questions || []).map(item => item));
-    const pending = new Set(explicit.length ? explicit : (data.review.questions || []).map(item => item.reason)).size;
+    const explicit = requirements.flatMap(req => (req.open_questions || []).map(reason => ({target: req.requirement_id, reason})));
+    const pending = new Set((explicit.length ? explicit : data.review.questions || []).map(item => item.reason)).size;
     const stages = [
       ['materials', '会议素材', (project.materials || []).length ? (project.materials || []).length + ' 份素材' : '', (project.materials || []).length > 0],
       ['modules', '功能需求', requirements.length ? requirements.length + ' 条 · ' + confirmed + ' 条已确认' : '', requirements.length > 0],
       ['documents', '方案文档', '方案 · PRD', Boolean(data.documents?.['proposal.md'])],
       ['prototype', '原型预览', prototypeAvailable ? '已生成' : '', prototypeAvailable],
-      ['technical', '技术设计', [project.technical_architecture?.components?.length ? '架构' : '', hasArtifact(['data-model/']) ? '数据模型' : ''].filter(Boolean).join(' · '), Boolean(project.technical_architecture?.components?.length) || hasArtifact(['diagrams/', 'data-model/'])],
+      ['technical', '技术设计', [project.technical_architecture?.components?.length ? '架构' : '', project.business_model?.entities?.length ? '数据模型' : ''].filter(Boolean).join(' · '), Boolean(project.technical_architecture?.components?.length) || hasArtifact(['diagrams/', 'data-model/'])],
       ['review', '评审记录', pending ? pending + ' 个问题待确认' : '暂无待确认问题', true],
     ];
     for (const [view, label, summary, ready] of stages) {
@@ -353,7 +410,48 @@
       row.addEventListener('click', () => { if (view === 'review') reviewTab = 'questions'; navigate(view); });
       outputs.append(row);
     }
-    content.append(outputs);
+    const columns = element('div', null, 'overview-sections');
+    columns.append(outputs);
+    const followUp = panel('待确认事项', 'pending');
+    const questions = [...explicit, ...(data.review.questions || []).filter(item => item.reason !== '核对依据、范围与确认状态')];
+    const unique = questions.filter((item, index) => questions.findIndex(other => item.reason === other.reason) === index);
+    for (const question of unique.slice(0, 3)) {
+      const item = element('button', null, 'output-row'); item.type = 'button';
+      item.append(element('span', question.reason), element('span', '→'));
+      item.addEventListener('click', () => { reviewTarget = question.target; reviewTab = 'questions'; navigate('review'); });
+      followUp.append(item);
+    }
+    if (!unique.length) followUp.append(element('p', '暂无待确认事项', 'inline-note'));
+    const meeting = meetings.at(-1);
+    if (meeting) {
+      const open = element('button', null, 'output-row'); open.type = 'button';
+      open.append(element('strong', meeting.title), element('span', meeting.date || '查看素材'));
+      open.addEventListener('click', () => {
+        const material = (project.materials || []).find(item => meeting.material_ids?.includes(item.material_id));
+        if (material) selectedMaterial = 'material:' + material.material_id;
+        selectedSource = null; materialTab = 'library'; materialReader = 'highlights'; materialQuery = ''; materialPage = 0;
+        navigate('materials');
+      });
+      followUp.append(iconLabel(element('h3', '最近会议', 'overview-recent'), 'materials'), open);
+    }
+    columns.append(followUp); content.append(columns);
+    const flow = project.business_model.flows?.[0];
+    if (flow?.steps?.length) {
+      const flowCard = panel(flow.name || '业务流程', 'technical');
+      const items = element('ol', null, 'overview-flow');
+      for (const step of flow.steps) {
+        const item = element('li');
+        const req = requirements.find(requirement => step.requirement_ids?.includes(requirement.requirement_id));
+        if (req) {
+          const label = requirementLink(req); label.textContent = step.label || req.title; item.append(label);
+        } else item.append(element('span', step.label || step.id));
+        items.append(item);
+      }
+      const file = data.artifacts.find(item => item.path === 'diagrams/workflow.html');
+      flowCard.append(items);
+      if (file) flowCard.append(fileLink(file.path, '打开流程图'));
+      content.append(flowCard);
+    }
   }
   async function localRequest(path, options = {}) {
     const response = await fetch(path, {...options, headers: {'X-Workbench-Request': '1', 'X-Workbench-Run': location.pathname.match(/^\/versions\/(AN-[a-f0-9]{24})\//)?.[1] || '', ...options.headers}});
@@ -410,7 +508,7 @@
     const independent = element('option', '独立素材'); independent.value = ''; recording.append(independent);
     serverState.jobs.filter(job => job.kind === 'recording').forEach(job => { const option = element('option', job.name); option.value = job.job_id; recording.append(option); });
     recording.disabled = intakeBusy;
-    const submit = element('button', '导入文件', 'button primary');
+    const submit = iconLabel(element('button', '导入文件', 'button primary'), 'upload');
     submit.type = 'submit';
     submit.disabled = intakeBusy;
     form.append(label, files, element('p', '每个文件最大 256 MB。逐字稿生成来源片段，音视频提取音轨后等待转写。', 'inline-note'), recordingLabel, recording, submit);
@@ -442,7 +540,7 @@
     for (const [value, text] of [['transcript', '逐字稿'], ['media', '原始音视频']]) {
       const option = element('option', text); option.value = value; mode.append(option);
     }
-    const connect = element('button', '获取素材', 'button');
+    const connect = iconLabel(element('button', '获取素材', 'button'), 'link');
     connect.type = 'submit';
     connect.disabled = intakeBusy || !serverState.lark_cli_available;
     feishu.append(urlLabel, url, mode, connect);
@@ -479,7 +577,7 @@
         }
       }
       if (job.status === 'failed') {
-        const retry = element('button', '重试预处理', 'button');
+        const retry = iconLabel(element('button', '重试预处理', 'button small'), 'refresh');
         retry.type = 'button'; retry.disabled = intakeBusy;
         retry.addEventListener('click', () => importAction(() => localRequest('/api/retry', {method: 'POST', body: JSON.stringify({job_id: job.job_id})})));
         actions.append(retry);
@@ -497,7 +595,7 @@
       jobs.append(row);
     }
     if (!serverState.jobs.length) jobs.append(element('p', '导入后的素材将在这里显示'));
-    const refresh = element('button', '刷新接收箱', 'button');
+    const refresh = iconLabel(element('button', '刷新接收箱', 'button ghost small'), 'refresh');
     refresh.type = 'button';
     refresh.disabled = intakeBusy;
     refresh.addEventListener('click', async () => {
@@ -570,7 +668,7 @@
     }
     const versionLabel = element('label', '目标版本'); versionLabel.htmlFor = 'analysis-version';
     const version = element('input'); version.id = 'analysis-version'; version.value = nextVersion(); version.required = true; version.disabled = workflowBusy;
-    const submit = element('button', '准备分析请求', 'button primary'); submit.type = 'submit'; submit.disabled = workflowBusy;
+    const submit = iconLabel(element('button', '准备分析请求', 'button primary'), 'documents'); submit.type = 'submit'; submit.disabled = workflowBusy;
     form.append(versionLabel, version, submit);
     form.addEventListener('submit', event => {
       event.preventDefault();
@@ -597,13 +695,13 @@
         }
         if (task.kind === 'analysis' && task.status !== 'running') {
           if (serverState.analysis_configured) {
-            const execute = element('button', '执行已配置宿主', 'button primary'); execute.type = 'button'; execute.disabled = workflowBusy;
+            const execute = iconLabel(element('button', '执行已配置宿主', 'button primary'), 'play'); execute.type = 'button'; execute.disabled = workflowBusy;
             execute.addEventListener('click', () => workflowAction(() => localRequest('/api/analysis/execute', {method: 'POST', body: JSON.stringify({request_id: task.id})}))); row.append(execute);
           }
           const resultForm = element('form', null, 'intake-form');
           const label = element('label', '宿主返回的 project.json'); label.htmlFor = 'result-' + task.id;
           const file = element('input'); file.type = 'file'; file.accept = '.json'; file.required = true; file.id = label.htmlFor;
-          const complete = element('button', '校验并生成新版本', 'button'); complete.type = 'submit'; complete.disabled = workflowBusy;
+          const complete = iconLabel(element('button', '校验并生成新版本', 'button'), 'decided'); complete.type = 'submit'; complete.disabled = workflowBusy;
           resultForm.append(label, file, complete);
           resultForm.addEventListener('submit', event => {
             event.preventDefault(); const selected = file.files[0];
@@ -640,25 +738,33 @@
     });
     groups.forEach((sources, key) => entries.push({key: 'source:' + key, title: sources[0].source_name || '会议原话', meta: sources.length + ' 段原话', sources, meetings: (project.meetings || []).filter(meeting => (meeting.material_ids || []).includes(key))}));
     if (project.context_sources.length) entries.push({key: 'context', title: '前情资料', meta: project.context_sources.length + ' 项背景资料', sources: [], meetings: [], context: project.context_sources});
-    const visible = entries;
-    const selected = visible.find(item => selectedSource && item.sources.some(source => source.source_id === selectedSource)) || visible.find(item => item.key === selectedMaterial) || visible[0];
-    if (!selected) { content.append(empty('暂无匹配素材，可调整搜索词后查看')); return; }
+    const selected = entries.find(item => selectedSource && item.sources.some(source => source.source_id === selectedSource))
+      || entries.find(item => item.key === selectedMaterial) || entries[0];
+    if (!selected) { content.append(empty('暂无会议素材')); return; }
     selectedMaterial = selected.key;
-    const detail = selectionLayout(visible, selected.key, '会议素材列表', key => { selectedMaterial = key; selectedSource = null; materialPage = 0; materialReader = 'highlights'; materialQuery = ''; });
-    const card = panel(selected.title);
-    if (selected.context) {
-      card.append(valueNode(selected.context));
-      detail.append(card);
-      return;
-    }
+
     const meeting = selected.meetings[0];
-    const highlights = (meeting?.highlights || []).filter(item => item.text && item.source_refs?.every(id => sourceMap.has(id)));
-    const transcriptMode = materialReader === 'transcript' || selectedSource || materialQuery.trim() || !highlights.length;
-    const metadata = [meeting?.date, meeting?.duration_label].filter(Boolean);
-    if (metadata.length) card.append(element('p', metadata.join(' · '), 'material-metadata'));
-    const actions = element('div', null, 'document-actions');
+    const details = element('div', null, 'selection-detail meeting-workspace');
+    const card = element('section', null, 'meeting-reader');
+    const toolbar = element('div', null, 'meeting-filebar');
+    const selector = element('select'); selector.id = 'meeting-material'; selector.setAttribute('aria-label', '选择会议素材');
+    for (const entry of entries) {
+      const option = element('option', entry.title); option.value = entry.key; selector.append(option);
+    }
+    selector.value = selected.key;
+    selector.addEventListener('change', () => {
+      selectedMaterial = selector.value; selectedSource = null; materialPage = 0; materialReader = 'highlights'; materialQuery = '';
+      render(); document.getElementById('meeting-material').focus();
+    });
+    const metadata = [meeting?.date, meeting?.duration_label, selected.meta].filter(Boolean);
+    toolbar.append(selector, iconLabel(element('span', metadata.join(' · '), 'material-metadata'), 'clock'));
     const attached = data.attachments.find(item => item.material_id === selected.material?.material_id);
-    if (attached) actions.append(fileLink(attached.path, selected.material?.kind === 'recording' ? '下载素材' : '下载逐字稿'));
+    const actions = element('div', null, 'document-actions');
+    if (attached) {
+      const download = fileLink(attached.path, selected.material?.kind === 'recording' ? '下载素材' : '下载逐字稿');
+      download.download = selected.material?.name || attached.path.split('/').at(-1);
+      actions.append(download);
+    }
     if (meeting?.url) {
       try {
         const url = new URL(meeting.url);
@@ -666,13 +772,24 @@
           const link = element('a', '打开飞书妙记', 'button small');
           link.href = url.href; link.target = '_blank'; link.rel = 'noopener'; actions.append(link);
         }
-      } catch { /* An invalid source URL is retained in project data. */ }
+      } catch { /* Keep the original URL in project data. */ }
     }
-    if (actions.children.length) card.append(actions);
+    toolbar.append(actions);
+    content.append(toolbar, details);
+    details.append(card);
+    if (selected.context) { card.append(valueNode(selected.context)); return; }
+
+    const highlights = (meeting?.highlights || []).filter(item => item.text && item.source_refs?.every(id => sourceMap.has(id)));
+    const transcriptMode = materialReader === 'transcript' || materialQuery.trim() || !highlights.length;
     const readingTools = element('div', null, 'meeting-reading-tools');
+    if (highlights.length) {
+      readingTools.append(sectionTabs([['highlights', '会议重点'], ['transcript', '逐字稿']], transcriptMode ? 'transcript' : 'highlights', '会议阅读方式', key => {
+        materialReader = key; selectedSource = null; materialPage = 0; materialQuery = ''; render();
+      }));
+    } else readingTools.append(element('h2', '逐字稿'));
     const search = element('input', null, 'meeting-search');
     search.id = 'meeting-search'; search.type = 'search'; search.placeholder = '搜索本次会议原话';
-    search.setAttribute('aria-label', '搜索本次会议原话'); search.value = materialQuery;
+    search.setAttribute('aria-label', search.placeholder); search.value = materialQuery;
     search.addEventListener('input', () => {
       const cursor = search.selectionStart;
       materialQuery = search.value; materialPage = 0; selectedSource = null;
@@ -680,28 +797,73 @@
       const current = document.getElementById('meeting-search');
       current.focus(); current.setSelectionRange(cursor, cursor);
     });
-    card.append(readingTools);
-    if (highlights.length) {
-      readingTools.append(sectionTabs([['highlights', '会议重点'], ['transcript', '逐字稿']], transcriptMode ? 'transcript' : 'highlights', '会议阅读方式', key => { materialReader = key; selectedSource = null; materialPage = 0; materialQuery = ''; render(); }));
-      readingTools.append(search);
-      if (!transcriptMode) {
-        const list = element('div', null, 'meeting-highlights');
-        for (const highlight of highlights) {
-          const row = element('section', null, 'meeting-highlight');
-          row.append(element('p', highlight.text));
-          for (const id of highlight.source_refs) {
-            const button = sourceLink(id);
-            button.textContent = locatorLabel(sourceMap.get(id).locator) + ' 查看原话 →';
-            row.append(button);
-          }
-          list.append(row);
-        }
-        card.append(list);
-        detail.append(card);
-        return;
+    readingTools.append(search); card.append(readingTools);
+    if (transcriptMode) {
+      meetingTranscript(card, selected, attached);
+      if (selectedSource) card.querySelector('.source-selected')?.scrollIntoView?.({block: 'nearest'});
+      return;
+    }
+
+    const statuses = {decided: '已明确', conditional: '条件答复', proposal: '提议', pending: '待确认'};
+    const list = element('table', null, 'meeting-highlights');
+    list.setAttribute('aria-label', '会议重点');
+    const head = list.createTHead().insertRow();
+    for (const label of ['状态', '会议结论', '原话']) {
+      const cell = element('th', label); cell.scope = 'col';
+      if (label === '原话') cell.replaceChildren(iconLabel(element('span', label), 'quote'));
+      head.append(cell);
+    }
+    const rows = list.createTBody();
+    for (const [index, highlight] of highlights.entries()) {
+      const row = rows.insertRow(); row.className = 'meeting-highlight';
+      const selectedRow = highlight.source_refs.includes(selectedSource) && (selectedHighlight === null || selectedHighlight === index);
+      row.classList.toggle('meeting-highlight-selected', selectedRow);
+      const prefix = /^【(明确行动|已明确|条件答复|提议|待确认)】/.exec(highlight.text);
+      const legacy = {明确行动: 'decided', 已明确: 'decided', 条件答复: 'conditional', 提议: 'proposal', 待确认: 'pending'};
+      const status = Object.hasOwn(statuses, highlight.status) ? highlight.status : legacy[prefix?.[1]];
+      const marker = element('span', statuses[status] || '—', 'meeting-status' + (status ? ' status-' + status : ''));
+      if (status) iconLabel(marker, status);
+      row.insertCell().append(marker);
+      row.insertCell().textContent = prefix ? highlight.text.slice(prefix[0].length).trim() : highlight.text;
+      const citations = row.insertCell();
+      for (const id of highlight.source_refs) {
+        const button = sourceLink(id, index);
+        button.textContent = locatorLabel(sourceMap.get(id).locator) + ' →';
+        button.setAttribute('aria-label', locatorLabel(sourceMap.get(id).locator) + ' 查看原话');
+        if (selectedRow && id === selectedSource) button.setAttribute('aria-current', 'true');
+        citations.append(button);
       }
     }
-    if (!highlights.length) readingTools.append(search);
+    card.append(list);
+    if (!selectedSource || !selected.sources.some(source => source.source_id === selectedSource)) return;
+
+    const inspector = element('aside', null, 'meeting-evidence');
+    inspector.setAttribute('aria-labelledby', 'meeting-evidence-title');
+    const header = element('div', null, 'meeting-evidence-head');
+    const title = iconLabel(element('h2', '会议原话'), 'quote'); title.id = 'meeting-evidence-title'; title.tabIndex = -1;
+    const close = iconLabel(element('button', '关闭', 'button small'), 'close'); close.type = 'button'; close.setAttribute('aria-label', '关闭会议原话');
+    const dismiss = () => {
+      const previous = selectedSource;
+      const rowIndex = selectedHighlight;
+      selectedSource = null; selectedHighlight = null; render();
+      const origin = rowIndex === null ? content : content.querySelectorAll('.meeting-highlight')[rowIndex];
+      const opener = [...(origin?.querySelectorAll('[data-source-ref]') || [])].find(button => button.dataset.sourceRef === previous);
+      (opener || document.getElementById('meeting-material')).focus();
+    };
+    close.addEventListener('click', dismiss);
+    inspector.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { event.preventDefault(); dismiss(); }
+    });
+    header.append(title, close);
+    inspector.append(header, element('p', selected.title, 'material-metadata'));
+    const full = iconLabel(element('button', '打开完整逐字稿', 'source-link'), 'documents'); full.type = 'button';
+    full.addEventListener('click', () => { materialReader = 'transcript'; render(); focusSource(); });
+    inspector.append(full);
+    details.classList.add('with-evidence'); details.append(inspector);
+    meetingTranscript(inspector, selected, attached, true);
+  }
+
+  function meetingTranscript(host, selected, attached, contextOnly = false) {
     const relatedId = selected.material?.provenance?.related_job_id;
     const recording = relatedId ? (project.materials || []).find(item => item.job_id === relatedId || item.path?.startsWith(relatedId + '/')) : null;
     const recordingAttachment = data.attachments.find(item => item.material_id === recording?.material_id);
@@ -738,7 +900,7 @@
       player.setAttribute('aria-label', '来源录音');
       player.addEventListener('loadedmetadata', applySeek);
       player.addEventListener('error', () => { seekMessage.textContent = '录音无法加载，请核对文件与浏览器支持的格式'; });
-      card.append(player, seekMessage);
+      host.append(player, seekMessage);
     }
     const transcriptSources = selected.sources.filter(source => !materialQuery.trim() || JSON.stringify(source).toLowerCase().includes(materialQuery.trim().toLowerCase()));
     const selectedIndex = transcriptSources.findIndex(source => source.source_id === selectedSource);
@@ -753,17 +915,21 @@
       paging.append(button);
     }
     paging.append(element('span', (materialPage + 1) + ' / ' + pageCount + ' 页 · ' + transcriptSources.length + ' 段原话'));
-    if (pageCount > 1) card.append(paging);
-    transcriptSources.slice(materialPage * 30, (materialPage + 1) * 30).forEach(source => {
+    if (!contextOnly && pageCount > 1) host.append(paging);
+    const excerpts = contextOnly
+      ? transcriptSources.slice(Math.max(0, selectedIndex - 1), selectedIndex + 2)
+      : transcriptSources.slice(materialPage * 30, (materialPage + 1) * 30);
+    excerpts.forEach(source => {
       const excerpt = element('section', null, 'source-excerpt');
-      if (source.source_id === selectedSource) excerpt.classList.add('source-selected');
+      if (source.source_id === selectedSource) { excerpt.classList.add('source-selected'); excerpt.tabIndex = -1; }
       const speakerPrefix = /^([\p{Script=Han}]{2,8}|说话人\s*\d+|Speaker\s*\d+)[：:]\s*/u.exec(source.text);
       const speaker = source.speaker || speakerPrefix?.[1];
       badges(excerpt, [locatorLabel(source.locator), speaker || '说话人待确认']);
       excerpt.dataset.sourceId = source.source_id;
       excerpt.append(element('blockquote', speakerPrefix ? source.text.slice(speakerPrefix[0].length) : source.text, 'source-quote'));
+      const links = element('div', null, 'source-actions');
       if (player && Number.isFinite(source.locator.start_seconds)) {
-        const seek = element('button', '定位录音 ' + locatorLabel(source.locator), 'button small');
+        const seek = iconLabel(element('button', '定位录音 ' + locatorLabel(source.locator), 'button small'), 'clock');
         seek.type = 'button';
         seek.dataset.sourceId = source.source_id;
         seek.addEventListener('click', () => {
@@ -771,15 +937,14 @@
           if (player.readyState >= 1) applySeek();
           else { seekMessage.textContent = '正在加载录音时间信息…'; player.load(); }
         });
-        excerpt.append(seek);
+        links.append(seek);
       }
       const linked = requirements.filter(req => req.source_refs.includes(source.source_id));
-      linked.forEach(req => excerpt.append(requirementLink(req)));
-      card.append(excerpt);
+      linked.forEach(req => links.append(requirementLink(req)));
+      if (links.childElementCount) excerpt.append(links);
+      host.append(excerpt);
     });
-    if (!transcriptSources.length) card.append(element('p', materialQuery.trim() ? '没有匹配的原话' : '当前素材尚无可定位的原话片段', 'inline-note'));
-    detail.append(card);
-    if (selectedSource) detail.querySelector('.source-selected')?.scrollIntoView?.({block: 'nearest'});
+    if (!transcriptSources.length) host.append(element('p', materialQuery.trim() ? '没有匹配的原话' : '当前素材尚无可定位的原话片段', 'inline-note'));
   }
   function moduleDetails(group, host) {
     host.replaceChildren();
@@ -815,16 +980,10 @@
     const choices = element('nav', null, 'requirement-picker');
     choices.setAttribute('aria-label', '选择需求');
     group.items.forEach(req => {
-      const button = element('button', null, 'requirement-choice'); button.type = 'button';
-      button.dataset.requirementId = req.requirement_id;
-      button.title = '需求编号 ' + req.requirement_id;
-      button.append(element('strong', req.title), element('span', states[req.review_status]));
-      button.setAttribute('aria-pressed', String(req === current));
-      button.addEventListener('click', () => {
+      choices.append(requirementChoice(req, current, () => {
         selectedRequirement = req.requirement_id; requirementTab = 'detail';
         moduleDetails(group, host); host.querySelector('.requirement-choice[aria-pressed="true"]')?.focus();
-      });
-      choices.append(button);
+      }));
     });
     workspace.append(choices, requirementCard(current));
     host.append(workspace);
@@ -834,6 +993,24 @@
     Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, String(value)));
     if (text !== undefined) node.textContent = text;
     return node;
+  }
+  function workbenchDiagramPalette() {
+    const tokens = getComputedStyle(document.documentElement);
+    const color = name => tokens.getPropertyValue('--ui-' + name).trim();
+    return `
+      .diagram-container {
+        --backend-fill: ${color('accent-soft')};
+        --backend-stroke: ${color('diagram-node')};
+        --canvas-dot: ${color('border')};
+        --arrow: ${color('diagram-line')};
+      }
+      [data-node-id][data-workbench-selected] { filter: none !important; }
+      [data-workbench-selected] .c-backend { fill: ${color('accent-soft-strong')}; stroke: ${color('accent')}; stroke-width: 2.5px; }
+      [data-node-id]:focus-visible .c-backend { stroke: ${color('accent')}; stroke-width: 2.5px; }
+      .t-primary { fill: ${color('ink')}; }
+      .t-muted, .t-edge-default { fill: ${color('muted')}; }
+      .t-backend { fill: ${color('accent-ink')}; }
+    `;
   }
   function useCaseDiagram(groups, onSelect) {
     const items = groups.flatMap(group => group.items.map(req => ({req, group}))).filter((item, index, all) => all.findIndex(other => other.req.requirement_id === item.req.requirement_id) === index && item.req.lifecycle_status !== 'cancelled' && item.req.review_status !== 'parked');
@@ -892,7 +1069,7 @@
         related.forEach(req => links.append(requirementLink(req))); detail.append(links);
       }
       frame?.contentWindow?.postMessage({type: 'product-requirements:architecture-state', selected: nodes.indexOf(node)}, '*');
-      if (reveal) detail.scrollIntoView?.({block: 'nearest'});
+      if (reveal) detail.querySelector('h2')?.scrollIntoView?.({block: 'nearest'});
     }
     host.append(picker, detail);
     select(nodes.some(node => node.id === selectedArchitecture) ? selectedArchitecture : nodes[0].id);
@@ -903,10 +1080,13 @@
     if (!architecture?.components?.length) { content.append(empty('技术架构待确认')); return; }
     if (data.architecture_diagram) {
       const card = element('section', null, 'panel diagram-card'); card.setAttribute('aria-label', '技术架构');
+      const head = element('div', null, 'module-surface-head');
+      head.append(iconLabel(element('h2', architecture.review_status === 'confirmed' ? '系统组件' : '候选系统组件'), 'technical'));
+      head.append(fileLink('diagrams/architecture.html', '独立打开')); card.append(head);
       const frame = element('iframe', null, 'architecture-preview'); frame.title = 'Archify 技术架构'; frame.setAttribute('sandbox', 'allow-scripts');
       const details = architectureDetails(architecture, frame);
       const bridge = `(() => {
-        const style = document.createElement('style'); style.textContent = 'html,body{background:#fdfefe;min-height:0 !important;margin:0;padding:0 !important} body > .toolbar,.container > .header,.diagram-nav,.reader-rail,.rail-reveal,#focus-chip,.cards{display:none !important} .container{padding:0;max-width:none} .diagram-container{padding:0;border:0;box-shadow:none;margin:0;min-height:0 !important} .diagram-container > svg{display:block;width:100%;height:auto;min-width:0 !important} svg [data-node-id] text.t-primary{font-size:17px;transform:translateY(-5px)} svg [data-node-id] text.t-muted{font-size:12px} svg [data-node-id] text.t-backend{font-size:10px;opacity:1 !important} [data-node-id]{cursor:pointer} [data-node-id][data-workbench-selected]{filter:drop-shadow(0 0 3px #2863d6)}'; document.head.append(style);
+        const style = document.createElement('style'); style.textContent = 'html,body{background:#fdfefe;min-height:0 !important;margin:0;padding:0 !important} body > .toolbar,.container > .header,.diagram-nav,.reader-rail,.rail-reveal,#focus-chip,.cards{display:none !important} .container{padding:0;max-width:none} .diagram-container{padding:0;border:0;box-shadow:none;margin:0;min-height:0 !important} .diagram-container > svg{display:block;width:100%;height:auto;min-width:0 !important} @media(max-width:480px){.diagram-container > svg{min-width:620px !important}} svg [data-node-id] text.t-primary{font-size:17px;transform:translateY(-5px)} svg [data-node-id] text.t-muted{font-size:12px} svg [data-node-id] text.t-backend{font-size:10px;opacity:1 !important} [data-node-id]{cursor:pointer} '; style.textContent += ${JSON.stringify(workbenchDiagramPalette())}; document.head.append(style);
         const legend = document.querySelector('svg [data-legend]'); const drawing = legend?.ownerSVGElement; if (legend && drawing?.viewBox?.baseVal?.height) { const top = legend.getBBox().y; legend.remove(); if (top > 80) drawing.viewBox.baseVal.height = top - 12; }
         const target = document.querySelector('.diagram-container');
         const report = () => {if(target)parent.postMessage({type:'product-requirements:architecture-size',height:Math.ceil(target.getBoundingClientRect().height)},'*');};
@@ -983,8 +1163,8 @@
     let selected = choices.find(group => group.key === selectedModule) || choices[0];
     const tools = element('div', null, 'module-toolbar');
     const switcher = element('div', null, 'view-switcher'); switcher.setAttribute('role', 'group'); switcher.setAttribute('aria-label', '需求视图');
-    for (const [view, label] of [['list', '需求列表'], ['map', '功能模块'], ['usecases', '用例图']]) {
-      const button = element('button', label); button.type = 'button'; button.setAttribute('aria-pressed', String(moduleView === view));
+    for (const [view, label, marker] of [['list', '需求列表', 'modules'], ['map', '功能模块', 'technical'], ['usecases', '用例图', 'actors']]) {
+      const button = iconLabel(element('button', label), marker); button.type = 'button'; button.setAttribute('aria-pressed', String(moduleView === view));
       button.addEventListener('click', () => { moduleView = view; render(); content.querySelector('.view-switcher [aria-pressed="true"]')?.focus(); }); switcher.append(button);
     }
     tools.append(switcher, element('span', visible.length + ' / ' + requirements.length + ' 条需求', 'module-count'));
@@ -1002,17 +1182,12 @@
       const layout = element('div', null, 'module-requirements');
       const picker = element('nav', null, 'requirement-picker'); picker.setAttribute('aria-label', '选择需求');
       choices.filter(group => group.items.length).forEach(group => {
-        picker.append(element('p', group.title, 'requirement-group'));
+        picker.append(iconLabel(element('p', group.title, 'requirement-group'), 'folder'));
         group.items.forEach(req => {
-          const button = element('button', null, 'requirement-choice'); button.type = 'button';
-          button.dataset.requirementId = req.requirement_id; button.title = '需求编号 ' + req.requirement_id;
-          button.append(element('strong', req.title), element('span', states[req.review_status]));
-          button.setAttribute('aria-pressed', String(req === current));
-          button.addEventListener('click', () => {
+          picker.append(requirementChoice(req, current, () => {
             selectedRequirement = req.requirement_id; requirementTab = 'detail'; render();
             content.querySelector('.requirement-choice[aria-pressed="true"]')?.focus();
-          });
-          picker.append(button);
+          }));
         });
       });
       layout.append(picker, requirementCard(current)); detail.append(layout); content.append(detail);
@@ -1030,7 +1205,7 @@
       for (const button of filters.querySelectorAll('button')) button.setAttribute('aria-current', String(button.dataset.moduleKey === key));
       moduleDetails(selected, detail);
       moduleFrame?.contentWindow?.postMessage({type: 'product-requirements:module-state', selected: (project.modules || []).findIndex(module => module.module_id === selected.module?.module_id), visible: choices.map(group => (project.modules || []).findIndex(module => module.module_id === group.module?.module_id))}, '*');
-      if (reveal) detail.scrollIntoView?.({block: 'nearest'});
+      if (reveal) detail.querySelector('h2')?.scrollIntoView?.({block: 'nearest'});
     }
     choices.forEach(group => {
       const button = element('button', null, 'module-filter'); button.type = 'button'; button.dataset.moduleKey = group.key;
@@ -1043,12 +1218,12 @@
     if (moduleView === 'usecases') {
       surface.append(useCaseDiagram(choices, (key, requirement) => { selectedRequirement = requirement; select(key, true); }));
     } else if (moduleView === 'map' && data.module_diagram) {
-      const head = element('div', null, 'module-surface-head'); head.append(element('h2', '业务模块'));
+      const head = element('div', null, 'module-surface-head'); head.append(iconLabel(element('h2', '业务模块'), 'modules'));
       head.append(fileLink('diagrams/modules.html', '独立打开')); surface.append(head);
       const frame = element('iframe', null, 'module-map'); frame.title = 'Archify 业务模块图'; frame.setAttribute('sandbox', 'allow-scripts');
       frame.style.height = Math.max(300, Math.ceil(project.modules.length / 3) * 160 + 120) + 'px';
       const bridge = `(() => {
-        const style = document.createElement('style'); style.textContent = 'html,body {background:#fdfefe;min-height:0 !important;margin:0;padding:0 !important} body > .toolbar, .container > .header, .diagram-nav, .reader-rail, .rail-reveal, #focus-chip, .cards {display:none !important} .container {padding:0;max-width:none} .diagram-container {padding:0;border:0;box-shadow:none;margin:0;min-height:0 !important} .diagram-container > svg {display:block;width:100%;height:auto;min-width:0 !important} @media(max-width:480px){.diagram-container > svg {min-width:620px !important}} svg [data-node-id] text.t-primary {font-size:17px;transform:translateY(-5px)} svg [data-node-id] text.t-muted {font-size:12px} [data-node-id][data-workbench-selected] {filter:drop-shadow(0 0 3px #2863d6)} [data-node-id][data-workbench-filtered] {opacity:.22}'; document.head.append(style);
+        const style = document.createElement('style'); style.textContent = 'html,body {background:#fdfefe;min-height:0 !important;margin:0;padding:0 !important} body > .toolbar, .container > .header, .diagram-nav, .reader-rail, .rail-reveal, #focus-chip, .cards {display:none !important} .container {padding:0;max-width:none} .diagram-container {padding:0;border:0;box-shadow:none;margin:0;min-height:0 !important} .diagram-container > svg {display:block;width:100%;height:auto;min-width:0 !important} @media(max-width:480px){.diagram-container > svg {min-width:620px !important}} svg [data-node-id] text.t-primary {font-size:17px;transform:translateY(-5px)} svg [data-node-id] text.t-muted {font-size:12px} [data-node-id][data-workbench-filtered] {opacity:.22}'; style.textContent += ${JSON.stringify(workbenchDiagramPalette())}; document.head.append(style);
         const legend = document.querySelector('svg [data-legend]'); const drawing = legend?.ownerSVGElement; if (legend && drawing?.viewBox?.baseVal?.height) { const top = legend.getBBox().y; legend.remove(); if (top > 80) drawing.viewBox.baseVal.height = top - 12; }
         const target = document.querySelector('.diagram-container');
         const report = () => {if(target)parent.postMessage({type:'product-requirements:module-size',height:Math.ceil(target.getBoundingClientRect().height)},'*');};
@@ -1072,12 +1247,20 @@
     let list = null;
     function paragraph(tag, text) {
       const node = element(tag);
+      const field = tag === 'li' ? /^([\p{Script=Han}]{2,8})( — )/u.exec(text) : null;
+      if (field) {
+        node.append(element('strong', field[1]), document.createTextNode(field[2]));
+        text = text.slice(field[0].length);
+      }
       let offset = 0;
-      for (const match of text.matchAll(/(?<!\\)\[([^\]]+)\]\((https:\/\/[^\s)]+|(?:prd|proposal)\.md)\)/g)) {
+      for (const match of text.matchAll(/(?<!\\)(?:\[([^\]]+)\]\((https:\/\/[^\s)]+|(?:prd|proposal)\.md)\)|\*\*([^*\n]+)\*\*)/g)) {
         node.append(document.createTextNode(unescape(text.slice(offset, match.index))));
-        const link = element('a', match[1]);
-        link.href = match[2].startsWith('https://') ? match[2] : '../' + match[2];
-        link.target = '_blank'; link.rel = 'noopener'; node.append(link);
+        if (match[3]) node.append(element('strong', unescape(match[3])));
+        else {
+          const link = element('a', unescape(match[1]));
+          link.href = match[2].startsWith('https://') ? match[2] : '../' + match[2];
+          link.target = '_blank'; link.rel = 'noopener'; node.append(link);
+        }
         offset = match.index + match[0].length;
       }
       node.append(document.createTextNode(unescape(text.slice(offset))));
@@ -1146,34 +1329,45 @@
   }
   function documents() {
     const name = selectedDocument;
-    const items = [['proposal.md', '项目方案'], ['prd.md', 'PRD'], ...(data.documents['agent-prompt.md'] ? [['agent-prompt.md', '开发提示词']] : [])];
+    const items = [['proposal.md', '项目方案', 'documents'], ['prd.md', 'PRD', 'modules'], ...(data.documents['agent-prompt.md'] ? [['agent-prompt.md', '开发提示词', 'api']] : [])];
     const derived = name === 'agent-prompt.md';
     if (derived) documentEditing = false;
-    content.append(sectionTabs(items, name, '文档类型', key => { selectedDocument = key; documentChapter = 0; documentEntry = 0; documentEditing = false; documentMessage = ''; render(); }));
+    const tabs = sectionTabs(items, name, '文档类型', key => { selectedDocument = key; documentChapter = 0; documentEntry = 0; documentEditing = false; documentMessage = ''; render(); });
+    tabs.classList.add('document-type-tabs');
+    content.append(tabs);
     const text = documentDrafts[name] ?? data.documents[name] ?? '';
     const chunks = text.split(/(?=^## )/m);
     let intro = chunks.shift() || '';
-    let chapters = chunks.map((chunk, index) => ({key: String(index), title: chunk.split('\n')[0].replace(/^## /, ''), meta: '', text: chunk}));
-    if (!chapters.length) { intro = ''; chapters = [{key: '0', title: '正文', meta: '', text}]; }
+    const chapterMarkers = {'文档信息': 'info', '模板参考': 'external', '原始依据': 'quote', '验收与待确认': 'decided', '验收与风险': 'pending', '功能需求': 'modules'};
+    let chapters = chunks.map((chunk, index) => {
+      const title = chunk.split('\n')[0].replace(/^## /, '');
+      return {key: String(index), title, marker: Object.hasOwn(chapterMarkers, title) ? chapterMarkers[title] : 'documents', text: chunk};
+    });
+    if (!chapters.length) { intro = ''; chapters = [{key: '0', title: '正文', marker: 'documents', text}]; }
     documentChapter = Math.min(documentChapter, chapters.length - 1);
     const selectedIndex = documentChapter;
     const selected = chapters[selectedIndex];
     const detail = selectionLayout(chapters, String(selectedIndex), '文档章节', key => { documentChapter = Number(key); documentEntry = 0; documentEditing = false; });
-    const card = panel(selected.title);
+    detail.parentElement.classList.add('document-workspace');
+    const card = panel(selected.title, 'documents');
+    card.classList.add('document-reader');
+    const tools = element('header', null, 'document-reader-head');
+    tools.append(card.firstElementChild);
+    card.dataset.documentEditing = String(documentEditing);
     const actions = element('div', null, 'document-actions');
-    const edit = element('button', documentEditing ? '预览本节' : '编辑本节', 'button small');
+    const edit = iconLabel(element('button', documentEditing ? '预览本节' : '编辑本节', 'button small'), documentEditing ? 'prototype' : 'edit');
     edit.type = 'button'; edit.disabled = documentSaving;
     edit.addEventListener('click', () => { documentEditing = !documentEditing; render(); });
-    const print = element('button', '打印 / PDF', 'button small'); print.type = 'button';
+    const print = iconLabel(element('button', '打印 / PDF', 'button small'), 'print'); print.type = 'button';
     print.addEventListener('click', () => printDocument(name));
-    const download = element('button', '下载正文', 'button small'); download.type = 'button';
+    const download = iconLabel(element('button', '下载正文', 'button small'), 'download'); download.type = 'button';
     download.addEventListener('click', () => {
       const url = URL.createObjectURL(new Blob([documentDrafts[name] ?? data.documents[name]], {type: 'text/markdown;charset=utf-8'}));
       const link = element('a'); link.href = url; link.download = name; document.body.append(link); link.click(); link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     });
     if (derived) {
-      const copy = element('button', '复制全文', 'button primary small'); copy.type = 'button';
+      const copy = iconLabel(element('button', '复制全文', 'button primary small'), 'copy'); copy.type = 'button';
       copy.addEventListener('click', async () => {
         try { await navigator.clipboard.writeText(data.documents[name]); documentMessage = '已复制，可直接粘贴给 Coding Agent'; }
         catch { documentMessage = '浏览器未允许复制，请用“下载正文”'; }
@@ -1181,7 +1375,7 @@
       });
       actions.append(copy, download);
     } else actions.append(edit, print, download);
-    const save = element('button', '保存新版本', 'button primary small'); save.type = 'button';
+    const save = iconLabel(element('button', '保存新版本', 'button primary small'), 'decided'); save.type = 'button';
     save.disabled = documentSaving || !Object.hasOwn(documentDrafts, name) || documentDrafts[name] === data.documents[name];
     if (serverState && !derived) {
       actions.append(save);
@@ -1196,7 +1390,7 @@
         finally { documentSaving = false; render(); }
       });
     }
-    card.append(actions);
+    tools.append(actions); card.append(tools);
     if (documentMessage) { const message = element('p', documentMessage, 'inline-note'); message.setAttribute('role', 'status'); card.append(message); }
     const heading = selected.text.startsWith('## ') ? selected.text.split('\n')[0] : '';
     const chapterText = heading ? selected.text.split('\n').slice(1).join('\n') : selected.text;
@@ -1307,7 +1501,7 @@
     if (ready && serverState) {
       const form = element('form', null, 'document-actions');
       const version = element('input'); version.value = nextVersion(); version.required = true; version.setAttribute('aria-label', '原型版本'); version.disabled = workflowBusy;
-      const submit = element('button', '生成原型', 'button primary'); submit.type = 'submit'; submit.disabled = workflowBusy;
+      const submit = iconLabel(element('button', '生成原型', 'button primary'), 'prototype'); submit.type = 'submit'; submit.disabled = workflowBusy;
       form.append(version, submit);
       form.addEventListener('submit', event => { event.preventDefault(); workflowAction(() => localRequest('/api/generate', {method: 'POST', body: JSON.stringify({version: version.value, kinds: ['prototype']})})); });
       card.append(form);
@@ -1329,7 +1523,7 @@
     const confirmedNfrs = nfrs.filter(item => item.review_status === 'confirmed');
     const shown = confirmedNfrs.filter(item => item.prototype_treatment?.kind === 'shown').length;
     const toolbar = element('div', null, 'prototype-toolbar');
-    toolbar.append(element('span', [artifact.artifact_version || project.artifact_version, '覆盖 ' + covered.size + ' 条需求', confirmedNfrs.length ? '体现 ' + shown + ' 条非功能需求' : ''].filter(Boolean).join(' · '), 'prototype-summary'));
+    toolbar.append(iconLabel(element('span', [artifact.artifact_version || project.artifact_version, '覆盖 ' + covered.size + ' 条需求', confirmedNfrs.length ? '体现 ' + shown + ' 条非功能需求' : ''].filter(Boolean).join(' · '), 'prototype-summary'), 'prototype'));
     const tools = element('div', null, 'document-actions');
     const frame = element('iframe', null, 'workbench-preview prototype-frame');
     frame.title = '交互原型';
@@ -1338,12 +1532,12 @@
     frame.src = base + (prototypeAnnotate ? '?annotate=1' : '') + '#' + encodeURIComponent(selectedPrototypePage);
     frame.style.width = widths[previewDevice];
     if (devices.length > 1) for (const device of devices) {
-      const button = element('button', {desktop: '桌面', tablet: '平板', mobile: '手机'}[device], 'button ghost small'); button.type = 'button';
+      const button = iconLabel(element('button', {desktop: '桌面', tablet: '平板', mobile: '手机'}[device], 'button ghost small'), device === 'desktop' ? 'prototype' : 'mobile'); button.type = 'button';
       button.setAttribute('aria-pressed', String(device === previewDevice));
       button.addEventListener('click', () => { previewDevice = device; frame.style.width = widths[device]; tools.querySelectorAll('[data-device]').forEach(item => item.setAttribute('aria-pressed', String(item === button))); });
       button.dataset.device = device; tools.append(button);
     }
-    const annotate = element('button', '标注需求', 'button ghost small'); annotate.type = 'button';
+    const annotate = iconLabel(element('button', '标注需求', 'button ghost small'), 'modules'); annotate.type = 'button';
     annotate.setAttribute('aria-pressed', String(prototypeAnnotate));
     annotate.addEventListener('click', () => { prototypeAnnotate = !prototypeAnnotate; annotate.setAttribute('aria-pressed', String(prototypeAnnotate)); frame.contentWindow?.postMessage({type: 'prototype:annotate', on: prototypeAnnotate}, '*'); });
     tools.append(annotate, fileLink(artifact.path, '独立打开'));
@@ -1356,7 +1550,7 @@
     function drawMapping() {
       const page = pages.find(item => item.page_id === selectedPrototypePage);
       list.querySelectorAll('[data-selection-key]').forEach(node => { if (node.dataset.selectionKey === page.page_id) node.setAttribute('aria-current', 'true'); else node.removeAttribute('aria-current'); });
-      mapping.replaceChildren(element('h2', page.name), element('p', page.purpose, 'prototype-purpose'));
+      mapping.replaceChildren(iconLabel(element('h2', page.name), 'documents'), element('p', page.purpose, 'prototype-purpose'));
       const reqs = (page.requirement_ids || []).map(id => requirements.find(req => req.requirement_id === id)).filter(Boolean);
       if (reqs.length) {
         mapping.append(element('h3', '功能需求'));
@@ -1387,7 +1581,7 @@
     }
     for (const page of pages) {
       const button = element('button', null, 'selection-button'); button.type = 'button'; button.dataset.selectionKey = page.page_id;
-      button.append(element('strong', page.name), element('span', [(page.requirement_ids || []).length ? page.requirement_ids.length + ' 条需求' : '', (page.nfr_ids || []).length ? page.nfr_ids.length + ' 条非功能' : ''].filter(Boolean).join(' · ')));
+      button.append(iconLabel(element('strong', page.name), 'documents'), element('span', [(page.requirement_ids || []).length ? page.requirement_ids.length + ' 条需求' : '', (page.nfr_ids || []).length ? page.nfr_ids.length + ' 条非功能' : ''].filter(Boolean).join(' · ')));
       button.addEventListener('click', () => { selectedPrototypePage = page.page_id; frame.contentWindow?.postMessage({type: 'prototype:go', page_id: page.page_id}, '*'); drawMapping(); });
       list.append(button);
     }
@@ -1423,43 +1617,99 @@
       return;
     }
     const model = project.business_model;
-    if (Array.isArray(model.entities) && model.entities.length) {
-      for (const entity of model.entities) {
-        const card = panel(entity.name || entity.entity_id || '业务实体');
-        if (Array.isArray(entity.fields)) {
-          card.append(dataTable(entity.fields.map(field => {
-            const {name, field_id, ...definition} = field;
-            return [name || field_id, definition];
-          })));
-        } else card.append(dataTable(Object.entries(entity)));
-        content.append(card);
+    const entities = Array.isArray(model.entities) ? model.entities : [];
+    if (!entities.length) { content.append(empty('业务数据模型待整理')); return; }
+    const identity = entity => entity.entity_id || entity.name;
+    const entitiesById = new Map(entities.map(entity => [identity(entity), entity]));
+    const current = entitiesById.get(selectedEntity) || entities[0];
+    selectedEntity = identity(current);
+    const links = Array.isArray(model.relations) ? model.relations.filter(link => entitiesById.has(link?.from) && entitiesById.has(link?.to)) : [];
+    const map = panel('业务实体关系', 'technical');
+    map.classList.add('entity-map');
+    const choices = element('nav', null, 'module-filters'); choices.setAttribute('aria-label', '选择业务实体');
+    const select = key => {
+      selectedEntity = key; render();
+      content.querySelector('.entity-map [aria-pressed="true"]')?.focus();
+    };
+    for (const entity of entities) {
+      const choice = element('button', entity.name || identity(entity), 'module-filter'); choice.type = 'button';
+      choice.setAttribute('aria-pressed', String(entity === current));
+      choice.addEventListener('click', () => select(identity(entity)));
+      choices.append(choice);
+    }
+    map.append(choices);
+    const graph = element('div', null, 'entity-graph');
+    const entityNode = (entity, isCurrent = false) => {
+      const node = element('div', null, 'entity-node');
+      if (isCurrent) node.classList.add('entity-node-current');
+      const name = entity.name || identity(entity);
+      if (isCurrent) node.append(element('strong', name));
+      else {
+        const button = element('button', name, 'source-link'); button.type = 'button';
+        button.addEventListener('click', () => select(identity(entity))); node.append(button);
       }
-      if (Array.isArray(model.relations) && model.relations.length) {
-        const relations = panel('实体关系');
-        relations.append(dataTable(model.relations.map((relation, index) => [relation.name || '关系 ' + (index + 1), relation])));
-        content.append(relations);
-      }
-    } else content.append(empty('业务数据模型待整理'));
-    artifactPreviews('data-model/', '交互式 ERD 待生成');
+      const fields = element('ul');
+      if (Array.isArray(entity.fields)) entity.fields.slice(0, 4).forEach(field => fields.append(element('li', field.name || field.field_id)));
+      node.append(fields);
+      return node;
+    };
+    graph.append(entityNode(current, true));
+    const relations = element('ul', null, 'entity-neighbours');
+    for (const link of links.filter(item => item.from === selectedEntity || item.to === selectedEntity)) {
+      const outgoing = link.from === selectedEntity;
+      const destination = entitiesById.get(outgoing ? link.to : link.from);
+      const branch = element('li', null, 'entity-branch');
+      const direction = element('span', null, 'entity-edge');
+      direction.append(element('span', link.label || (link.kind === 'foreign_key' && link.database_evidence ? '外键' : '逻辑关联')),
+        element('span', outgoing ? '→' : '←', 'entity-edge-arrow'), element('small', link.cardinality || '关系基数待确认'));
+      branch.append(direction, entityNode(destination)); relations.append(branch);
+    }
+    if (relations.childElementCount) graph.append(relations);
+    map.append(graph); content.append(map);
+
+    const detail = panel(current.name || selectedEntity);
+    if (current.description) detail.append(element('p', current.description, 'material-metadata'));
+    if (Array.isArray(current.fields) && current.fields.length) detail.append(dataTable(current.fields.map(field => {
+      const {name, field_id, ...definition} = field;
+      return [name || field_id, definition];
+    })));
+    else detail.append(empty('实体字段待确认'));
+    requirements.filter(req => current.requirement_ids?.includes(req.requirement_id)).forEach(req => detail.append(requirementLink(req)));
+    content.append(detail);
   }
   function api() {
     const apis = (project.apis || []).filter(matches);
     if (!apis.length) { content.append(empty('暂无接口设计')); return; }
     for (const item of apis) {
-      const card = panel(item.name || item.api_id);
-      fields(card, [['接口', display(item.method) + ' ' + display(item.path)], ['关联需求', item.requirement_ids], ['请求', item.request], ['响应', item.response], ['异常', item.errors], ['确认状态', item.review_status]]);
-      requirements.filter(req => (item.requirement_ids || []).includes(req.requirement_id)).forEach(req => card.append(requirementLink(req)));
+      const card = panel(item.name || item.api_id, 'technical');
+      card.classList.add('api-spec');
+      const endpoint = element('div', null, 'api-endpoint');
+      const state = element('span', states[item.review_status] || item.review_status, 'api-status');
+      endpoint.append(element('span', display(item.method), 'api-method'), element('code', display(item.path)), state);
+      card.append(endpoint);
+      const parts = element('div', null, 'api-parts');
+      for (const [caption, data, marker] of [['请求', item.request, 'external'], ['响应', item.response, 'back'], ['异常', item.errors, 'pending']]) {
+        const block = element('section');
+        block.append(iconLabel(element('h3', caption), marker), valueNode(data)); parts.append(block);
+      }
+      card.append(parts);
+      const related = requirements.filter(req => item.requirement_ids?.includes(req.requirement_id));
+      if (related.length) {
+        const links = element('div', null, 'api-related');
+        links.append(iconLabel(element('h3', '关联需求'), 'modules'), ...related.map(requirementLink)); card.append(links);
+      }
       content.append(card);
     }
   }
   function reviewForm(host = content, phase = 'definition') {
-    const section = panel('记录评审意见');
+    const section = panel('记录评审意见', 'edit');
+    section.classList.add('review-editor');
     if (!serverState) {
       section.append(element('p', '当前为只读分享版，评审意见请在本机工作台中记录。', 'inline-note'));
       host.append(section);
       return;
     }
-    const form = element('form', null, 'intake-form');
+    const form = element('form', null, 'intake-form review-opinion-form');
     const stage = element('select'); stage.id = 'review-stage';
     for (const [value, title] of [['definition', '需求定义'], ['release', '客户发布']]) { const option = element('option', title); option.value = value; stage.append(option); }
     stage.value = phase;
@@ -1476,8 +1726,16 @@
     for (const [value, label] of [['needs_changes', '需要修改'], ['confirmed', '确认此项'], ['parked', '暂缓']]) { const option = element('option', label); option.value = value; outcome.append(option); }
     const reviewer = element('input'); reviewer.id = 'review-author'; reviewer.maxLength = 200;
     const comment = element('textarea'); comment.id = 'review-comment'; comment.rows = 3; comment.maxLength = 10000;
-    for (const [input, title] of [...(phase === 'release' ? [[target, '评审对象']] : []), [outcome, '结论'], [reviewer, '记录人（选填）'], [comment, '意见']]) { const label = element('label', title); label.htmlFor = input.id; form.append(label, input); }
-    const save = element('button', '保存意见', 'button primary'); save.type = 'submit'; save.disabled = !targets.size;
+    const updateOutcome = () => { outcome.dataset.outcome = outcome.value; };
+    outcome.addEventListener('change', updateOutcome);
+    updateOutcome();
+    for (const [input, title, marker] of [...(phase === 'release' ? [[target, '评审对象', 'prototype']] : []), [outcome, '结论', 'decided'], [reviewer, '记录人（选填）', 'actors'], [comment, '意见', 'edit']]) {
+      const field = element('div', null, 'review-field'); field.dataset.field = input.id;
+      const label = iconLabel(element('label', title), marker); label.htmlFor = input.id;
+      field.append(label, input === target || input === outcome ? selectControl(input) : input);
+      form.append(field);
+    }
+    const save = iconLabel(element('button', '保存意见', 'button primary'), 'decided'); save.type = 'submit'; save.disabled = !targets.size;
     const revision = serverState.review.revision;
     form.addEventListener('submit', async event => {
       event.preventDefault(); save.disabled = true;
@@ -1490,24 +1748,26 @@
     });
     const message = element('p', reviewMessage, 'inline-note'); message.setAttribute('role', 'status');
     form.append(save, message); section.append(form);
-    const refresh = element('button', '刷新记录', 'button');
+    const recordActions = element('div', null, 'review-record-actions');
+    const refresh = iconLabel(element('button', '刷新记录', 'button small'), 'refresh');
     refresh.type = 'button';
     refresh.addEventListener('click', async () => {
       try { await refreshLocal(); render(); } catch (error) { message.textContent = error.message; }
     });
-    section.append(refresh);
+    recordActions.append(refresh);
     const records = serverState.review.decisions;
     if (records.length) {
-      const exportButton = element('button', '导出评审记录', 'button');
+      const exportButton = iconLabel(element('button', '导出评审记录', 'button small'), 'download');
       exportButton.type = 'button';
       exportButton.addEventListener('click', () => downloadJson({project_id: project.project_id, artifact_version: project.artifact_version, ...serverState.review, review_stage: stage.value, decisions: serverState.review.decisions.filter(item => (item.review_stage || 'definition') === stage.value)}, 'review-notes.json'));
-      section.append(exportButton);
+      recordActions.append(exportButton);
     }
+    section.append(recordActions);
     if (phase === 'release') { host.append(section); return; }
-    const apply = element('form', null, 'intake-form');
-    const label = element('label', '评审后的目标版本'); label.htmlFor = 'review-version';
+    const apply = element('form', null, 'intake-form review-apply-form');
+    const label = iconLabel(element('label', '评审后的目标版本'), 'history'); label.htmlFor = 'review-version';
     const version = element('input'); version.id = 'review-version'; version.value = nextVersion(); version.required = true;
-    const submit = element('button', '应用意见与修订', 'button primary'); submit.type = 'submit'; submit.disabled = workflowBusy || (!records.some(item => (item.review_stage || 'definition') === 'definition') && !pendingChanges.length);
+    const submit = iconLabel(element('button', '应用意见与修订', 'button'), 'history'); submit.type = 'submit'; submit.disabled = workflowBusy || (!records.some(item => (item.review_stage || 'definition') === 'definition') && !pendingChanges.length);
     apply.append(label, version, submit);
     for (const change of pendingChanges) {
       const row = element('div', null, 'inbox-row');
@@ -1541,7 +1801,7 @@
         const checkbox = element('input'); checkbox.type = 'checkbox'; checkbox.checked = true; checkbox.disabled = workflowBusy;
         label.append(checkbox, element('span', file.path)); form.append(label); choices.push([file.path, checkbox]);
       }
-      const submit = element('button', '生成客户交付包', 'button primary'); submit.type = 'submit'; submit.disabled = workflowBusy;
+      const submit = iconLabel(element('button', '生成客户交付包', 'button primary'), 'package'); submit.type = 'submit'; submit.disabled = workflowBusy;
       form.append(submit);
       form.addEventListener('submit', event => {
         event.preventDefault(); const selected = choices.filter(([, checkbox]) => checkbox.checked).map(([path]) => path); const revision = serverState.review.revision;
@@ -1551,23 +1811,25 @@
     } else card.append(element('p', '当前版本尚无可交付原型'));
     if (workflowMessage) card.append(element('p', workflowMessage, 'inline-note'));
     for (const release of serverState.releases || []) {
-      const row = element('section', null, 'inbox-row'); row.append(element('h3', release.artifact_version + ' · 客户交付包'));
-      const preview = element('a', '预览客户包', 'button'); preview.href = '/customer/' + release.release_id + '/index.html'; preview.target = '_blank'; preview.rel = 'noopener';
-      const download = element('a', '下载 ZIP', 'button'); download.href = '/api/releases/' + release.release_id + '/package'; download.download = project.project_id + '-' + release.artifact_version + '.zip';
-      row.append(preview, download); card.append(row);
+      const row = element('section', null, 'inbox-row delivery-package');
+      row.append(iconLabel(element('h3', release.artifact_version + ' · 客户交付包'), 'package'));
+      const preview = iconLabel(element('a', '预览客户包', 'button small'), 'external'); preview.href = '/customer/' + release.release_id + '/index.html'; preview.target = '_blank'; preview.rel = 'noopener';
+      const download = iconLabel(element('a', '下载 ZIP', 'button small'), 'download'); download.href = '/api/releases/' + release.release_id + '/package'; download.download = project.project_id + '-' + release.artifact_version + '.zip';
+      const actions = element('div', null, 'document-actions'); actions.append(preview, download);
+      row.append(actions); card.append(row);
     }
     content.append(card);
   }
   function customerReview() {
-    const card = panel('客户复核');
+    const card = panel('客户复核', 'actors');
     content.append(card);
     if (!serverState) {
       card.append(element('p', '请在本地工作台中创建问卷和查看回答。', 'inline-note'));
       return;
     }
     const feedback = serverState.jobs.filter(job => job.provenance?.provider === 'customer_review' && job.provenance.artifact_version === project.artifact_version);
-    const responses = panel('本版客户反馈');
-    const refresh = element('button', '刷新反馈', 'button');
+    const responses = panel('本版客户反馈', 'review');
+    const refresh = iconLabel(element('button', '刷新反馈', 'button ghost small'), 'refresh');
     refresh.type = 'button';
     const feedbackStatus = element('p', '', 'inline-note');
     feedbackStatus.setAttribute('role', 'status');
@@ -1598,16 +1860,20 @@
       card.append(element('p', '先整理至少一条需求，再创建客户问卷。', 'inline-note'));
       return;
     }
-    const form = element('form', null, 'intake-form');
-    const questions = element('div');
-    const add = element('button', '添加问题', 'button');
+    const form = element('form', null, 'intake-form customer-question-form');
+    const questions = element('div', null, 'customer-question-list');
+    const add = iconLabel(element('button', '添加问题', 'button'), 'plus');
     add.type = 'button';
-    const publish = element('button', '生成答题链接', 'button primary');
+    const publish = iconLabel(element('button', '生成答题链接', 'button primary'), 'link');
     publish.type = 'submit';
     const status = element('p', '', 'inline-note');
     status.setAttribute('role', 'status');
+    function updateActions() {
+      add.disabled = questions.childElementCount >= 20;
+      publish.disabled = !questions.childElementCount;
+    }
     function addQuestion() {
-      const row = element('fieldset', null, 'inbox-row');
+      const row = element('fieldset', null, 'customer-question');
       const target = element('select');
       for (const requirement of requirements) {
         const option = element('option', requirement.title);
@@ -1629,26 +1895,36 @@
       }
       target.addEventListener('change', suggest);
       suggest();
-      const remove = element('button', '删除问题', 'button');
+      const remove = iconLabel(element('button', '删除问题', 'button danger ghost small'), 'trash');
       remove.type = 'button';
-      remove.addEventListener('click', () => { row.remove(); publish.disabled = !questions.children.length; add.disabled = false; });
+      remove.addEventListener('click', () => {
+        const neighbour = row.nextElementSibling || row.previousElementSibling;
+        row.remove();
+        updateActions();
+        (neighbour?.querySelector('select') || add).focus();
+      });
       row.append(element('legend', '客户可见问题'));
       for (const [name, control] of [['关联需求（内部）', target], ['问题', prompt], ['候选项（每行一项）', options]]) {
         const label = element('label', name);
-        label.append(control);
+        label.append(control === target ? selectControl(control) : control);
         row.append(label);
       }
       row.append(remove);
       questions.append(row);
-      add.disabled = questions.children.length >= 20;
-      publish.disabled = false;
+      updateActions();
+      return target;
     }
-    add.addEventListener('click', addQuestion);
+    add.addEventListener('click', () => addQuestion().focus());
     addQuestion();
-    form.append(questions, add, publish, status);
+    const actions = element('div', null, 'customer-question-actions');
+    actions.append(add, publish);
+    form.append(questions, actions, status);
     form.addEventListener('submit', async event => {
       event.preventDefault();
-      publish.disabled = true;
+      if (publish.disabled) return;
+      publish.disabled = true; add.disabled = true;
+      for (const row of questions.children) row.disabled = true;
+      status.textContent = '正在生成答题链接…';
       try {
         const entries = Array.from(questions.children, row => ({
           target: row.querySelector('select').value,
@@ -1662,12 +1938,20 @@
         link.rel = 'noopener noreferrer';
         status.replaceChildren(document.createTextNode('把这个链接发给参会客户：'), link);
       } catch (error) { status.textContent = error.message; }
-      finally { publish.disabled = !questions.children.length; }
+      finally {
+        for (const row of questions.children) row.disabled = false;
+        updateActions();
+      }
     });
     card.append(form);
   }
   function review() {
-    content.append(sectionTabs([['questions', '负责人复核'], ['customer', '客户复核'], ['records', '已记录'], ['changes', '版本变更'], ['delivery', '交付']], reviewTab, '评审内容', key => { reviewTab = key; render(); }));
+    const tabs = sectionTabs([
+      ['questions', '负责人复核', 'edit'], ['customer', '客户复核', 'actors'], ['records', '已记录', 'review'],
+      ['changes', '版本变更', 'history'], ['delivery', '交付', 'package'],
+    ], reviewTab, '评审内容', key => { reviewTab = key; render(); });
+    tabs.classList.add('review-tabs');
+    content.append(tabs);
     if (reviewTab === 'customer') { customerReview(); return; }
     if (reviewTab === 'delivery') { releasePanel(); reviewForm(content, 'release'); return; }
     if (reviewTab === 'records') {
@@ -1677,8 +1961,12 @@
       records.forEach(record => {
         const identity = JSON.stringify(record); if (seen.has(identity) || !matches(record)) return; seen.add(identity);
         const req = requirements.find(item => item.requirement_id === record.target);
-        const card = panel(req?.title || record.target || '评审意见');
-        fields(card, [['结论', labels[record.outcome] || record.outcome], ['意见', record.comment], ['记录人', record.reviewer], ['时间', record.decided_at || record.created_at || record.created]] .filter(([, value]) => value));
+        const card = panel(req?.title || record.target || '评审意见', 'review');
+        card.classList.add('review-entry'); card.dataset.outcome = record.outcome;
+        const note = iconLabel(element('p', labels[record.outcome] || record.outcome, 'review-decision'), record.outcome === 'confirmed' ? 'decided' : record.outcome === 'parked' ? 'pause' : 'edit');
+        const head = element('header', null, 'review-entry-head');
+        head.append(card.firstElementChild, note); card.append(head);
+        fields(card, [['意见', record.comment], ['记录人', record.reviewer], ['时间', record.decided_at || record.created_at || record.created]].filter(([, value]) => value));
         content.append(card);
       });
       if (!seen.size) content.append(empty('暂无评审记录'));
@@ -1705,21 +1993,27 @@
       const req = requirements.find(item => item.requirement_id === target);
       const issues = data.review.questions.filter(question => question.target === target);
       const specific = [...new Set(issues.map(issue => issue.reason))].filter(reason => reason !== '核对依据、范围与确认状态');
-      return {key: target, title: req?.title || nfrTitle(target) || ({business_model: '业务模型', pages: '页面定义', requirements: '功能需求'}[target] || (target.startsWith('requirement_profile.') ? '项目背景与范围' : target)), meta: specific.length ? specific.length + ' 个问题' : '', req, issues, specific};
+      return {key: target, marker: req ? 'modules' : 'documents', title: req?.title || nfrTitle(target) || ({business_model: '业务模型', pages: '页面定义', requirements: '功能需求'}[target] || (target.startsWith('requirement_profile.') ? '项目背景与范围' : target)), meta: specific.length ? specific.length + ' 个问题' : '', req, issues, specific};
     }).filter(group => (group.specific.length || group.key === reviewTarget) && matches([group.title, group.key, group.issues]));
     const current = groups.find(group => group.key === reviewTarget) || groups[0];
     if (!current) { content.append(empty(queryInput.value.trim() ? '没有匹配的评审事项' : '没有需要确认的问题')); return; }
     reviewTarget = current.key;
     const detail = selectionLayout(groups, current.key, '评审事项', key => { reviewTarget = key; reviewMessage = ''; });
-    const card = panel(current.title);
+    detail.parentElement.classList.add('review-workspace');
+    const card = panel(current.title, 'pending');
+    card.classList.add('review-pending-card');
     const reasons = [...new Set(current.issues.map(issue => issue.reason))];
     const specific = reasons.filter(reason => reason !== '核对依据、范围与确认状态');
     const shown = specific.length ? specific : reasons;
-    if (shown.length) { const list = element('ul', null, 'review-issues'); shown.forEach(reason => list.append(element('li', reason))); card.append(list); }
+    if (shown.length) {
+      const list = element('ul', null, 'review-issues');
+      shown.forEach(reason => list.append(iconLabel(element('li', reason), 'pending')));
+      card.append(list);
+    }
     else card.append(element('p', '核对功能、范围与验收标准', 'inline-note'));
     if (current.req) {
-      const button = element('button', '查看需求和原话 →', 'source-link'); button.type = 'button';
-      button.addEventListener('click', () => { selectedRequirement = current.key; queryInput.value = ''; statusInput.value = ''; evidenceInput.value = ''; navigate('modules'); }); card.append(button);
+      const button = iconLabel(element('button', '查看需求和原话 →', 'source-link'), 'quote'); button.type = 'button';
+      button.addEventListener('click', () => openRequirement(current.req)); card.append(button);
     }
     detail.append(card); reviewForm(detail);
   }
@@ -1734,7 +2028,7 @@
     panelNode.setAttribute('aria-labelledby', 'tab-' + technicalTab);
     content.append(navigation, panelNode);
     for (const [key, label] of Object.entries(tabs)) {
-      const button = element('button', label, 'button ghost small');
+      const button = iconLabel(element('button', label, 'button ghost small'), {diagrams: 'technical', database: 'database', api: 'api'}[key]);
       button.id = 'tab-' + key;
       button.type = 'button';
       button.setAttribute('role', 'tab');
@@ -1768,7 +2062,9 @@
   function render() {
     moduleFrame = null; selectDiagramModule = null;
     content.replaceChildren();
-    document.getElementById('page-title').textContent = views[active];
+    const title = document.getElementById('page-title');
+    title.textContent = views[active];
+    iconLabel(title, active);
     document.title = views[active] + ' · ' + shortName;
     document.querySelectorAll('[data-view]').forEach(button => {
       button.classList.toggle('active', button.dataset.view === active);
@@ -1782,7 +2078,7 @@
     evidenceInput.hidden = true;
     document.getElementById('requirement-filters')?.remove();
     if (active === 'modules') {
-      const filters = element('button', (showFilters ? '收起筛选' : '筛选') + ((statusInput.value || evidenceInput.value) ? ' · 已启用' : ''), 'button small');
+      const filters = iconLabel(element('button', (showFilters ? '收起筛选' : '筛选') + ((statusInput.value || evidenceInput.value) ? ' · 已启用' : ''), 'button small'), 'filter');
       filters.id = 'requirement-filters'; filters.type = 'button'; filters.setAttribute('aria-expanded', String(showFilters));
       filters.addEventListener('click', () => { showFilters = !showFilters; render(); document.getElementById('requirement-filters').focus(); });
       document.querySelector('.workbench-toolbar').append(filters);
@@ -1815,11 +2111,51 @@
     review: 'M4 5h16v11H10l-6 4z M9 10.5l2 2 4-4',
     search: 'M11 4a7 7 0 1 0 0 14a7 7 0 0 0 0-14z M20 20l-4-4',
     sidebar: 'M3 5h18v14H3z M9 5v14',
+    clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 7v5l3 2',
+    decided: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M8 12l2.7 2.7L16 9',
+    conditional: 'M4 12h5l4-5h7 M9 12l4 5h7 M17 4l3 3-3 3 M17 14l3 3-3 3',
+    proposal: 'M9 18h6 M10 21h4 M8 13a5.6 5.6 0 1 1 8 0c-1.2 1-1.7 2-1.7 3H9.7c0-1-.5-2-1.7-3z',
+    pending: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M9.5 9a2.6 2.6 0 1 1 4 2.2c-1 .6-1.5 1.1-1.5 2 M12 17h.01',
+    download: 'M12 3v12 M8 11l4 4 4-4 M4 17v4h16v-4',
+    external: 'M13 4h7v7 M20 4l-9 9 M10 5H5v14h14v-5',
+    quote: 'M4 5h16v12H9l-5 3z M8 9h8 M8 13h5',
+    close: 'M6 6l12 12 M6 18L18 6',
+    folder: 'M3 6h7l2 2h9v11H3z',
+    actors: 'M10 5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z M4 20v-2a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v2 M16 6a3 3 0 0 1 0 6 M18 14a4 4 0 0 1 2 4v2',
+    pause: 'M9 5v14 M15 5v14',
+    edit: 'M4 16l-1 5 5-1L20 8l-4-4z M14 6l4 4',
+    back: 'M5 12h14 M5 12l5-5 M5 12l5 5',
+    print: 'M6 8V3h12v5 M6 17H3V8h18v9h-3 M6 14h12v7H6z M7 11h.01',
+    mobile: 'M7 3h10v18H7z M11 18h2',
+    database: 'M4 6c0-4 16-4 16 0s-16 4-16 0z M4 6v12c0 4 16 4 16 0V6 M4 12c0 4 16 4 16 0',
+    api: 'M8 7l-5 5 5 5 M16 7l5 5-5 5 M14 5l-4 14',
+    info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 11v5 M12 8h.01',
+    copy: 'M9 9h11v12H9z M15 9V3H4v12h5',
+    refresh: 'M20 8a8 8 0 1 0 0 8 M20 3v5h-5',
+    history: 'M4 5v5h5 M4 10a8 8 0 1 1 1.5 7 M12 8v4l3 2',
+    package: 'M3 7l9-4 9 4v11l-9 4-9-4z M3 7l9 4 9-4 M12 11v11 M8 5l9 4',
+    plus: 'M12 5v14 M5 12h14',
+    trash: 'M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13 M10 10v7 M14 10v7',
+    link: 'M9 15l6-6 M9 17l-2 2a3.5 3.5 0 0 1-5-5l4-4a3.5 3.5 0 0 1 5 0 M15 7l2-2a3.5 3.5 0 0 1 5 5l-4 4a3.5 3.5 0 0 1-5 0',
+    chevron: 'M6 9l6 6 6-6',
+    filter: 'M4 5h16l-6 7v5l-4 2v-7z',
+    play: 'M8 5l11 7-11 7z',
+    upload: 'M12 15V3 M8 7l4-4 4 4 M4 17v4h16v-4',
   };
   function icon(name) {
     const svg = svgNode('svg', {viewBox: '0 0 24 24', class: 'nav-icon', 'aria-hidden': 'true'});
     svg.append(svgNode('path', {d: icons[name]}));
     return svg;
+  }
+  function iconLabel(node, name) {
+    const marker = icon(name); marker.classList.add('label-icon');
+    node.classList.add('icon-label'); node.prepend(marker);
+    return node;
+  }
+  function selectControl(select) {
+    const wrapper = element('span', null, 'select-control');
+    wrapper.append(select, icon('chevron'));
+    return wrapper;
   }
   const fullName = project.name || project.project_id;
   const shortName = project.short_name || String(fullName).split(/\s+[·｜|—–-]\s+/)[0];
@@ -1861,9 +2197,9 @@
     groups.push(['页面', pages.map(([view, title]) => searchResult(title, '', () => navigate(view)))]);
     if (term) {
       groups.push(['需求', requirements.filter(req => has(req.title) || has(req.requirement_id) || has(JSON.stringify(req.behavior ?? ''))).slice(0, 8)
-        .map(req => searchResult(req.title, states[req.review_status] || '', () => { selectedRequirement = req.requirement_id; queryInput.value = ''; statusInput.value = ''; evidenceInput.value = ''; navigate('modules'); }))]);
+        .map(req => searchResult(req.title, states[req.review_status] || '', () => openRequirement(req)))]);
       groups.push(['会议原话', data.sources.filter(source => source.source_type === 'transcript' && has(source.text)).slice(0, 8)
-        .map(source => searchResult(source.text, locatorLabel(source.locator || {}), () => { selectedSource = source.source_id; queryInput.value = ''; materialTab = 'library'; materialReader = 'transcript'; materialQuery = ''; navigate('materials'); }))]);
+        .map(source => searchResult(source.text, locatorLabel(source.locator || {}), () => openSource(source.source_id)))]);
     }
     groups.filter(([, items]) => items.length).forEach(([title, items]) => searchResults.append(element('p', title, 'search-group'), ...items));
     if (!searchResults.childElementCount) searchResults.append(element('p', '没有匹配的内容', 'search-empty'));
@@ -1873,7 +2209,7 @@
   searchInput.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); searchResults.querySelector('.search-result')?.click(); } });
   searchDialog.addEventListener('click', event => { if (event.target === searchDialog) searchDialog.close(); });
   const searchButton = document.getElementById('open-search');
-  searchButton.append(icon('search')); searchButton.addEventListener('click', openSearch);
+  searchButton.append(icon('search'), element('span', '搜索', 'nav-label')); searchButton.addEventListener('click', openSearch);
   document.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); openSearch(); } });
 
   for (const [view, title] of Object.entries(views)) {
