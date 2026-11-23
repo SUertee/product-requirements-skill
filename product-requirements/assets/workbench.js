@@ -694,7 +694,8 @@
   }
   function materials() {
     if (materialTab === 'processing') materialTab = 'import';
-    content.append(sectionTabs([['library', '素材'], ['import', '导入']], materialTab, '会议素材视图', key => { materialTab = key; render(); }));
+    const materialTabs = sectionTabs([['library', '素材', 'materials'], ['import', '导入', 'upload']], materialTab, '会议素材视图', key => { materialTab = key; render(); });
+    materialTabs.classList.add('page-tabs'); content.append(materialTabs);
     if (materialTab === 'import') { intakePanel(); return; }
     const entries = [];
     const assigned = new Set();
@@ -1190,7 +1191,7 @@
     const choices = groups.filter(group => group.items.length || !filtering);
     let selected = choices.find(group => group.key === selectedModule) || choices[0];
     const tools = element('div', null, 'module-toolbar');
-    const switcher = element('div', null, 'view-switcher'); switcher.setAttribute('role', 'group'); switcher.setAttribute('aria-label', '需求视图');
+    const switcher = element('div', null, 'view-switcher page-tabs'); switcher.setAttribute('role', 'group'); switcher.setAttribute('aria-label', '需求视图');
     for (const [view, label, marker] of [['list', '需求列表', 'modules'], ['map', '业务模块', 'technical'], ['usecases', '用例图', 'actors']]) {
       const button = iconLabel(element('button', label), marker); button.type = 'button'; button.setAttribute('aria-pressed', String(moduleView === view));
       button.addEventListener('click', () => { moduleView = view; render(); content.querySelector('.view-switcher [aria-pressed="true"]')?.focus(); }); switcher.append(button);
@@ -1395,7 +1396,7 @@
     if (!['proposal.md', 'prd.md'].includes(selectedDocument)) selectedDocument = 'proposal.md';
     const name = selectedDocument;
     const tabs = sectionTabs([['proposal.md', '项目方案', 'documents'], ['prd.md', 'PRD', 'modules']], name, '文档类型', key => { selectedDocument = key; documentChapter = 0; documentEditing = false; documentMessage = ''; render(); });
-    tabs.classList.add('document-type-tabs');
+    tabs.classList.add('document-type-tabs', 'page-tabs');
     content.append(tabs);
     const text = documentDrafts[name] ?? data.documents[name] ?? '';
     const chunks = text.split(/(?=^## )/m);
@@ -1767,7 +1768,6 @@
     const apis = (project.apis || []).filter(matches);
     if (!apis.length) { content.append(empty('暂无接口设计：本次分析没有整理接口草案。需要时让 Skill 按已确认需求补充 apis，并标为草案')); return; }
     const list = element('section', null, 'panel api-list'); list.setAttribute('aria-label', '接口列表');
-    list.append(element('p', apis.length + ' 个接口 · 按业务模块分组，点击一行查看请求、响应和异常', 'inline-note api-count'));
     const head = element('div', null, 'api-head');
     for (const label of ['方法', '路径', '用途', '状态']) head.append(element('span', label));
     list.append(head);
@@ -1972,7 +1972,7 @@
       ['records', '评审记录', 'review'], ...(serverState?.customer_review_enabled ? [['customer', '客户复核', 'actors']] : []),
       ['delivery', '交付', 'package'],
     ], reviewTab, '评审内容', key => { reviewTab = key; render(); });
-    tabs.classList.add('review-tabs');
+    tabs.classList.add('review-tabs', 'page-tabs');
     content.append(tabs);
     if (reviewTab === 'customer') { customerReview(); return; }
     if (reviewTab === 'delivery') { releasePanel(); return; }
@@ -2010,7 +2010,7 @@
   }
   function technical() {
     const tabs = {diagrams: '技术架构', database: '数据模型', api: '接口'};
-    const navigation = element('div', null, 'technical-tabs');
+    const navigation = element('div', null, 'technical-tabs page-tabs');
     navigation.setAttribute('role', 'tablist');
     navigation.setAttribute('aria-label', '技术设计分类');
     const panelNode = element('section');
@@ -2019,7 +2019,7 @@
     panelNode.setAttribute('aria-labelledby', 'tab-' + technicalTab);
     content.append(navigation, panelNode);
     for (const [key, label] of Object.entries(tabs)) {
-      const button = iconLabel(element('button', label, 'button ghost small'), {diagrams: 'technical', database: 'database', api: 'api'}[key]);
+      const button = iconLabel(element('button', label), {diagrams: 'technical', database: 'database', api: 'api'}[key]);
       button.id = 'tab-' + key;
       button.type = 'button';
       button.setAttribute('role', 'tab');
