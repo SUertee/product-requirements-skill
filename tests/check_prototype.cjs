@@ -149,26 +149,28 @@ if (process.argv[3]) {
   const reviewButton = label => [...rd.querySelectorAll('.page-review button, .prototype-review-bar button')].find(node => node.textContent.trim() === label);
   const pageIds = payload.project.prototype_design.pages.map(item => item.page_id);
   assert.match(bar(), new RegExp('已看 0 / ' + pageIds.length + ' 页'));
-  assert.match(rd.querySelector('.page-review').textContent, /这一页还没评审/);
+  assert.match(rd.querySelector('.page-review').textContent, /还没评审/);
+  assert.equal(rd.querySelector('.prototype-stage').firstElementChild.className, 'prototype-page-bar', 'the verdict sits above the preview');
   reviewButton('没问题').click(); await settle();
   assert.deepEqual(requests.filter(item => item.url === '/api/review').map(item => [item.body.review_stage, item.body.target, item.body.outcome]), [['release', 'prototype/index.html#' + pageIds[0], 'confirmed']]);
-  assert.match(rd.querySelector('.prototype-mapping h2').textContent, new RegExp(payload.project.prototype_design.pages[1].name), 'a passed page moves on to the next one');
+  assert.equal(rd.querySelector('.page-review-name').textContent, payload.project.prototype_design.pages[1].name, 'a passed page moves on to the next one');
+  assert.match(rd.querySelector('.prototype-page-chip').getAttribute('aria-label'), /没问题/);
   reviewButton('需要修改').click();
   const note = rd.querySelector('.page-review-input');
   reviewButton('保存意见').click(); await settle();
   assert.equal(requests.filter(item => item.url === '/api/review').length, 1, 'a change request needs a comment');
   note.value = '提交后应回到详情页';
   reviewButton('保存意见').click(); await settle();
-  assert.match(rd.querySelector('.page-review').textContent, /需要修改.*提交后应回到详情页/);
-  assert.match(bar(), /1 页需要修改/);
+  assert.match(rd.querySelector('.page-review').textContent, /要修改.*提交后应回到详情页/);
+  assert.match(bar(), /1 页要改/);
   reviewButton('复制修改指令').click(); await settle();
   assert.match(rw.copied, new RegExp(pageIds[1] + '）：提交后应回到详情页'));
   assert.equal(reviewButton('生成交付包'), undefined, 'no package while a page needs changes');
   for (const page of payload.project.prototype_design.pages) {
     [...rd.querySelectorAll('.prototype-layout .selection-button')].find(node => node.dataset.selectionKey === page.page_id).click();
-    const ok = reviewButton('没问题'); if (!ok.disabled) { ok.click(); await settle(); }
+    const ok = reviewButton('没问题') || reviewButton('改为没问题'); if (ok) { ok.click(); await settle(); }
   }
-  assert.match(bar(), /所有页面都没问题/);
+  assert.match(bar(), /全部没问题/);
   reviewButton('生成交付包').click(); await settle();
   const last = requests.filter(item => item.url === '/api/review').pop();
   assert.deepEqual([last.body.target, last.body.outcome], ['prototype/index.html', 'confirmed'], 'the file itself is confirmed before packaging');

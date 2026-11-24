@@ -1745,13 +1745,13 @@
       const releases = (serverState.releases || []).filter(item => item.artifact_version === project.artifact_version);
       reviewBar.replaceChildren();
       const progress = element('div', null, 'prototype-review-progress');
-      progress.append(element('strong', '已看 ' + (passed.length + changes.length) + ' / ' + pages.length + ' 页'));
+      progress.append(element('strong', '原型评审 · 已看 ' + (passed.length + changes.length) + ' / ' + pages.length + ' 页'));
       const meter = element('span', null, 'prototype-review-meter'); meter.setAttribute('aria-hidden', 'true');
       for (const page of pages) { const cell = element('span'); cell.dataset.verdict = outcome(page) || ''; meter.append(cell); }
       progress.append(meter);
-      const note = changes.length ? changes.length + ' 页需要修改，把意见交给 Skill 改完再复核'
-        : passed.length < pages.length ? '逐页看一遍，每页点「没问题」或「需要修改」；全部没问题后在这里直接生成交付包'
-        : releases.length ? '交付包已生成，可以发给客户' : '所有页面都没问题，可以生成给客户的交付包';
+      const note = changes.length ? changes.length + ' 页要改：复制指令交给 Skill，改完生成新版本再看'
+        : passed.length < pages.length ? '在原型上方给每页下结论，全部没问题后生成交付包'
+        : releases.length ? '交付包已生成，可以发给客户' : '全部没问题，可以生成交付包';
       progress.append(element('span', note, 'prototype-review-note'));
       reviewBar.append(progress);
       const actions = element('div', null, 'document-actions');
@@ -1790,21 +1790,23 @@
     const layout = element('div', null, 'prototype-layout');
     const list = element('nav', null, 'selection-list'); list.setAttribute('aria-label', '原型页面');
     const side = element('div', null, 'prototype-stage');
-    const mapping = element('section', null, 'panel prototype-mapping');
+    const mapping = element('section', null, 'panel prototype-mapping'); mapping.setAttribute('aria-label', '当前页说明');
+    const pageBar = element('div', null, 'prototype-page-bar');
     function drawMapping() {
       const page = pages.find(item => item.page_id === selectedPrototypePage);
       list.querySelectorAll('[data-selection-key]').forEach(node => { if (node.dataset.selectionKey === page.page_id) node.setAttribute('aria-current', 'true'); else node.removeAttribute('aria-current'); });
-      mapping.replaceChildren(iconLabel(element('h2', page.name), 'documents'), element('p', page.purpose, 'prototype-purpose'), pageReview(page));
+      pageBar.replaceChildren(pageReview(page));
+      mapping.replaceChildren(element('h2', '这一页做什么'), element('p', page.purpose, 'prototype-purpose'));
       const reqs = (page.requirement_ids || []).map(id => requirements.find(req => req.requirement_id === id)).filter(Boolean);
       if (reqs.length) {
-        mapping.append(element('h3', '功能需求'));
+        mapping.append(element('h3', '对应的功能需求'));
         const rows = element('ul', null, 'prototype-links');
         reqs.forEach(req => { const row = element('li'); row.append(requirementLink(req), element('span', req.requirement_id, 'muted-id')); rows.append(row); });
         mapping.append(rows);
       }
       const pageNfrs = (page.nfr_ids || []).map(id => nfrs.find(item => item.nfr_id === id)).filter(Boolean);
       if (pageNfrs.length) {
-        mapping.append(element('h3', '非功能需求'));
+        mapping.append(element('h3', '这一页体现的非功能需求'));
         const rows = element('ul', null, 'prototype-nfrs');
         pageNfrs.forEach(item => { const row = element('li'); row.append(element('strong', item.title), element('span', nfrCategories[item.category] || item.category, 'nfr-category'), element('p', item.prototype_treatment?.note || item.statement)); rows.append(row); });
         mapping.append(rows);
@@ -1812,12 +1814,12 @@
       const stateNames = {empty: '空数据', loading: '加载中', error: '出错', denied: '无权限', success: '成功'};
       const roleNames = Object.fromEntries((design.roles || []).map(role => [role.role_id, role.name]));
       const extra = [];
-      if (page.states?.length) extra.push(['页面状态', page.states.map(state => stateNames[state] || state).join('、')]);
+      if (page.states?.length) extra.push(['可演示的状态', page.states.map(state => stateNames[state] || state).join('、')]);
       if (page.roles?.length) extra.push(['可见角色', page.roles.map(role => roleNames[role] || role).join('、')]);
       if (extra.length) fields(mapping, extra);
       const overall = (design.positioning?.nfr_ids || []).map(id => nfrs.find(item => item.nfr_id === id)).filter(Boolean);
       if (overall.length) {
-        mapping.append(element('h3', '整体体现'));
+        mapping.append(element('h3', '每页都要满足'));
         const rows = element('ul', null, 'prototype-nfrs');
         overall.forEach(item => { const row = element('li'); row.append(element('strong', item.title), element('span', nfrCategories[item.category] || item.category, 'nfr-category'), element('p', item.prototype_treatment?.note || item.statement)); rows.append(row); });
         mapping.append(rows);
@@ -1828,10 +1830,13 @@
       const latest = verdicts();
       list.replaceChildren();
       for (const page of pages) {
-        const button = element('button', null, 'selection-button'); button.type = 'button'; button.dataset.selectionKey = page.page_id;
+        const button = element('button', null, 'selection-button prototype-page-chip'); button.type = 'button'; button.dataset.selectionKey = page.page_id;
         const outcome = latest.get(pageTarget(page.page_id))?.outcome;
         if (outcome) button.dataset.verdict = outcome;
-        button.append(iconLabel(element('strong', page.name), 'documents'), element('span', [(page.requirement_ids || []).length ? page.requirement_ids.length + ' 条需求' : '', (page.nfr_ids || []).length ? page.nfr_ids.length + ' 条非功能' : '', verdictLabel[outcome] || ''].filter(Boolean).join(' · ')));
+        // The chip only names the page and shows its verdict; what the page covers is in the panel beside the preview.
+        if (serverState) { const dot = element('span', outcome === 'confirmed' ? '✓' : outcome === 'needs_changes' ? '!' : '', 'verdict-dot'); dot.setAttribute('aria-hidden', 'true'); button.append(dot); }
+        button.append(element('strong', page.name));
+        if (serverState) button.setAttribute('aria-label', page.name + '：' + (verdictLabel[outcome] || '未评审'));
         button.addEventListener('click', () => openPage(page.page_id));
         list.append(button);
       }
@@ -1851,18 +1856,21 @@
       drawPages(); drawReviewBar();
       if (next) openPage(next.page_id); else drawMapping();
     }
+    // One row above the preview: the verdict sits next to what is being judged, on every screen width.
     function pageReview(page) {
       const box = element('section', null, 'page-review'); box.setAttribute('aria-label', '这一页的评审');
-      if (!serverState) { box.append(element('p', '在本机工作台里可以逐页评审。', 'inline-note')); return box; }
       const verdict = verdicts().get(pageTarget(page.page_id));
       if (verdict) box.dataset.verdict = verdict.outcome;
-      box.append(element('p', verdict ? (verdict.outcome === 'confirmed' ? '这一页没问题' : '这一页需要修改') : '这一页还没评审', 'page-review-status'));
-      if (verdict?.outcome === 'needs_changes' && verdict.comment && prototypeCommentPage !== page.page_id) box.append(element('p', verdict.comment, 'page-review-comment'));
+      const head = element('div', null, 'page-review-head');
+      head.append(element('strong', page.name, 'page-review-name'));
+      if (!serverState) { head.append(element('span', '在本机工作台里可以逐页评审', 'page-review-status')); box.append(head); return box; }
+      head.append(element('span', verdict ? (verdict.outcome === 'confirmed' ? '✓ 没问题' : '要修改') : '还没评审', 'page-review-status'));
+      box.append(head);
       if (prototypeCommentPage === page.page_id) {
-        const label = element('label', '要改什么', 'page-review-label');
-        const note = element('textarea', null, 'page-review-input'); note.rows = 3; note.value = verdict?.comment && verdict.outcome === 'needs_changes' ? verdict.comment : '';
+        const label = element('label', '这一页要改什么', 'page-review-label');
+        const note = element('textarea', null, 'page-review-input'); note.rows = 2; note.value = verdict?.outcome === 'needs_changes' ? verdict.comment || '' : '';
         note.placeholder = '比如：列表缺少按状态筛选；提交后应回到详情页'; label.append(note);
-        const actions = element('div', null, 'document-actions');
+        const actions = element('div', null, 'document-actions page-review-actions');
         const save = element('button', '保存意见', 'button primary small'); save.type = 'button'; save.disabled = prototypeReviewBusy;
         save.addEventListener('click', () => { if (!note.value.trim()) { note.focus(); return; } savePageVerdict(page, 'needs_changes', note.value.trim()); });
         const cancel = element('button', '取消', 'button ghost small'); cancel.type = 'button';
@@ -1871,13 +1879,17 @@
         setTimeout(() => note.focus());
         return box;
       }
-      const actions = element('div', null, 'document-actions');
-      const ok = iconLabel(element('button', '没问题', verdict?.outcome === 'confirmed' ? 'button small' : 'button primary small'), 'decided'); ok.type = 'button';
-      ok.disabled = prototypeReviewBusy || verdict?.outcome === 'confirmed';
+      const actions = element('div', null, 'document-actions page-review-actions');
+      const ok = iconLabel(element('button', verdict ? '改为没问题' : '没问题', verdict ? 'button ghost small' : 'button primary small'), 'decided'); ok.type = 'button';
+      ok.disabled = prototypeReviewBusy;
       ok.addEventListener('click', () => savePageVerdict(page, 'confirmed', ''));
-      const change = element('button', verdict?.outcome === 'needs_changes' ? '改意见' : '需要修改', 'button small'); change.type = 'button'; change.disabled = prototypeReviewBusy;
+      const change = element('button', verdict?.outcome === 'needs_changes' ? '改意见' : verdict ? '改为要修改' : '需要修改', 'button small'); change.type = 'button'; change.disabled = prototypeReviewBusy;
       change.addEventListener('click', () => { prototypeCommentPage = page.page_id; drawMapping(); });
-      actions.append(ok, change); box.append(actions);
+      if (verdict?.outcome === 'confirmed') actions.append(change);
+      else if (verdict?.outcome === 'needs_changes') actions.append(change, ok);
+      else actions.append(ok, change);
+      head.append(actions);
+      if (verdict?.outcome === 'needs_changes' && verdict.comment) box.append(element('p', verdict.comment, 'page-review-comment'));
       return box;
     }
     drawPages();
@@ -1887,7 +1899,11 @@
       if (selectedPrototypePage !== event.data.page_id) { selectedPrototypePage = event.data.page_id; drawMapping(); }
     };
     window.addEventListener('message', listener);
-    side.append(frame);
+    // Phone and tablet previews get a device-sized viewport instead of a strip of the desktop canvas.
+    const applyDevice = () => { frame.dataset.device = previewDevice; frame.style.width = widths[previewDevice]; };
+    applyDevice();
+    tools.querySelectorAll('[data-device]').forEach(button => button.addEventListener('click', applyDevice));
+    side.append(pageBar, frame);
     layout.append(list, side, mapping);
     content.append(layout);
     drawMapping();
@@ -1896,6 +1912,7 @@
     const skipped = confirmedNfrs.filter(item => item.prototype_treatment?.kind === 'not_applicable');
     if (excluded.length || skipped.length) {
       const card = panel('不在原型中');
+      card.append(element('p', '这些需求已确认，但不需要或没法在原型里演示，开发时照常实现。', 'inline-note'));
       const rows = element('ul', null, 'prototype-nfrs');
       excluded.forEach(item => { const row = element('li'); row.append(element('strong', requirements.find(req => req.requirement_id === item.requirement_id)?.title || item.requirement_id), element('span', '功能需求', 'nfr-category'), element('p', item.reason)); rows.append(row); });
       skipped.forEach(item => { const row = element('li'); row.append(element('strong', item.title), element('span', nfrCategories[item.category] || item.category, 'nfr-category'), element('p', item.prototype_treatment.note)); rows.append(row); });
