@@ -1128,9 +1128,12 @@
       const button = element('button', node.name, 'module-filter'); button.type = 'button'; button.dataset.componentId = node.id;
       button.addEventListener('click', () => select(node.id)); picker.append(button);
     });
+    // Nothing is selected on arrival: the card appears once a component is picked in the diagram.
+    const hint = element('p', '点选图中的组件，查看它的开发内容和交付标准', 'inline-note diagram-hint');
+    detail.hidden = true;
     function select(id, reveal = false) {
       const node = nodes.find(item => item.id === id); if (!node) return;
-      selectedArchitecture = id;
+      selectedArchitecture = id; detail.hidden = false; hint.remove();
       picker.querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.componentId === id)));
       detail.replaceChildren(element('h2', node.name)); detail.dataset.componentId = id;
       const layer = architecture.layers.find(item => item.id === node.layer);
@@ -1152,8 +1155,8 @@
       if (reveal) detail.querySelector('h2')?.scrollIntoView?.({block: 'nearest'});
     }
     // With the live diagram, nodes are clicked in the diagram itself; the chip row is only kept for the plain SVG fallback.
-    host.append(...(frame ? [] : [picker]), detail);
-    select(nodes.some(node => node.id === selectedArchitecture) ? selectedArchitecture : nodes[0].id);
+    host.append(...(frame ? [] : [picker]), hint, detail);
+    if (nodes.some(node => node.id === selectedArchitecture)) select(selectedArchitecture);
     return {host, select};
   }
   function technicalArchitecture() {
@@ -1191,7 +1194,7 @@
       };
       window.addEventListener('message', resize);
       frame.srcdoc = data.architecture_diagram.replace('</body>', '<scr' + 'ipt>' + bridge + '</scr' + 'ipt></body>');
-      frame.addEventListener('load', () => details.select(selectedArchitecture));
+      frame.addEventListener('load', () => { if (selectedArchitecture) details.select(selectedArchitecture); });
       card.append(frame); content.append(card, details.host); return;
     }
     const layers = architecture.layers || [];
@@ -1783,35 +1786,94 @@
     open.setAttribute('aria-label', label); open.title = '独立打开'; open.append(icon('external'));
     return open;
   }
+  // Fields of one business entity, shared by the Schema Canvas view and the plain fallback.
+  function entityDetail(entity, links, entitiesById) {
+    const key = entity.entity_id || entity.name;
+    const detail = panel((entity.name || key) + ' 的字段', 'documents');
+    detail.classList.add('entity-detail'); detail.dataset.entityId = key;
+    if (entity.description) detail.append(element('p', entity.description, 'material-metadata'));
+    if (Array.isArray(entity.fields) && entity.fields.length) {
+      const scroll = element('div', null, 'data-table-scroll');
+      const table = element('table', null, 'data-table');
+      const head = table.createTHead().insertRow();
+      for (const label of ['字段', '类型', '说明']) { const cell = element('th', label); cell.scope = 'col'; head.append(cell); }
+      const body = table.createTBody();
+      for (const field of entity.fields) {
+        const row = body.insertRow();
+        row.insertCell().textContent = field.name || field.field_id || '';
+        row.insertCell().textContent = typeLabel(field.type);
+        const {name, field_id, type, ...rest} = field;
+        row.insertCell().textContent = field.description || field.note || (Object.keys(rest).length ? Object.entries(rest).map(([k, value]) => k + '：' + display(value)).join('；') : '—');
+      }
+      scroll.append(table); detail.append(scroll);
+    } else detail.append(empty('实体字段待确认'));
+    const nearby = links.filter(link => link.from === key || link.to === key);
+    if (nearby.length) {
+      const list = element('ul', null, 'entity-relations');
+      for (const link of nearby) list.append(element('li', (entitiesById.get(link.from)?.name || link.from) + ' → ' + (entitiesById.get(link.to)?.name || link.to) + ' · ' + (link.cardinality || '关系待确认') + (link.label ? ' · ' + link.label : '')));
+      detail.append(list);
+    }
+    const reqs = requirements.filter(req => entity.requirement_ids?.includes(req.requirement_id));
+    if (reqs.length) { const used = element('p', '相关需求：', 'inline-note entity-reqs'); reqs.forEach(req => used.append(requirementLink(req))); detail.append(used); }
+    return detail;
+  }
   function database() {
-    // Same card as the architecture: the Schema Canvas diagram with its relation lines, open icon in the corner.
+    const model = project.business_model || {};
+    const entities = Array.isArray(model.entities) ? model.entities : [];
+    const identity = entity => entity.entity_id || entity.name;
+    const entitiesById = new Map(entities.map(entity => [identity(entity), entity]));
+    const links = Array.isArray(model.relations) ? model.relations.filter(link => entitiesById.has(link?.from) && entitiesById.has(link?.to)) : [];
+    // Same pattern as the architecture: a compact diagram, the page search at top right filters it, and a table's
+    // fields appear below only after it is clicked. The full Schema Canvas (with its own tools) opens from the corner icon.
     if (data.data_model_diagram) {
       const card = element('section', null, 'panel diagram-card'); card.setAttribute('aria-label', '数据模型');
       card.append(diagramOpenIcon('data-model/index.html', '在新页面打开数据模型'));
       const frame = element('iframe', null, 'architecture-preview data-model-frame'); frame.title = 'Schema Canvas 数据模型'; frame.setAttribute('sandbox', 'allow-scripts');
-      const resize = event => {
-        if (!frame.isConnected) { window.removeEventListener('message', resize); return; }
-        if (event.source !== frame.contentWindow || event.data?.type !== 'schema-canvas:size' || !Number.isFinite(event.data.height)) return;
-        frame.style.height = Math.max(320, Math.min(1800, event.data.height)) + 'px';
+      const hint = element('p', '点选图中的表，查看字段和关系', 'inline-note diagram-hint');
+      const slot = element('div', null, 'entity-detail-slot');
+      function show(key) {
+        const entity = entitiesById.get(key); if (!entity) return;
+        selectedEntity = key; hint.remove();
+        slot.replaceChildren(entityDetail(entity, links, entitiesById));
+      }
+      const bridge = `(() => {
+        const style = document.createElement('style');
+        style.textContent = 'html,body{background:#fdfefe !important;margin:0}.top,.toolbar,.panel,.audit,footer{display:none !important}.shell{padding:0 !important;max-width:none !important}.workspace{display:block !important;margin:0 !important}.canvasWrap{height:auto !important;min-height:0 !important;border:0 !important;border-radius:0 !important;box-shadow:none !important;background-color:#fdfefe !important;background-image:radial-gradient(#dfe5ed 1.2px,transparent 1.2px) !important;background-size:22px 22px !important;overflow:auto}.canvas{zoom:.78}.domainBox{background:transparent !important;border:1px dashed #dfe5ed !important}.tableNode{background:#edf3ff !important;border-color:#7397da !important;box-shadow:none !important}.tableNode b{color:#202d40}html:not([data-picked]) .tableNode.selected{outline:none !important;box-shadow:none !important;background:#edf3ff !important;border:1px solid #7397da !important}.tableNode.selected{background:#dce9ff !important;border-color:#2863d6 !important}.tableNode.dim{opacity:.25}';
+        document.head.append(style);
+        const canvas = document.querySelector('.canvas');
+        const report = () => parent.postMessage({type:'product-requirements:schema-size',height:Math.ceil(document.querySelector('.canvasWrap').getBoundingClientRect().height)},'*');
+        new ResizeObserver(report).observe(document.querySelector('.canvasWrap')); report();
+        document.addEventListener('click', event => { const node = event.target.closest('.tableNode'); if (!node) return; document.documentElement.dataset.picked = ''; parent.postMessage({type:'product-requirements:schema-select',id:node.dataset.id},'*'); }, true);
+        window.addEventListener('message', event => {
+          if (event.source !== parent) return;
+          if (event.data?.type === 'product-requirements:schema-query') { const input = document.getElementById('search'); input.value = String(event.data.query || ''); input.dispatchEvent(new Event('input')); }
+          if (event.data?.type === 'product-requirements:schema-state') { const node = [...document.querySelectorAll('.tableNode')].find(item => item.dataset.id === event.data.id); if (node) { document.documentElement.dataset.picked = ''; node.click(); } }
+        });
+      })();`;
+      const listen = event => {
+        if (!frame.isConnected) { window.removeEventListener('message', listen); return; }
+        if (event.source !== frame.contentWindow) return;
+        if (['product-requirements:schema-size', 'schema-canvas:size'].includes(event.data?.type) && Number.isFinite(event.data.height)) frame.style.height = Math.max(160, Math.min(900, event.data.height)) + 'px';
+        if (event.data?.type === 'product-requirements:schema-select' && typeof event.data.id === 'string') show(event.data.id);
       };
-      window.addEventListener('message', resize);
-      frame.srcdoc = data.data_model_diagram.replace('</head>', '<scr' + 'ipt>document.documentElement.dataset.embedded="true";</scr' + 'ipt></head>');
-      card.append(frame); content.append(card);
+      window.addEventListener('message', listen);
+      frame.addEventListener('load', () => {
+        if (queryInput.value) frame.contentWindow?.postMessage({type: 'product-requirements:schema-query', query: queryInput.value}, '*');
+        if (selectedEntity && entitiesById.has(selectedEntity)) frame.contentWindow?.postMessage({type: 'product-requirements:schema-state', id: selectedEntity}, '*');
+      });
+      frame.srcdoc = data.data_model_diagram.replace('</head>', '<scr' + 'ipt>document.documentElement.dataset.embedded="true";</scr' + 'ipt></head>').replace('</body>', '<scr' + 'ipt>' + bridge + '</scr' + 'ipt></body>');
+      card.append(frame); content.append(card, hint, slot);
+      if (selectedEntity && entitiesById.has(selectedEntity)) show(selectedEntity);
       return;
     }
-    const model = project.business_model;
-    const entities = Array.isArray(model.entities) ? model.entities : [];
     if (!entities.length) { content.append(empty('业务数据模型待整理')); return; }
-    const identity = entity => entity.entity_id || entity.name;
-    const entitiesById = new Map(entities.map(entity => [identity(entity), entity]));
     const current = entitiesById.get(selectedEntity) || entities[0];
     selectedEntity = identity(current);
-    const links = Array.isArray(model.relations) ? model.relations.filter(link => entitiesById.has(link?.from) && entitiesById.has(link?.to)) : [];
-    // Same reading pattern as the architecture: entity cards on top, the selected entity's fields below.
+    // Fallback without Schema Canvas: entity cards on top, the selected entity's fields below.
     const map = panel('业务实体', 'database');
     map.classList.add('entity-map');
     const grid = element('div', null, 'entity-cards'); grid.setAttribute('role', 'group'); grid.setAttribute('aria-label', '选择业务实体');
-    for (const entity of entities) {
+    for (const entity of entities.filter(matches)) {
       const key = identity(entity);
       const related = links.filter(link => link.from === key || link.to === key).length;
       const card = element('button', null, 'entity-card'); card.type = 'button';
@@ -1821,33 +1883,7 @@
       grid.append(card);
     }
     map.append(grid);
-    const nearby = links.filter(link => link.from === selectedEntity || link.to === selectedEntity);
-    if (nearby.length) {
-      const list = element('ul', null, 'entity-relations');
-      for (const link of nearby) list.append(element('li', (entitiesById.get(link.from)?.name || link.from) + ' → ' + (entitiesById.get(link.to)?.name || link.to) + ' · ' + (link.cardinality || '关系待确认') + (link.label ? ' · ' + link.label : '')));
-      map.append(list);
-    }
-    content.append(map);
-    const detail = panel((current.name || selectedEntity) + ' 的字段', 'documents');
-    if (current.description) detail.append(element('p', current.description, 'material-metadata'));
-    if (Array.isArray(current.fields) && current.fields.length) {
-      const scroll = element('div', null, 'data-table-scroll');
-      const table = element('table', null, 'data-table');
-      const head = table.createTHead().insertRow();
-      for (const label of ['字段', '类型', '说明']) { const cell = element('th', label); cell.scope = 'col'; head.append(cell); }
-      const body = table.createTBody();
-      for (const field of current.fields) {
-        const row = body.insertRow();
-        row.insertCell().textContent = field.name || field.field_id || '';
-        row.insertCell().textContent = typeLabel(field.type);
-        const {name, field_id, type, ...rest} = field;
-        row.insertCell().textContent = field.description || field.note || (Object.keys(rest).length ? Object.entries(rest).map(([key, value]) => key + '：' + display(value)).join('；') : '—');
-      }
-      scroll.append(table); detail.append(scroll);
-    } else detail.append(empty('实体字段待确认'));
-    const reqs = requirements.filter(req => current.requirement_ids?.includes(req.requirement_id));
-    if (reqs.length) { const used = element('p', '相关需求：', 'inline-note entity-reqs'); reqs.forEach(req => used.append(requirementLink(req))); detail.append(used); }
-    content.append(detail);
+    content.append(map, entityDetail(current, links, entitiesById));
   }
   // ParTrace-style API table: header row, one group per business module, one row per endpoint; click a row for request / response / errors.
   function apiModule(item) {
@@ -2195,7 +2231,7 @@
       if (button.dataset.view === active) button.setAttribute('aria-current', 'page');
       else button.removeAttribute('aria-current');
     });
-    const searchLabels = {materials: '搜索素材或会议原话', modules: '搜索需求、规则或依据', review: '搜索评审问题', technical: '搜索接口草案'};
+    const searchLabels = {materials: '搜索素材或会议原话', modules: '搜索需求、规则或依据', review: '搜索评审问题', technical: '搜索表、字段或接口'};
     queryInput.placeholder = searchLabels[active] || '搜索';
     queryInput.setAttribute('aria-label', queryInput.placeholder);
     statusInput.hidden = true;

@@ -490,3 +490,10 @@
 - 飞书妙记媒体地址为 `internal-api-drive-stream.feishu.cn`，lark-cli 因主机名含 internal 拒绝下载。`feishu_connector.py --media` 现在遇到这一拒绝（`BlockedDownload`）时，改用 `minutes +download --url-only` 取回签名链接，只接受 HTTPS 且域名属于 feishu.cn／larksuite.com／larkoffice.com／feishu.net 的链接，跳转后的地址同样核对；按 Content-Disposition 取文件名，流式写入，上限 8 GB，并核对长度完整。
 - 新增用例：被拦后走备用链接并取到原文件名；拒绝其他域名、HTTP、伪装域名和跳转到外部；长度不完整时报错。Python 回归 129 项通过，Skill 包仍为 28 个文件。
 - 实测：对 11-17 小组会议执行 `--media`，自动走备用路径，47 秒取得 441,396,703 字节的「小红书x华为Skill 小组会议.mp4」并抽出音轨（试跑目录已删除）。
+
+## 2026-11-24 技术架构与数据模型统一：选中后才显示详情
+
+- 技术架构：进入时不预选组件，下方只显示「点选图中的组件，查看它的开发内容和交付标准」；点选后出现详情卡，提示消失。
+- 数据模型：嵌入的 Schema Canvas 隐藏自带的搜索、筛选、侧栏，背景改为与架构图一致的点阵，整体缩小到 0.78；进入时不高亮任何表。点选表后下方出现「X 的字段」卡（字段、中文类型、关系、相关需求），与无 Schema Canvas 时的回退共用同一段渲染。
+- 页面右上角搜索驱动数据模型：输入后图中命中的表保持，其余变淡。完整的 Schema Canvas 工具仍可从卡片右上角独立打开。
+- 验证：Python 回归、四个 DOM 检查通过（check_architecture 新增：未选时不显示详情、只接受来自图的选择消息、数据模型隐藏内置工具并在点选后显示字段）；内置浏览器实测点选 Meeting 出现字段卡、搜索「source」只保留 SourceSegment。jsdom 依赖因临时目录被清理已重新安装在本会话临时目录。
