@@ -2,6 +2,7 @@
 from concurrent.futures import ThreadPoolExecutor
 import http.client
 import hashlib
+import io
 import json
 from pathlib import Path
 import sqlite3
@@ -119,6 +120,54 @@ class IntakeTests(unittest.TestCase):
         token = 'obcn00000000000000000000'
         with patch.object(connector, 'call_cli', return_value={'minute_token': token, 'saved_path': str(self.file)}):
             with self.assertRaisesRegex(connector.ConnectorError, 'outside'):
+                connector.import_minutes(token, self.workspace, 'demo', media=True)
+
+    def _blocked_then(self, link, body=b'\0' * 2048, headers=None, final=None):
+        """call_cli: the normal download is blocked, --url-only returns the given link; urlopen serves body."""
+        token = 'obcn00000000000000000000'
+        def fake_call(arguments, cwd=None):
+            if '--url-only' in arguments:
+                return {'ok': True, 'data': {'downloads': [{'minute_token': token, 'download_url': link}]}}
+            raise connector.BlockedDownload('Media download blocked by lark-cli URL safety checks for a local/internal host.')
+        class Response:
+            def __init__(self):
+                self.headers = {'Content-Length': str(len(body)), 'Content-Type': 'video/mp4', **(headers or {})}
+                self._data = io.BytesIO(body)
+            def geturl(self): return final or link
+            def read(self, size=-1): return self._data.read(size)
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+        return token, fake_call, Response
+
+    def test_blocked_media_download_falls_back_to_the_official_link(self):
+        import urllib.request
+        token, fake_call, Response = self._blocked_then('https://internal-api-drive-stream.feishu.cn/space/api/box/stream/download/authcode/?code=x',
+                                                        headers={'Content-Disposition': 'attachment; filename="%E4%BC%9A%E8%AE%AE.mp4"'})
+        seen = []
+        with patch.object(connector, 'call_cli', side_effect=fake_call), \
+                patch.object(urllib.request, 'urlopen', side_effect=lambda request, timeout=60: seen.append(request.full_url) or Response()), \
+                patch('ingest_material.shutil.which', return_value=None):
+            job = connector.import_minutes(token, self.workspace, 'demo', media=True)
+        self.assertEqual(job['kind'], 'recording')
+        self.assertEqual(job['name'], '会议.mp4')
+        self.assertEqual(job['provenance']['artifact'], 'media')
+        self.assertEqual(len(seen), 1)
+
+    def test_fallback_only_downloads_from_feishu_https(self):
+        import urllib.request
+        for link, final in [('https://evil.test/a.mp4', None), ('http://internal-api-drive-stream.feishu.cn/a', None),
+                            ('https://x.feishu.cn.evil.test/a', None), ('https://internal-api-drive-stream.feishu.cn/a', 'https://evil.test/a')]:
+            token, fake_call, Response = self._blocked_then(link, final=final)
+            with self.subTest(link=link, final=final), patch.object(connector, 'call_cli', side_effect=fake_call), \
+                    patch.object(urllib.request, 'urlopen', side_effect=lambda request, timeout=60: Response()):
+                with self.assertRaises(connector.ConnectorError):
+                    connector.import_minutes(token, self.workspace, 'demo', media=True)
+
+    def test_fallback_rejects_incomplete_download(self):
+        import urllib.request
+        token, fake_call, Response = self._blocked_then('https://internal-api-drive-stream.feishu.cn/a', headers={'Content-Length': '999999'})
+        with patch.object(connector, 'call_cli', side_effect=fake_call), patch.object(urllib.request, 'urlopen', side_effect=lambda request, timeout=60: Response()):
+            with self.assertRaisesRegex(connector.ConnectorError, 'incomplete'):
                 connector.import_minutes(token, self.workspace, 'demo', media=True)
 
     def test_connector_reads_safety_error_after_download_progress(self):

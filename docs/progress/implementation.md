@@ -484,3 +484,9 @@
   - 工作台素材列表隐藏已被逐字稿关联的录音，不再显示成第二场会议。
 - 预览版本 v44-recording：逐字稿页出现视频，点「定位录音 00:07」跳到对应时间；录音文件 5 个硬链接共用一份。
 - 验证：Python 回归 126 项（新增：重新导入关联录音并补说话人）、四个 DOM 检查通过。
+
+## 2026-11-24 妙记录音下载补上备用路径
+
+- 飞书妙记媒体地址为 `internal-api-drive-stream.feishu.cn`，lark-cli 因主机名含 internal 拒绝下载。`feishu_connector.py --media` 现在遇到这一拒绝（`BlockedDownload`）时，改用 `minutes +download --url-only` 取回签名链接，只接受 HTTPS 且域名属于 feishu.cn／larksuite.com／larkoffice.com／feishu.net 的链接，跳转后的地址同样核对；按 Content-Disposition 取文件名，流式写入，上限 8 GB，并核对长度完整。
+- 新增用例：被拦后走备用链接并取到原文件名；拒绝其他域名、HTTP、伪装域名和跳转到外部；长度不完整时报错。Python 回归 129 项通过，Skill 包仍为 28 个文件。
+- 实测：对 11-17 小组会议执行 `--media`，自动走备用路径，47 秒取得 441,396,703 字节的「小红书x华为Skill 小组会议.mp4」并抽出音轨（试跑目录已删除）。
