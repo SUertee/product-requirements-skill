@@ -151,6 +151,23 @@ class DesignedPrototypeEndToEnd(unittest.TestCase):
             self.assertEqual([item['capability'] for item in task['generation_results'] if item['generation_status'] == 'success'], ['prototype'])
             self.assertTrue((Path(task['result_dir']) / 'prototype/index.html').is_file())
 
+    def test_workbench_embeds_prototype_and_accepts_page_reviews(self):
+        import re
+        from serve_workbench import WorkbenchServer
+        with tempfile.TemporaryDirectory() as temporary:
+            result = exercise_designed(Path(temporary))
+            text = (result['v3'] / 'workbench/index.html').read_text()
+            payload = json.loads(re.search(r'<script id="workbench-data" type="application/json">(.*?)</script>', text, re.S).group(1))
+            self.assertEqual(payload['prototype_html'], (result['v3'] / 'prototype/index.html').read_text())
+            self.assertIn('dataset.startPage', payload['prototype_html'])
+            with WorkbenchServer(('127.0.0.1', 0), result['v3'], result['workspace']) as workbench:
+                saved = workbench.save_review({'revision': 0, 'review_stage': 'release', 'target': 'prototype/index.html#tickets', 'outcome': 'needs_changes', 'comment': '列表缺少筛选'})
+                self.assertEqual(saved['decisions'][0]['target'], 'prototype/index.html#tickets')
+                with self.assertRaises(ValueError):
+                    workbench.save_review({'revision': 1, 'review_stage': 'release', 'target': 'prototype/index.html#missing', 'outcome': 'confirmed'})
+                with self.assertRaises(ValueError):
+                    workbench.save_review({'revision': 1, 'review_stage': 'definition', 'target': 'prototype/index.html#tickets', 'outcome': 'confirmed'})
+
     def test_each_version_records_how_it_was_made(self):
         with tempfile.TemporaryDirectory() as temporary:
             result = exercise_designed(Path(temporary))

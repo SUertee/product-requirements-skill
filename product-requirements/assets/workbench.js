@@ -1609,6 +1609,10 @@
   function nfrTitle(key) { return (project.nfrs || []).find(item => item.nfr_id === key)?.title; }
   let selectedPrototypePage = null;
   let prototypeAnnotate = false;
+  // Page-by-page review of the prototype, recorded as release-stage verdicts on "prototype/index.html#<page_id>".
+  let prototypeCommentPage = null;
+  let prototypeReviewBusy = false;
+  let prototypeReviewMessage = '';
   // The page itself cannot design a prototype: the Skill in the host (Claude Code, 码道…) designs pages from confirmed
   // FR/NFR, and the generator refuses unconfirmed input. So this page lists the hard prerequisites and hands a
   // ready-to-paste instruction to the Skill, like 交给开发 does for coding agents.
@@ -1697,8 +1701,17 @@
     const frame = element('iframe', null, 'workbench-preview prototype-frame');
     frame.title = '交互原型';
     frame.setAttribute('sandbox', 'allow-scripts allow-forms');
-    const base = '../' + artifact.path.split('/').map(encodeURIComponent).join('/');
-    frame.src = base + (prototypeAnnotate ? '?annotate=1' : '') + '#' + encodeURIComponent(selectedPrototypePage);
+    // The prototype HTML travels inside the workbench and loads through srcdoc, so it shows wherever the workbench
+    // does (file://, shared copies, sandboxed previews). Older workbenches without it still load the sibling file.
+    if (data.prototype_html) {
+      const initial = selectedPrototypePage;
+      const boot = 'document.documentElement.dataset.startPage=' + JSON.stringify(initial).replace(/</g, '\\u003c') + ';' + (prototypeAnnotate ? "document.documentElement.dataset.annotate='';" : '');
+      frame.srcdoc = data.prototype_html.replace('</head>', '<scr' + 'ipt>' + boot + '</scr' + 'ipt></head>');
+      frame.addEventListener('load', () => frame.contentWindow?.postMessage({type: 'prototype:go', page_id: initial}, '*'), {once: true});
+    } else {
+      const base = '../' + artifact.path.split('/').map(encodeURIComponent).join('/');
+      frame.src = base + (prototypeAnnotate ? '?annotate=1' : '') + '#' + encodeURIComponent(selectedPrototypePage);
+    }
     frame.style.width = widths[previewDevice];
     if (devices.length > 1) for (const device of devices) {
       const button = iconLabel(element('button', {desktop: '桌面', tablet: '平板', mobile: '手机'}[device], 'button ghost small'), device === 'desktop' ? 'prototype' : 'mobile'); button.type = 'button';
@@ -1712,6 +1725,68 @@
     tools.append(annotate, fileLink(artifact.path, '独立打开'));
     toolbar.append(tools);
     content.append(toolbar);
+    const fileTarget = artifact.path;
+    const pageTarget = id => fileTarget + '#' + id;
+    function verdicts() {
+      const latest = new Map();
+      for (const item of serverState?.review?.decisions || []) if (item.review_stage === 'release') latest.set(item.target, item);
+      return latest;
+    }
+    const verdictLabel = {confirmed: '没问题', needs_changes: '需修改'};
+    const reviewBar = element('section', null, 'prototype-review-bar'); reviewBar.setAttribute('aria-label', '原型评审');
+    if (serverState) content.append(reviewBar);
+    function drawReviewBar() {
+      if (!serverState) return;
+      const latest = verdicts();
+      const outcome = page => latest.get(pageTarget(page.page_id))?.outcome;
+      const passed = pages.filter(page => outcome(page) === 'confirmed');
+      const changes = pages.filter(page => outcome(page) === 'needs_changes');
+      const released = latest.get(fileTarget)?.outcome === 'confirmed';
+      const releases = (serverState.releases || []).filter(item => item.artifact_version === project.artifact_version);
+      reviewBar.replaceChildren();
+      const progress = element('div', null, 'prototype-review-progress');
+      progress.append(element('strong', '已看 ' + (passed.length + changes.length) + ' / ' + pages.length + ' 页'));
+      const meter = element('span', null, 'prototype-review-meter'); meter.setAttribute('aria-hidden', 'true');
+      for (const page of pages) { const cell = element('span'); cell.dataset.verdict = outcome(page) || ''; meter.append(cell); }
+      progress.append(meter);
+      const note = changes.length ? changes.length + ' 页需要修改，把意见交给 Skill 改完再复核'
+        : passed.length < pages.length ? '逐页看一遍，每页点「没问题」或「需要修改」；全部没问题后在这里直接生成交付包'
+        : releases.length ? '交付包已生成，可以发给客户' : '所有页面都没问题，可以生成给客户的交付包';
+      progress.append(element('span', note, 'prototype-review-note'));
+      reviewBar.append(progress);
+      const actions = element('div', null, 'document-actions');
+      if (changes.length) {
+        const lines = ['用「产品需求落地」Skill 修改项目《' + (project.name || project.project_id) + '》的原型（版本 ' + project.artifact_version + '）。', '评审意见：'];
+        changes.forEach(page => lines.push('- ' + page.name + '（' + page.page_id + '）：' + (latest.get(pageTarget(page.page_id)).comment || '需要修改')));
+        lines.push('按 references/prototype.md 只改这些页面，意见涉及需求变化时先改需求卡并告诉我；生成新版本后停下，等我在工作台复核。');
+        const copy = iconLabel(element('button', '复制修改指令', 'button primary small'), 'copy'); copy.type = 'button';
+        copy.addEventListener('click', async () => {
+          try { await navigator.clipboard.writeText(lines.join('\n')); prototypeReviewMessage = '已复制，粘贴到 Claude Code、码道等装了这个 Skill 的工具里'; } catch { prototypeReviewMessage = '浏览器未允许复制'; }
+          drawReviewBar();
+        });
+        actions.append(copy);
+      } else if (passed.length === pages.length && !releases.length) {
+        const build = iconLabel(element('button', '生成交付包', 'button primary small'), 'package'); build.type = 'button';
+        build.disabled = workflowBusy;
+        build.addEventListener('click', () => workflowAction(async () => {
+          if (!released) {
+            const result = await localRequest('/api/review', {method: 'POST', body: JSON.stringify({revision: serverState.review.revision, review_stage: 'release', target: fileTarget, outcome: 'confirmed', comment: '逐页评审通过', reviewer: ''})});
+            serverState.review = result.review;
+          }
+          return localRequest('/api/release', {method: 'POST', body: JSON.stringify({files: [fileTarget], revision: serverState.review.revision})});
+        }));
+        actions.append(build);
+      }
+      const release = releases[releases.length - 1];
+      if (release && !changes.length) {
+        const preview = iconLabel(element('a', '预览交付包', 'button small'), 'external'); preview.href = '/customer/' + release.release_id + '/index.html'; preview.target = '_blank'; preview.rel = 'noopener';
+        const download = iconLabel(element('a', '下载 ZIP', 'button small'), 'download'); download.href = '/api/releases/' + release.release_id + '/package'; download.download = project.project_id + '-' + release.artifact_version + '.zip';
+        actions.append(preview, download);
+      }
+      if (actions.childElementCount) reviewBar.append(actions);
+      const message = prototypeReviewMessage || (workflowMessage && !workflowBusy && !releases.length ? workflowMessage : '');
+      if (message) { const status = element('p', message, 'inline-note prototype-review-message'); status.setAttribute('role', 'status'); reviewBar.append(status); }
+    }
     const layout = element('div', null, 'prototype-layout');
     const list = element('nav', null, 'selection-list'); list.setAttribute('aria-label', '原型页面');
     const side = element('div', null, 'prototype-stage');
@@ -1719,7 +1794,7 @@
     function drawMapping() {
       const page = pages.find(item => item.page_id === selectedPrototypePage);
       list.querySelectorAll('[data-selection-key]').forEach(node => { if (node.dataset.selectionKey === page.page_id) node.setAttribute('aria-current', 'true'); else node.removeAttribute('aria-current'); });
-      mapping.replaceChildren(iconLabel(element('h2', page.name), 'documents'), element('p', page.purpose, 'prototype-purpose'));
+      mapping.replaceChildren(iconLabel(element('h2', page.name), 'documents'), element('p', page.purpose, 'prototype-purpose'), pageReview(page));
       const reqs = (page.requirement_ids || []).map(id => requirements.find(req => req.requirement_id === id)).filter(Boolean);
       if (reqs.length) {
         mapping.append(element('h3', '功能需求'));
@@ -1748,12 +1823,64 @@
         mapping.append(rows);
       }
     }
-    for (const page of pages) {
-      const button = element('button', null, 'selection-button'); button.type = 'button'; button.dataset.selectionKey = page.page_id;
-      button.append(iconLabel(element('strong', page.name), 'documents'), element('span', [(page.requirement_ids || []).length ? page.requirement_ids.length + ' 条需求' : '', (page.nfr_ids || []).length ? page.nfr_ids.length + ' 条非功能' : ''].filter(Boolean).join(' · ')));
-      button.addEventListener('click', () => { selectedPrototypePage = page.page_id; frame.contentWindow?.postMessage({type: 'prototype:go', page_id: page.page_id}, '*'); drawMapping(); });
-      list.append(button);
+    function openPage(id) { selectedPrototypePage = id; frame.contentWindow?.postMessage({type: 'prototype:go', page_id: id}, '*'); drawMapping(); }
+    function drawPages() {
+      const latest = verdicts();
+      list.replaceChildren();
+      for (const page of pages) {
+        const button = element('button', null, 'selection-button'); button.type = 'button'; button.dataset.selectionKey = page.page_id;
+        const outcome = latest.get(pageTarget(page.page_id))?.outcome;
+        if (outcome) button.dataset.verdict = outcome;
+        button.append(iconLabel(element('strong', page.name), 'documents'), element('span', [(page.requirement_ids || []).length ? page.requirement_ids.length + ' 条需求' : '', (page.nfr_ids || []).length ? page.nfr_ids.length + ' 条非功能' : '', verdictLabel[outcome] || ''].filter(Boolean).join(' · ')));
+        button.addEventListener('click', () => openPage(page.page_id));
+        list.append(button);
+      }
     }
+    async function savePageVerdict(page, outcome, comment) {
+      prototypeReviewBusy = true; prototypeReviewMessage = ''; drawMapping();
+      try {
+        const result = await localRequest('/api/review', {method: 'POST', body: JSON.stringify({revision: serverState.review.revision, review_stage: 'release', target: pageTarget(page.page_id), outcome, comment, reviewer: ''})});
+        serverState.review = result.review; prototypeCommentPage = null;
+      } catch (error) {
+        prototypeReviewMessage = error.message;
+        try { await refreshLocal(); } catch { /* keep the first error */ }
+      } finally { prototypeReviewBusy = false; }
+      // A passed page moves the reviewer on to the next page nobody has looked at yet.
+      const latest = verdicts();
+      const next = outcome === 'confirmed' && !prototypeReviewMessage && pages.find(item => !latest.has(pageTarget(item.page_id)));
+      drawPages(); drawReviewBar();
+      if (next) openPage(next.page_id); else drawMapping();
+    }
+    function pageReview(page) {
+      const box = element('section', null, 'page-review'); box.setAttribute('aria-label', '这一页的评审');
+      if (!serverState) { box.append(element('p', '在本机工作台里可以逐页评审。', 'inline-note')); return box; }
+      const verdict = verdicts().get(pageTarget(page.page_id));
+      if (verdict) box.dataset.verdict = verdict.outcome;
+      box.append(element('p', verdict ? (verdict.outcome === 'confirmed' ? '这一页没问题' : '这一页需要修改') : '这一页还没评审', 'page-review-status'));
+      if (verdict?.outcome === 'needs_changes' && verdict.comment && prototypeCommentPage !== page.page_id) box.append(element('p', verdict.comment, 'page-review-comment'));
+      if (prototypeCommentPage === page.page_id) {
+        const label = element('label', '要改什么', 'page-review-label');
+        const note = element('textarea', null, 'page-review-input'); note.rows = 3; note.value = verdict?.comment && verdict.outcome === 'needs_changes' ? verdict.comment : '';
+        note.placeholder = '比如：列表缺少按状态筛选；提交后应回到详情页'; label.append(note);
+        const actions = element('div', null, 'document-actions');
+        const save = element('button', '保存意见', 'button primary small'); save.type = 'button'; save.disabled = prototypeReviewBusy;
+        save.addEventListener('click', () => { if (!note.value.trim()) { note.focus(); return; } savePageVerdict(page, 'needs_changes', note.value.trim()); });
+        const cancel = element('button', '取消', 'button ghost small'); cancel.type = 'button';
+        cancel.addEventListener('click', () => { prototypeCommentPage = null; drawMapping(); });
+        actions.append(save, cancel); box.append(label, actions);
+        setTimeout(() => note.focus());
+        return box;
+      }
+      const actions = element('div', null, 'document-actions');
+      const ok = iconLabel(element('button', '没问题', verdict?.outcome === 'confirmed' ? 'button small' : 'button primary small'), 'decided'); ok.type = 'button';
+      ok.disabled = prototypeReviewBusy || verdict?.outcome === 'confirmed';
+      ok.addEventListener('click', () => savePageVerdict(page, 'confirmed', ''));
+      const change = element('button', verdict?.outcome === 'needs_changes' ? '改意见' : '需要修改', 'button small'); change.type = 'button'; change.disabled = prototypeReviewBusy;
+      change.addEventListener('click', () => { prototypeCommentPage = page.page_id; drawMapping(); });
+      actions.append(ok, change); box.append(actions);
+      return box;
+    }
+    drawPages();
     const listener = event => {
       if (!frame.isConnected) { window.removeEventListener('message', listener); return; }
       if (event.source !== frame.contentWindow || event.data?.type !== 'prototype:page' || !pages.some(page => page.page_id === event.data.page_id)) return;
@@ -1764,6 +1891,7 @@
     layout.append(list, side, mapping);
     content.append(layout);
     drawMapping();
+    drawReviewBar();
     const excluded = design.excluded_requirements || [];
     const skipped = confirmedNfrs.filter(item => item.prototype_treatment?.kind === 'not_applicable');
     if (excluded.length || skipped.length) {
