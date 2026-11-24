@@ -471,3 +471,22 @@
 - `lark-cli` 改为通过 `shutil.which` 解析路径，Windows 上 npm 安装的 `lark-cli.cmd` 可以被调用。
 - SKILL.md、运行流程和 README 注明 Windows 用 `python` 或 `py -3`，PowerShell 续行符用反引号；README 注明 `npx skills add` 需要 Node.js 22.20+、Archify 需要 Node.js。
 - 新增 tests/test_platform.py：模拟 Windows 时只查询不发信号、拒绝访问视为存活、lark-cli 使用解析后的路径。Python 回归 124 项通过；未在 Windows 实机验证。
+
+## 2026-11-24 会议录音下载并关联到逐字稿
+
+- 用户同意后，经 lark-cli `minutes +download --url-only` 取得妙记录音下载地址，直接下载到 `recordings/`（Git 忽略）：「小红书x华为Skill 小组会议.mp4」441,396,703 字节，46 分 10 秒。lark-cli 自身下载会因地址含 `internal-api-drive-stream.feishu.cn` 被其安全检查拦截。
+- 导入为录音任务（ffmpeg 抽出音轨），再以 `--related-job` 重新导入同一逐字稿；549 段来源 ID 不变。
+- 修复：
+  - 新一轮分析（新素材）沿用上一版的架构图、模块图、数据模型（依据未变直接复用）；原型不随分析带入，需求重新确认后再生成。
+  - 同一逐字稿重新导入时允许补上原先缺失的说话人，不允许改写已有说话人；正文、定位等字段仍须一致。
+  - 同一逐字稿带录音重新导入时，给已有素材条目补上 `related_job_id`，工作台据此把录音放进逐字稿。
+  - 版本间的素材改为硬链接（失败时复制），大录音在多个版本中只占一份空间。
+  - 工作台素材列表隐藏已被逐字稿关联的录音，不再显示成第二场会议。
+- 预览版本 v44-recording：逐字稿页出现视频，点「定位录音 00:07」跳到对应时间；录音文件 5 个硬链接共用一份。
+- 验证：Python 回归 126 项（新增：重新导入关联录音并补说话人）、四个 DOM 检查通过。
+
+## 2026-11-24 妙记录音下载补上备用路径
+
+- 飞书妙记媒体地址为 `internal-api-drive-stream.feishu.cn`，lark-cli 因主机名含 internal 拒绝下载。`feishu_connector.py --media` 现在遇到这一拒绝（`BlockedDownload`）时，改用 `minutes +download --url-only` 取回签名链接，只接受 HTTPS 且域名属于 feishu.cn／larksuite.com／larkoffice.com／feishu.net 的链接，跳转后的地址同样核对；按 Content-Disposition 取文件名，流式写入，上限 8 GB，并核对长度完整。
+- 新增用例：被拦后走备用链接并取到原文件名；拒绝其他域名、HTTP、伪装域名和跳转到外部；长度不完整时报错。Python 回归 129 项通过，Skill 包仍为 28 个文件。
+- 实测：对 11-17 小组会议执行 `--media`，自动走备用路径，47 秒取得 441,396,703 字节的「小红书x华为Skill 小组会议.mp4」并抽出音轨（试跑目录已删除）。

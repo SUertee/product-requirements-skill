@@ -326,6 +326,14 @@ def render(project, sources, questions, generated_at):
     return '\n\n'.join(document) + '\n', proposal
 
 
+def link_or_copy(source, destination):
+    """Versions are never edited in place, so large originals (recordings) are hard-linked instead of copied."""
+    try:
+        os.link(source, destination)
+    except OSError:
+        shutil.copyfile(source, destination)
+
+
 def copy_materials(project, materials_root, stage):
     attachments = []
     for item in project.get('materials', []):
@@ -343,7 +351,7 @@ def copy_materials(project, materials_root, stage):
         output = stage / 'materials' / relative
         require(not output.exists(), f'Duplicate material destination: {relative}')
         output.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, output)
+        link_or_copy(source, output)
         attachments.append({'material_id': item['material_id'], 'path': output.relative_to(stage).as_posix()})
     return attachments
 

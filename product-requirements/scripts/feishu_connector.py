@@ -26,6 +26,10 @@ class ConnectorError(ValueError):
         self.code = code
 
 
+class BlockedDownload(ConnectorError):
+    """lark-cli refused to fetch a download URL because its host name looks internal (e.g. internal-api-drive-stream.feishu.cn)."""
+
+
 def minute_token(value):
     if '://' in value:
         url = urlparse(value)
@@ -73,7 +77,7 @@ def call_cli(arguments, cwd=None):
         scopes = error.get('missing_scopes', [])
         message = 'Feishu access failed'
         if 'blocked download URL' in error.get('message', ''):
-            raise ConnectorError('Media download blocked by lark-cli URL safety checks for a local/internal host.')
+            raise BlockedDownload('Media download blocked by lark-cli URL safety checks for a local/internal host.')
         if scopes:
             message += '. Missing scopes: ' + ', '.join(scopes)
         else:
@@ -124,6 +128,61 @@ def check():
             'fallback': None if ready else 'Import a TXT, SRT or VTT transcript exported from the meeting tool instead.'}
 
 
+MEDIA_HOSTS = ('.feishu.cn', '.larksuite.com', '.larkoffice.com', '.feishu.net')
+MEDIA_LIMIT = 8 * 1024 ** 3  # refuse anything larger than 8 GB
+
+
+def media_host_allowed(url):
+    parsed = urlparse(url)
+    host = (parsed.hostname or '').lower()
+    return parsed.scheme == 'https' and any(host.endswith(suffix) for suffix in MEDIA_HOSTS)
+
+
+def download_media(token, root):
+    """Download a minute's recording from the signed link lark-cli returns, only from official Feishu/Lark HTTPS hosts."""
+    from urllib.parse import unquote
+    from urllib.request import Request, urlopen
+    payload = call_cli(['minutes', '+download', '--minute-tokens', token, '--url-only'], cwd=root)
+    links = []
+    def walk(value):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key == 'download_url' and isinstance(item, str):
+                    links.append(item)
+                else:
+                    walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+    walk(payload)
+    if len(links) != 1 or not media_host_allowed(links[0]):
+        raise ConnectorError('Feishu did not return one official HTTPS download link for this recording.')
+    target_dir = root / 'downloads'
+    target_dir.mkdir(exist_ok=True)
+    with urlopen(Request(links[0], headers={'User-Agent': 'product-requirements-skill'}), timeout=60) as response:
+        if not media_host_allowed(response.geturl()):
+            raise ConnectorError('The recording link redirected away from Feishu.')
+        size = int(response.headers.get('Content-Length') or 0)
+        if size > MEDIA_LIMIT:
+            raise ConnectorError('The recording is larger than the 8 GB import limit.')
+        match = re.search(r'filename="?([^";]+)"?', response.headers.get('Content-Disposition') or '')
+        name = Path(unquote(match[1])).name if match else ''
+        suffix = Path(name).suffix.lower()
+        if not name or suffix not in {'.mp4', '.m4a', '.mp3', '.wav', '.mov', '.webm', '.aac', '.ogg', '.flac', '.mkv'}:
+            name = token + ('.m4a' if 'audio' in (response.headers.get('Content-Type') or '') else '.mp4')
+        target = target_dir / name
+        written = 0
+        with target.open('wb') as handle:
+            while chunk := response.read(1024 * 1024):
+                written += len(chunk)
+                if written > MEDIA_LIMIT:
+                    raise ConnectorError('The recording is larger than the 8 GB import limit.')
+                handle.write(chunk)
+    if size and written != size:
+        raise ConnectorError('The recording download was incomplete; try again.')
+    return str(target)
+
+
 def import_minutes(value, workspace, project_id, media=False):
     token = minute_token(value)
     workspace = Path(workspace).resolve()
@@ -131,9 +190,13 @@ def import_minutes(value, workspace, project_id, media=False):
     with tempfile.TemporaryDirectory(prefix='.feishu-', dir=workspace) as temporary:
         root = Path(temporary).resolve()
         if media:
-            payload = call_cli(['minutes', '+download', '--minute-tokens', token, '--output-dir', 'downloads'], cwd=root)
-            records = payload.get('downloads', [payload])
-            paths = [record.get('saved_path') for record in records if record.get('minute_token') == token and record.get('saved_path')]
+            try:
+                payload = call_cli(['minutes', '+download', '--minute-tokens', token, '--output-dir', 'downloads'], cwd=root)
+                records = payload.get('downloads', [payload])
+                paths = [record.get('saved_path') for record in records if record.get('minute_token') == token and record.get('saved_path')]
+            except BlockedDownload:
+                # lark-cli only refuses because Feishu's own stream host contains "internal"; fetch the signed link ourselves.
+                paths = [download_media(token, root)]
         else:
             call_cli(['api', 'GET', '/open-apis/minutes/v1/minutes/' + token + '/transcript',
                       '--params', json.dumps({'file_format': 'srt', 'need_speaker': True, 'need_timestamp': True}),

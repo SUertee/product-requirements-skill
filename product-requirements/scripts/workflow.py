@@ -13,7 +13,7 @@ import subprocess
 import tempfile
 import uuid
 
-from build_documents import publish, read_inputs
+from build_documents import link_or_copy, publish, read_inputs
 from ingest_material import file_sha256, read_job
 from project_revision import apply_review, differences, digest, reconcile
 
@@ -112,6 +112,11 @@ class Workflow:
 
     def prepare(self, run_dir, job_ids, version, context_job_ids=None, review_notes=None, changes=None, generation=None, document_edit=None):
         run = Path(run_dir).resolve(strict=True)
+        kind = 'document' if document_edit is not None else 'review' if review_notes is not None else 'generation' if generation else 'analysis'
+        if kind == 'analysis':
+            # A new analysis keeps the version's diagrams (unchanged ones reused, changed ones regenerated). The prototype is
+            # left out: it is generated again only after the new requirements are reviewed.
+            generation = [item for item in retained_generation(run) if item != 'prototype']
         baseline, baseline_sources = read_inputs(run / 'project.json', run / 'sources.jsonl')
         if not isinstance(version, str) or not version.strip() or version == baseline['artifact_version']:
             raise ValueError('Choose a new artifact version.')
@@ -134,9 +139,14 @@ class Workflow:
                     raise ValueError('Source belongs to a different project.')
                 previous = sources.get(source['source_id'])
                 if previous is not None:
-                    identity_fields = ['project_id', 'material_id', 'text', 'locator', 'speaker', 'schema_version']
+                    identity_fields = ['project_id', 'material_id', 'text', 'locator', 'schema_version']
                     if any(previous.get(field) != source.get(field) for field in identity_fields):
                         raise ValueError('Source ID collision with a different payload.')
+                    if previous.get('speaker') != source.get('speaker'):
+                        # Re-normalizing the same transcript may only fill in a missing speaker, never change one.
+                        if previous.get('speaker') is not None:
+                            raise ValueError('Source ID collision with a different payload.')
+                        sources[source['source_id']] = {**previous, 'speaker': source['speaker']}
                 else:
                     sources[source['source_id']] = source
             jobs.append(job)
@@ -207,7 +217,7 @@ class Workflow:
                         raise ValueError('Baseline material is unavailable in its run directory.')
                     destination = material_root / relative
                     destination.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copyfile(source, destination)
+                    link_or_copy(source, destination)
             context = copy.deepcopy(baseline['context_sources'])
             for job in material_jobs:
                 directory = self.workspace / 'jobs' / job['job_id']
@@ -216,11 +226,16 @@ class Workflow:
                     relative = job['job_id'] + '/' + job['files']['original']
                     destination = material_root / relative
                     destination.parent.mkdir(exist_ok=True)
-                    shutil.copyfile(directory / job['files']['original'], destination)
+                    link_or_copy(directory / job['files']['original'], destination)
                     if file_sha256(destination) != job['material_id']:
                         raise ValueError('Intake original changed after import. Reimport the material before analysis.')
                     materials.append({'material_id': job['material_id'], 'job_id': job['job_id'], 'name': job['name'], 'kind': job['kind'], 'source_ids': refs, 'path': relative, 'provenance': job['provenance']})
                     material_ids.add(job['material_id'])
+                elif job.get('provenance', {}).get('related_job_id'):
+                    # The same transcript re-imported with its recording: link the existing entry to that recording.
+                    for material in materials:
+                        if material['material_id'] == job['material_id'] and not material.get('provenance', {}).get('related_job_id'):
+                            material['provenance'] = {**material.get('provenance', {}), 'related_job_id': job['provenance']['related_job_id']}
                 if job['job_id'] in context_ids:
                     context.append({'material_id': job['material_id'], 'name': job['name'], 'source_refs': refs, 'association_status': 'selected_by_user'})
             request = {'schema_version': '0.1', 'request_id': request_id, 'project_id': baseline['project_id'],
@@ -246,7 +261,7 @@ class Workflow:
                     stage.rename(folder)
                 try:
                     db.execute('INSERT INTO tasks (id,identity,project,version,kind,status,attempt,pid,result_hash,error,created,updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                               (request_id, identity, baseline['project_id'], version, 'document' if document_edit is not None else 'review' if review_notes is not None else 'generation' if generation else 'analysis', 'waiting_host', 0, None, None, None, now(), now()))
+                               (request_id, identity, baseline['project_id'], version, kind, 'waiting_host', 0, None, None, None, now(), now()))
                 except sqlite3.IntegrityError as error:
                     raise WorkflowConflict('This project version was reserved concurrently.') from error
             return self.task(request_id)

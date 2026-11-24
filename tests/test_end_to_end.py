@@ -105,3 +105,7 @@ class EndToEndTests(unittest.TestCase):
                 self.assertNotIn('review-notes.json', package.namelist())
             self.assertTrue((archive.parent / 'review-notes.json').is_file())
             self.assertFalse((result['v4'] / 'prototype/index.html').exists())
+            # New material keeps the diagrams the previous version had; the prototype waits for review.
+            carried = [item['capability'] for item in json.loads((result['v4'] / 'generation.json').read_text())['results'] if item['generation_status'] == 'success']
+            self.assertNotIn('prototype', carried)
+            self.assertTrue(set(carried) >= {'workflow'})

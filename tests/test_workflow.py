@@ -35,6 +35,27 @@ class WorkflowTests(unittest.TestCase):
         self.input.write_text('1\n00:00:00,000 --> 00:00:02,000\n主管还需要周报。\n')
         self.job = ingest(self.input, self.workspace, 'demo')
 
+    def test_reimported_transcript_links_its_recording_and_may_fill_speakers(self):
+        transcript = self.root / 'meeting.srt'
+        transcript.write_text('1\n00:00:00,000 --> 00:00:02,000\n张三: 先做工单列表。\n\n2\n00:00:02,000 --> 00:00:04,000\n李四: 好的。\n')
+        first = ingest(transcript, self.workspace, 'demo')
+        task = self.workflow.prepare(self.run, [first['job_id']], 'v2')
+        baseline = json.loads((Path(task['request_path']).parent / 'baseline.json').read_text())
+        v2 = Path(self.workflow.complete(task['id'], {**copy.deepcopy(baseline), 'artifact_version': 'v2', 'baseline_version': 'v1'})['result_dir'])
+        # Simulate a version normalized before speakers were detected.
+        rows = [json.loads(line) for line in (v2 / 'sources.jsonl').read_text().splitlines()]
+        (v2 / 'sources.jsonl').write_text(''.join(json.dumps({**row, 'speaker': None}, ensure_ascii=False) + '\n' for row in rows))
+        recording = self.recording('demo')
+        second = ingest(transcript, self.workspace, 'demo', related_job_id=recording['job_id'])
+        task = self.workflow.prepare(v2, [second['job_id']], 'v3')
+        folder = Path(task['request_path']).parent
+        request = json.loads((folder / 'request.json').read_text())
+        linked = [item for item in request['materials'] if item['kind'] == 'transcript']
+        self.assertEqual([item['provenance'].get('related_job_id') for item in linked], [recording['job_id']])
+        self.assertIn('recording', [item['kind'] for item in request['materials']])
+        speakers = {json.loads(line)['speaker'] for line in (folder / 'sources.jsonl').read_text().splitlines() if json.loads(line).get('material_id') == first['material_id']}
+        self.assertEqual(speakers, {'张三', '李四'})
+
     def test_document_edit_is_versioned_idempotent_and_preserves_requirements(self):
         original = (self.run / 'proposal.md').read_bytes()
         sha = hashlib.sha256(original).hexdigest()

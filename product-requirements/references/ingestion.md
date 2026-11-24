@@ -86,7 +86,7 @@ python3 scripts/feishu_connector.py --minutes 'https://<租户>.feishu.cn/minute
 
 - 使用当前登录的用户身份，只能取得该用户有权访问的妙记，不切换为应用身份。
 - 逐字稿以 SRT 导出，包含时间与说话人。标准化后每段来源保留原话，`speaker` 记录说话人，`locator` 记录起止秒数。未在妙记中改名的说话人显示为“说话人 2”这类匿名标签，不推断真实身份。
-- `--media` 下载原始录音录像，用于核对。lark-cli 的下载地址校验可能拒绝，此时保留失败记录，不绕过校验。
+- `--media` 下载原始录音录像，用于核对和在工作台中按原话时间播放。飞书的媒体地址是 `internal-api-drive-stream.feishu.cn`，lark-cli 因主机名含 internal 会拒绝下载；此时改用 `+download --url-only` 取回签名链接，确认是 HTTPS 且域名属于飞书／Lark（feishu.cn、larksuite.com、larkoffice.com、feishu.net，跳转后同样核对）再由脚本下载，校验大小完整，上限 8 GB。其他域名或不完整的下载按失败处理。
 - 只有本地录音时，可以由用户上传到飞书妙记生成逐字稿，再按上面方式导入。客户录音发送到第三方服务前需取得客户授权。
 
 ### 客户原型意见
