@@ -1,6 +1,6 @@
 # Schema Canvas 参考
 
-来源为用户自有的 schema-canvas Skill（用户于 2026-11-15 确认拥有其内容），已公开在 [SUertee/schema-canvas](https://github.com/SUertee/schema-canvas)，当前工程固定提交 `3875a556447382e882811a1a2ac1e5ad02a10d29`，入口为仓库根目录的 SKILL.md。来源、提交与环境变量在 [integrations.json](../../product-requirements/integrations.json) 维护。仓库暂未声明许可证。
+来源为用户自有的 schema-canvas Skill（用户于 2026-11-15 确认拥有其内容），已公开在 [SUertee/schema-canvas](https://github.com/SUertee/schema-canvas)，当前工程固定提交 `26233b6ff6273c86f28e11f49aaced9dadb4eb01`，入口为仓库根目录的 SKILL.md。来源、提交与环境变量在 [integrations.json](../../product-requirements/integrations.json) 维护。许可证为 MIT。
 
 ## 参考与接入范围
 
@@ -31,4 +31,4 @@ python3 product-requirements/scripts/generate_artifacts.py --locate schema-canva
 
 ## 来源快照
 
-2026-11-25 公开仓库首个提交 `3875a556` 与本地开发副本比对：assets/reference-erd.html、references/design-system.md、references/interaction-contract.md 一致；仓库另增 README.md 与 references/schema-governance.md，SKILL.md 有更新。生成器只读取 assets/reference-erd.html。
+2026-11-25 公开仓库提交 `26233b6f`（首个提交加 MIT LICENSE）与本地开发副本比对：assets/reference-erd.html、references/design-system.md、references/interaction-contract.md 一致；仓库另增 README.md、LICENSE 与 references/schema-governance.md，SKILL.md 有更新。生成器只读取 assets/reference-erd.html。

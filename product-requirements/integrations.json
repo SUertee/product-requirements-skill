@@ -8,9 +8,9 @@
   },
   "schema-canvas": {
     "repository": "https://github.com/SUertee/schema-canvas",
-    "commit": "3875a556447382e882811a1a2ac1e5ad02a10d29",
+    "commit": "26233b6ff6273c86f28e11f49aaced9dadb4eb01",
     "skill_subdirectory": ".",
-    "license": "unspecified (author-owned repository)",
+    "license": "MIT",
     "environment_variable": "SCHEMA_CANVAS_SKILL_DIR"
   }
 }
