@@ -33,7 +33,7 @@ python3 product-requirements/scripts/workflow.py --workspace runs/demo/inbox \
 
 ## 人工评审与生成
 
-工作台“功能需求”可编辑字段与锁定选项，“评审记录”保存定义确认。应用意见会生成新版本。definition 评审绑定 project_id、artifact_version、decision_id 和 target，确认后的需求才进入原型生成。人工修改新增来源依据，分析结果中的锁定冲突写入 diff。运行 `generate` 前，若选择 `modules`、`architecture` 或 `workflow`，先按 [Archify 定位与按需下载](#缺少-archify-时按需下载) 准备依赖。
+工作台“功能需求”可编辑字段与锁定选项，“评审记录”保存定义确认。应用意见会生成新版本。definition 评审绑定 project_id、artifact_version、decision_id 和 target，确认后的需求才进入原型生成。人工修改新增来源依据，分析结果中的锁定冲突写入 diff。运行 `generate` 前，若选择 `modules`、`architecture` 或 `workflow`，先准备 Archify；选择 `erd`，先准备 Schema Canvas。两者都按 [定位与按需下载](#缺少依赖时按需下载) 处理。
 
 ```bash
 python3 product-requirements/scripts/workflow.py --workspace runs/demo/inbox \
@@ -86,26 +86,27 @@ python3 product-requirements/scripts/intake_runner.py \
 
 从本 Skill 包目录运行 `python3 scripts/generate_artifacts.py --locate archify` 或 `--locate schema-canvas` 获取对应 Skill 的入口，随后读取该 SKILL.md。Archify 可以通过 ARCHIFY_SKILL_DIR 指向其 archify/ 包目录，Schema Canvas 使用 SCHEMA_CANVAS_SKILL_DIR。未指定环境变量时，依次查找当前 Skill 的同级包、工程旁 skill-dependencies/ 和个人级 ~/.codeartsdoer/skills/。显式配置的路径缺失时报告错误。
 
-#### 缺少 Archify 时按需下载
+#### 缺少依赖时按需下载
 
-生成业务模块图、技术架构图或流程图前先运行定位命令。找到可用的 Archify 入口时直接读取。找不到时，由 Agent 在当前任务中按下列命令下载 [integrations.json](../integrations.json) 指定的提交到临时目录。Archify 作为外部依赖留在 Skill 包外。
+生成业务模块图、技术架构图或流程图前定位 Archify，生成数据模型（erd）前定位 Schema Canvas。找到可用入口时直接读取。找不到时，由 Agent 在当前任务中按下列命令下载 [integrations.json](../integrations.json) 指定的提交到临时目录。两者都作为外部依赖留在 Skill 包外。
 
-从 `product-requirements/` 运行以下 Bash 命令。下载完成并定位成功后，读取返回的 `SKILL.md` 和该任务需要的上游参考，再在带有同一 `ARCHIFY_SKILL_DIR` 的环境中运行生成器。若下一条工具调用启动了新 shell，显式传入这个环境变量。
+从 `product-requirements/` 运行以下 Bash 命令，`capability` 取 `archify` 或 `schema-canvas`，两者都缺时各运行一次。下载完成并定位成功后，读取返回的 `SKILL.md` 和该任务需要的上游参考，再在带有同一环境变量（`ARCHIFY_SKILL_DIR` 或 `SCHEMA_CANVAS_SKILL_DIR`）的环境中运行生成器。若下一条工具调用启动了新 shell，显式传入这个环境变量。
 
 ```bash
-archify_repo=$(python3 -c 'import json; print(json.load(open("integrations.json"))["archify"]["repository"])') &&
-archify_commit=$(python3 -c 'import json; print(json.load(open("integrations.json"))["archify"]["commit"])') &&
-archify_subdir=$(python3 -c 'import json; print(json.load(open("integrations.json"))["archify"]["skill_subdirectory"])') &&
-archify_checkout=$(mktemp -d "${TMPDIR:-/tmp}/archify-skill.XXXXXXXX") &&
-git -C "$archify_checkout" init --quiet &&
-git -C "$archify_checkout" fetch --depth 1 "$archify_repo" "$archify_commit" &&
-git -C "$archify_checkout" checkout --quiet --detach FETCH_HEAD &&
-test "$(git -C "$archify_checkout" rev-parse HEAD)" = "$archify_commit" &&
-export ARCHIFY_SKILL_DIR="$archify_checkout/$archify_subdir" &&
-python3 scripts/generate_artifacts.py --locate archify
+capability=archify &&
+field() { python3 -c 'import json, sys; print(json.load(open("integrations.json"))[sys.argv[1]][sys.argv[2]])' "$capability" "$1"; } &&
+repo=$(field repository) && commit=$(field commit) &&
+subdir=$(field skill_subdirectory) && env_name=$(field environment_variable) &&
+checkout=$(mktemp -d "${TMPDIR:-/tmp}/$capability-skill.XXXXXXXX") &&
+git -C "$checkout" init --quiet &&
+git -C "$checkout" fetch --depth 1 "$repo" "$commit" &&
+git -C "$checkout" checkout --quiet --detach FETCH_HEAD &&
+test "$(git -C "$checkout" rev-parse HEAD)" = "$commit" &&
+export "$env_name=$checkout/$subdir" &&
+python3 scripts/generate_artifacts.py --locate "$capability"
 ```
 
-网络、权限或入口校验失败时，记录错误和受影响的图示，继续生成可独立完成的成果。此下载流程只适用于 Archify。Schema Canvas 沿用已有定位方式。
+网络、权限或入口校验失败时，记录错误和受影响的成果，继续生成可独立完成的部分；数据模型缺失时工作台按实体和关系显示基础视图。
 
 ### 输入到产品定义
 

@@ -7,8 +7,10 @@
     "environment_variable": "ARCHIFY_SKILL_DIR"
   },
   "schema-canvas": {
-    "source": "user-owned skill",
-    "environment_variable": "SCHEMA_CANVAS_SKILL_DIR",
-    "distribution_permission": "user confirmed ownership on 2026-11-15"
+    "repository": "https://github.com/SUertee/schema-canvas",
+    "commit": "3875a556447382e882811a1a2ac1e5ad02a10d29",
+    "skill_subdirectory": ".",
+    "license": "unspecified (author-owned repository)",
+    "environment_variable": "SCHEMA_CANVAS_SKILL_DIR"
   }
 }

@@ -18,7 +18,7 @@ metadata:
 
 - 新会议或后台接收材料，读取 [输入与预处理](references/ingestion.md)。本地文件使用 `scripts/ingest_material.py`。飞书妙记先读 [外部接入](references/ingestion.md)，运行 `scripts/feishu_connector.py --check` 确认可用后再导入。运行前查看 `--help`。纯文本标准化可直接运行 `scripts/normalize_transcript.py`。
 - 首次需求整理，读取 [需求建模与评审](references/workflow.md)。
-- 生成业务模块图、技术架构图、流程图或 ERD 前，读取 [能力接入与设计路由](references/execution.md)。需要 Archify 且本地缺失时，按其中步骤下载固定版本，读取入口后再运行。
+- 生成业务模块图、技术架构图、流程图或 ERD 前，读取 [能力接入与设计路由](references/execution.md)。需要 Archify 或 Schema Canvas 且本地缺失时，按其中步骤下载固定版本，读取入口后再运行。
 - 生成客户原型，读取 [原型设计与生成](references/prototype.md) 和 [内置 UI 规范](references/ui-design.md)，使用 assets/ui.css 与 assets/prototype-shell.html。
 - 生成内部工作台，读取 [工作台页面规范](references/ui-design.md) 和内置 UI 规范，使用 assets/workbench-template.html、assets/workbench.css 与 assets/workbench.js。
 - 需要在网页中导入和记录评审时，运行 scripts/serve_workbench.py，传入已生成的 run-dir 与该项目的 workspace。读取接收箱的分析请求，再执行语义分析与新版本生成。

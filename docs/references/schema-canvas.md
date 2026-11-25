@@ -1,6 +1,6 @@
 # Schema Canvas 参考
 
-来源为用户自有的 schema-canvas Skill，用户于 2026-11-15 确认拥有其内容。工程旁 skill-dependencies/schema-canvas/ 保存开发副本，来源目录为用户本机的 .codex/skills/schema-canvas/。当前来源未提供独立版本号，修改时记录实际文件变化和验证结果。
+来源为用户自有的 schema-canvas Skill（用户于 2026-11-15 确认拥有其内容），已公开在 [SUertee/schema-canvas](https://github.com/SUertee/schema-canvas)，当前工程固定提交 `3875a556447382e882811a1a2ac1e5ad02a10d29`，入口为仓库根目录的 SKILL.md。来源、提交与环境变量在 [integrations.json](../../product-requirements/integrations.json) 维护。仓库暂未声明许可证。
 
 ## 参考与接入范围
 
@@ -15,7 +15,7 @@
 python3 product-requirements/scripts/generate_artifacts.py --locate schema-canvas
 ```
 
-配置 SCHEMA_CANVAS_SKILL_DIR 可选择其他安装位置。主 Skill 的统一数据与文件约定见 [输出合同](../../product-requirements/references/project-data.md)。
+配置 SCHEMA_CANVAS_SKILL_DIR 可选择其他安装位置。本地找不到时按 [按需下载](../../product-requirements/references/execution.md#缺少依赖时按需下载) 下载固定提交。主 Skill 的统一数据与文件约定见 [输出合同](../../product-requirements/references/project-data.md)。
 
 
 ## 在本项目中的采用位置
@@ -31,4 +31,4 @@ python3 product-requirements/scripts/generate_artifacts.py --locate schema-canva
 
 ## 来源快照
 
-2026-11-17 核对本地开发副本，共 5 个文件。按相对路径排序，将每个相对路径、NUL、文件内容、NUL 依次输入 SHA-256，得到 `0488fce03187fffcc17112810a2c420831887d5779fdafc3008d714f22f1e76b`。该摘要用于识别当前采用的自有 Skill 内容。
+2026-11-25 公开仓库首个提交 `3875a556` 与本地开发副本比对：assets/reference-erd.html、references/design-system.md、references/interaction-contract.md 一致；仓库另增 README.md 与 references/schema-governance.md，SKILL.md 有更新。生成器只读取 assets/reference-erd.html。
