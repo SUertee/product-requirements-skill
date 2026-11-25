@@ -8,7 +8,8 @@ const {JSDOM, VirtualConsole} = require('jsdom');
 const run = path.resolve(process.argv[2]);
 const errors = [];
 const quiet = new VirtualConsole();
-quiet.on('jsdomError', error => errors.push(error.message));
+// jsdom cannot parse @container rules; the browser can, so that notice is not a page error.
+quiet.on('jsdomError', error => { if (error.message !== 'Could not parse CSS stylesheet') errors.push(error.message); });
 quiet.on('error', message => errors.push(String(message)));
 
 // 1. Prototype shell

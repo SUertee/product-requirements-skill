@@ -325,9 +325,12 @@
   function statusView(item) {
     const target = item.requirement_id || item.nfr_id;
     const pending = pendingVerdict(target);
-    if (!pending) return {status: item.review_status, label: states[item.review_status] || '草稿', pending: false};
-    const status = {confirmed: 'confirmed', needs_changes: 'draft', parked: 'parked'}[pending.outcome];
-    return {status, label: {confirmed: '确认', needs_changes: '需修改', parked: '暂缓'}[pending.outcome] + '（待生效）', pending: true};
+    const view = !pending ? {status: item.review_status, label: states[item.review_status] || '草稿', pending: false}
+      : {status: {confirmed: 'confirmed', needs_changes: 'draft', parked: 'parked'}[pending.outcome], label: {confirmed: '确认', needs_changes: '需修改', parked: '暂缓'}[pending.outcome] + '（待生效）', pending: true};
+    // A requirement with unanswered questions is not settled yet, whatever its verdict says.
+    const unanswered = item.requirement_id ? openQuestions(item).filter(question => !question.answer).length : 0;
+    if (view.status === 'confirmed' && unanswered) return {status: 'questions', label: '待定', pending: false, questions: unanswered};
+    return view;
   }
   function requirementChoice(req, current, onSelect) {
     const button = element('button', null, 'requirement-choice'); button.type = 'button';
@@ -444,7 +447,7 @@
     evidence.dataset.evidence = req.evidence_type || 'unknown';
     const view = statusView(req);
     const status = element('span', '状态：' + view.label, 'status-tag');
-    status.title = view.pending ? '评审结论已保存，生成新版本后生效' : statusHelp[req.review_status] || statusHelp.draft;
+    status.title = view.questions ? '还有 ' + view.questions + ' 个问题没回答，回答后才算确认' : view.pending ? '评审结论已保存，生成新版本后生效' : statusHelp[req.review_status] || statusHelp.draft;
     status.dataset.status = view.status; if (view.pending) status.dataset.pending = 'true';
     identity.append(evidence, status, element('span', req.requirement_id, 'requirement-code'));
     const head = element('header', null, 'requirement-head'); head.append(card.firstElementChild, identity);
@@ -573,7 +576,7 @@
     definition.append(facts);
     content.append(definition);
 
-    const confirmed = requirements.filter(req => req.review_status === 'confirmed').length;
+    const confirmed = requirements.filter(req => statusView(req).status === 'confirmed').length;
     const openCount = requirements.flatMap(req => openQuestions(req)).filter(item => !item.answer).length + ruleFindings().size;
     const meetings = project.meetings || [];
     const day = value => { const date = new Date(String(value || '').replace(' ', 'T')); return Number.isNaN(date.getTime()) ? '' : (date.getMonth() + 1) + ' 月 ' + date.getDate() + ' 日'; };

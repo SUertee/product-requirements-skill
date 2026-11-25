@@ -8,7 +8,8 @@ const run = path.resolve(process.argv[2]);
 const repository = path.resolve(__dirname, '..');
 const errors = [];
 const consoleCapture = new VirtualConsole();
-consoleCapture.on('jsdomError', error => errors.push(error.message));
+// jsdom cannot parse @container rules; the browser can, so that notice is not a page error.
+consoleCapture.on('jsdomError', error => { if (error.message !== 'Could not parse CSS stylesheet') errors.push(error.message); });
 const dom = new JSDOM(fs.readFileSync(path.join(run, 'workbench/index.html'), 'utf8'), {
   url: 'http://127.0.0.1:8765/workbench/index.html',
   runScripts: 'outside-only',
@@ -34,6 +35,8 @@ payload.sources.push({...timedSource, source_id: 'OTHER-SOURCE', material_id: 'o
 payload.project.materials.push({material_id: 'other-meeting', name: '其他会议', kind: 'transcript', source_ids: ['OTHER-SOURCE']});
 const lastSourceId = 'SRC-PAGING-34';
 payload.project.requirements[0].source_refs.push(lastSourceId);
+const questioned = payload.project.requirements[1];
+Object.assign(questioned, {review_status: 'confirmed', open_questions: ['本期是否需要导出？']});
 document.getElementById('workbench-data').textContent = JSON.stringify(payload);
 const jobId = 'JOB-' + 'a'.repeat(24);
 const requests = [];
@@ -196,6 +199,17 @@ async function settle() {
     {target: 'REQ-001', field: 'acceptance_criteria', value: '主题必填，提交后显示唯一编号'},
     {target: 'REQ-001', field: 'locked_fields', value: []}
   ]);
+  navigate('modules');
+  document.querySelector('.requirement-choice[data-requirement-id="' + questioned.requirement_id + '"]').click();
+  const questionedStatus = () => document.querySelector('.requirement-identity .status-tag');
+  assert.match(questionedStatus().textContent, /待定/, 'a confirmed requirement with an unanswered question is not shown as confirmed');
+  assert.equal(document.querySelector('.requirement-choice[data-requirement-id="' + questioned.requirement_id + '"] .requirement-choice-status').textContent, '待定');
+  const questionForm = document.querySelector('.question-form');
+  questionForm.querySelector('textarea').value = '本期不导出';
+  [...questionForm.querySelectorAll('button')].find(item => item.textContent === '保存回答').click();
+  await settle();
+  assert.equal(JSON.parse(requests.filter(item => item.url === '/api/review').at(-1).options.body).target, questioned.requirement_id + '#question-1');
+  assert.match(questionedStatus().textContent, /已确认/, 'answering the last question settles the requirement');
   navigate('documents');
   assert(document.querySelectorAll('.selection-list button').length >= 3);
   button('PRD').click();
