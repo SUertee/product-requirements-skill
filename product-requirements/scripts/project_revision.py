@@ -96,6 +96,7 @@ def apply_review(baseline, notes, version, changes=None):
     result, conflicts = reconcile(comparison, result)
     requirements = {item['requirement_id']: item for item in result['requirements']}
     seen = set()
+    answers = {}
     decisions = notes.get('decisions')
     if not isinstance(decisions, list):
         raise ValueError('Review decisions must be an array.')
@@ -110,6 +111,14 @@ def apply_review(baseline, notes, version, changes=None):
         outcome = decision.get('outcome')
         if outcome not in {'confirmed', 'needs_changes', 'parked'}:
             raise ValueError('Invalid review outcome.')
+        # "<requirement_id>#question-<n>": an answer to one of the requirement's open questions (confirmed = answered,
+        # parked = not needed for this release). The latest answer per question closes it in the new version.
+        owner, _, question = target.partition('#question-') if isinstance(target, str) else ('', '', '')
+        if question:
+            if owner not in requirements or not question.isdigit():
+                raise ValueError('Question answers must target an existing requirement question.')
+            answers[(owner, int(question))] = decision
+            continue
         nfr = next((item for item in result.get('nfrs', []) if item.get('nfr_id') == target), None)
         if nfr is not None:
             nfr['review_status'] = {'confirmed': 'confirmed', 'needs_changes': 'draft', 'parked': 'parked'}[outcome]
@@ -121,6 +130,18 @@ def apply_review(baseline, notes, version, changes=None):
             if requirement.get('lifecycle_status') == 'cancelled':
                 status = 'parked'
             requirement['review_status'] = status
+    for owner_id, requirement in requirements.items():
+        asked = list(next((item for item in baseline['requirements'] if item['requirement_id'] == owner_id), {}).get('open_questions') or [])
+        closed = {index: answers[(owner_id, index)] for index in range(1, len(asked) + 1) if (owner_id, index) in answers}
+        if any(index > len(asked) for owner, index in answers if owner == owner_id):
+            raise ValueError('Question answers must target an existing requirement question.')
+        if not closed:
+            continue
+        requirement['open_questions'] = [text for index, text in enumerate(asked, 1) if index not in closed]
+        requirement['answered_questions'] = list(requirement.get('answered_questions') or []) + [
+            {'question': asked[index - 1], 'answer': '不影响本期' if item['outcome'] == 'parked' else item.get('comment', '').split('回答：', 1)[-1].strip(),
+             'outcome': 'deferred' if item['outcome'] == 'parked' else 'answered', 'decision_id': item['decision_id']}
+            for index, item in sorted(closed.items())]
     result['review_lineage'] = {'source_version': baseline['artifact_version'], 'notes_sha256': digest(notes), 'decision_ids': sorted(seen)}
     diff = differences(baseline, result, conflicts)
     return result, diff

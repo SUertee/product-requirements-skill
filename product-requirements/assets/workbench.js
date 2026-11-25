@@ -21,6 +21,9 @@
   let selectedModule = null;
   let moduleView = 'list';
   let selectedRequirement = null;
+  let requirementFocus = null;
+  let editorField = null;
+  let questionMessage = '';
   let moduleDetailTab = 'requirements';
   let requirementTab = 'detail';
   let moduleFrame = null;
@@ -180,14 +183,18 @@
     content.append(layout);
     return detail;
   }
-  function openRequirement(req) {
+  function openRequirement(req, focus = null, field = null) {
+    editorField = field;
     selectedRequirement = req.requirement_id;
+    requirementFocus = focus;
     moduleView = 'list';
-    requirementTab = 'detail';
+    requirementTab = focus === 'edit' && serverState ? 'edit' : 'detail';
+    if (focus === 'edit') focus = null;
     moduleDetailTab = 'requirements';
     selectedModule = null;
     queryInput.value = ''; statusInput.value = ''; evidenceInput.value = '';
     navigate('modules');
+    if (focus) requestAnimationFrame(() => { const node = document.querySelector('.requirement-' + focus); if (node) { node.scrollIntoView({block: 'center', behavior: 'smooth'}); node.classList.add('flash'); setTimeout(() => node.classList.remove('flash'), 1600); } requirementFocus = null; });
   }
   function requirementLink(req) {
     const button = element('button', req.title, 'source-link');
@@ -228,6 +235,7 @@
     const select = element('select'); select.id = 'edit-field-' + req.requirement_id;
     const labels = {behavior: '功能内容', acceptance_criteria: '验收标准', rules: '业务规则', exceptions: '出错时怎么处理', role: '使用者', title: '需求名称'};
     for (const [key, label] of Object.entries(labels)) { const option = element('option', label); option.value = key; select.append(option); }
+    if (editorField && labels[editorField]) { select.value = editorField; editorField = null; }
     const fieldLabel = element('label', '改哪一项'); fieldLabel.htmlFor = select.id;
     const text = element('textarea'); text.id = 'edit-value-' + req.requirement_id; text.rows = 4;
     const textLabel = element('label', '改成'); textLabel.htmlFor = text.id;
@@ -283,6 +291,36 @@
   function pendingVerdict(target) {
     const decided = (serverState?.review?.decisions || []).filter(item => item.target === target && (item.review_stage || 'definition') === 'definition').at(-1);
     return decided || null;
+  }
+  // Open questions the AI left on a requirement. Each can be answered (or set aside for this release) from the
+  // requirement card; the answer is a definition note on "<id>#question-<n>" that the next revision reads.
+  function openQuestions(req) {
+    return (req.open_questions || []).map((text, index) => {
+      const target = req.requirement_id + '#question-' + (index + 1);
+      const decided = pendingVerdict(target);
+      return {req, text, target, answer: decided ? {outcome: decided.outcome, text: decided.comment.replace(/^问题：.*\n回答：/s, '')} : null};
+    });
+  }
+  // Gaps the generator's checks found (e.g. missing exception handling), grouped by reason with the requirements
+  // they concern; the AI's own questions are listed separately and skipped here.
+  function ruleFindings() {
+    const asked = new Set(requirements.flatMap(req => req.open_questions || []));
+    const findings = new Map();
+    for (const item of data.review.questions || []) {
+      if (item.reason === '核对依据、范围与确认状态' || asked.has(item.reason)) continue;
+      const owner = requirements.find(req => req.requirement_id === item.target);
+      if (!findings.has(item.reason)) findings.set(item.reason, Object.assign([], {field: item.field}));
+      if (owner) findings.get(item.reason).push(owner);
+    }
+    return findings;
+  }
+  async function answerQuestion(question, outcome, answer) {
+    const comment = '问题：' + question.text + '\n回答：' + (outcome === 'parked' ? '不影响本期' : answer);
+    try {
+      const result = await localRequest('/api/review', {method: 'POST', body: JSON.stringify({revision: serverState.review.revision, review_stage: 'definition', target: question.target, outcome, comment, reviewer: ''})});
+      serverState.review = result.review; questionMessage = '';
+    } catch (error) { questionMessage = error.message; }
+    render();
   }
   function statusView(item) {
     const target = item.requirement_id || item.nfr_id;
@@ -359,6 +397,41 @@
     card.append(body, reviewActions(nfr.nfr_id));
     return card;
   }
+  // Each open question with its answer, or a box to answer it; answers take effect in the next version.
+  function questionList(req) {
+    const list = element('ol', null, 'question-list');
+    for (const done of req.answered_questions || []) {
+      const item = element('li', null, 'question-entry'); item.dataset.state = done.outcome === 'deferred' ? 'parked' : 'confirmed';
+      item.append(element('p', done.question, 'question-entry-text'), element('div', done.outcome === 'deferred' ? '不影响本期' : '回答：' + done.answer, 'question-answer'));
+      list.append(item);
+    }
+    for (const question of openQuestions(req)) {
+      const item = element('li', null, 'question-entry'); item.dataset.state = question.answer ? question.answer.outcome : 'open';
+      item.append(element('p', question.text, 'question-entry-text'));
+      if (question.answer) {
+        const line = element('div', null, 'question-answer');
+        line.append(element('span', question.answer.outcome === 'parked' ? '不影响本期' : '回答：' + question.answer.text), element('span', '生成新版本后生效', 'question-answer-note'));
+        if (serverState) { const change = element('button', '改', 'button ghost small'); change.type = 'button'; change.addEventListener('click', () => { item.replaceWith(questionForm(question)); }); line.append(change); }
+        item.append(line);
+      } else if (serverState) item.append(questionForm(question, true));
+      list.append(item);
+    }
+    if (questionMessage) list.append(element('li', questionMessage, 'inline-note'));
+    return list;
+  }
+  function questionForm(question, inline = false) {
+    const form = element(inline ? 'div' : 'li', null, 'question-form');
+    if (!inline) form.append(element('p', question.text, 'question-entry-text'));
+    const input = element('textarea', null, 'page-review-input'); input.rows = 2; input.placeholder = '写下结论，比如：先做静态时序，按步播放放到下一期';
+    input.setAttribute('aria-label', '回答：' + question.text); if (question.answer?.outcome === 'confirmed') input.value = question.answer.text;
+    const actions = element('div', null, 'document-actions');
+    const save = element('button', '保存回答', 'button primary small'); save.type = 'button';
+    save.addEventListener('click', () => { if (!input.value.trim()) { input.focus(); return; } answerQuestion(question, 'confirmed', input.value.trim()); });
+    const skip = element('button', '不影响本期', 'button ghost small'); skip.type = 'button';
+    skip.addEventListener('click', () => answerQuestion(question, 'parked', ''));
+    actions.append(save, skip); form.append(input, actions);
+    return form;
+  }
   function requirementCard(req) {
     const card = panel(req.title);
     card.classList.add('requirement-inspector');
@@ -389,9 +462,9 @@
       behavior.append(valueNode(req.behavior)); body.append(behavior);
       const acceptance = section('验收标准', 'decided', 'requirement-acceptance');
       acceptance.append(valueNode(req.acceptance_criteria)); body.append(acceptance);
-      if (req.open_questions?.length) {
+      if (req.open_questions?.length || req.answered_questions?.length) {
         const questions = section('需要确认', 'pending', 'requirement-questions');
-        questions.append(valueNode(req.open_questions)); body.append(questions);
+        questions.append(questionList(req)); body.append(questions);
       }
       const known = [['使用者', req.role], ['什么时候用', req.trigger], ['输入', req.inputs], ['输出', req.outputs], ['业务规则', req.rules], ['出错时', req.exceptions]].filter(([, value]) => display(value) !== '待确认');
       if (known.length) {
@@ -501,6 +574,7 @@
     content.append(definition);
 
     const confirmed = requirements.filter(req => req.review_status === 'confirmed').length;
+    const openCount = requirements.flatMap(req => openQuestions(req)).filter(item => !item.answer).length + ruleFindings().size;
     const meetings = project.meetings || [];
     const day = value => { const date = new Date(String(value || '').replace(' ', 'T')); return Number.isNaN(date.getTime()) ? '' : (date.getMonth() + 1) + ' 月 ' + date.getDate() + ' 日'; };
     const versionNumber = /(\d+)\s*$/.exec(String(project.artifact_version || ''))?.[1];
@@ -511,7 +585,7 @@
       ['当前版本', project.artifact_version, day(data.generated_at) ? day(data.generated_at) + '生成' : ''],
       ['已迭代', versionNumber ? versionNumber + ' 版' : '—', project.baseline_version ? '上一版 ' + project.baseline_version : ''],
       ['会议', meetings.length + ' 次', day(lastMeeting) ? '最近 ' + day(lastMeeting) : ''],
-      ['当前进度', stage, requirements.length ? confirmed + ' / ' + requirements.length + ' 条需求已确认' : ''],
+      ['当前进度', stage, requirements.length ? confirmed + ' / ' + requirements.length + ' 条需求已确认' + (openCount ? '，' + openCount + ' 个问题待定' : '') : ''],
     ]) {
       const item = element('div', null, 'overview-stat'); const figure = element('dd', value);
       item.append(element('dt', label), figure); if (note) item.append(element('dd', note, 'stat-note'));
@@ -521,15 +595,13 @@
 
     const outputs = panel('成果', 'documents');
     outputs.classList.add('overview-outputs');
-    const explicit = requirements.flatMap(req => (req.open_questions || []).map(reason => ({target: req.requirement_id, reason})));
-    const pending = new Set((explicit.length ? explicit : data.review.questions || []).map(item => item.reason)).size;
     const stages = [
       ['materials', '会议素材', (project.materials || []).length ? (project.materials || []).length + ' 份素材' : '', (project.materials || []).length > 0],
       ['modules', '功能需求', requirements.length ? requirements.length + ' 条 · ' + confirmed + ' 条已确认' : '', requirements.length > 0],
       ['documents', '方案文档', '方案 · PRD', Boolean(data.documents?.['proposal.md'])],
       ['prototype', '原型预览', prototypeAvailable ? '已生成' : '', prototypeAvailable],
       ['technical', '技术设计', [project.technical_architecture?.components?.length ? '架构' : '', project.business_model?.entities?.length ? '数据模型' : ''].filter(Boolean).join(' · '), Boolean(project.technical_architecture?.components?.length) || hasArtifact(['diagrams/', 'data-model/'])],
-      ['review', '评审记录', pending ? pending + ' 个问题待确认' : '暂无待确认问题', true],
+      ['review', '评审记录', openCount ? openCount + ' 个问题待定' : '暂无待定问题', true],
     ];
     // Hand-off to development: the generated agent prompt, usable once at least one requirement is confirmed.
     const handoffReady = confirmed > 0 && Boolean(data.documents?.['agent-prompt.md']);
@@ -548,21 +620,24 @@
     const columns = element('div', null, 'overview-sections');
     columns.append(outputs);
     const followUp = panel('待确认事项', 'pending');
-    // Two origins: questions the AI raised while reading the meeting (open_questions on a requirement),
-    // and gaps found by the generator's checks (missing acceptance, vague wording, unconfirmed items).
-    const questions = [...explicit.map(item => ({...item, origin: 'AI 读会议时提出'})), ...(data.review.questions || []).filter(item => item.reason !== '核对依据、范围与确认状态').map(item => ({...item, origin: '规则检查发现'}))];
-    const unique = questions.filter((item, index) => questions.findIndex(other => item.reason === other.reason) === index);
-    if (unique.length) followUp.append(element('p', '共 ' + unique.length + ' 项，显示前 3 项；点开到评审记录回答', 'inline-note'));
-    for (const question of unique.slice(0, 3)) {
+    // An index of what is still open; each row jumps to where it is settled. AI questions are answered on the
+    // requirement card; checker findings (e.g. missing exception handling) are fixed by editing the requirement.
+    const open = requirements.flatMap(req => openQuestions(req)).filter(item => !item.answer);
+    const findings = ruleFindings();
+    const rows = [
+      ...open.map(item => ({text: item.text, origin: 'AI 读会议时提出 · 需求「' + item.req.title + '」', go: () => openRequirement(item.req, 'questions')})),
+      ...[...findings].map(([reason, owners]) => ({text: reason, origin: '规则检查发现 · ' + (owners.length > 1 ? owners.length + ' 条需求' : owners.length ? '需求「' + owners[0].title + '」' : '评审记录'), go: () => owners.length ? openRequirement(owners[0], 'edit', owners.field) : (reviewTab = 'records', navigate('review'))})),
+    ];
+    if (rows.length) followUp.append(element('p', '还有 ' + rows.length + ' 项，点一项跳到对应需求处理', 'inline-note'));
+    for (const row of rows) {
       const item = element('button', null, 'output-row question-item'); item.type = 'button';
       const text = element('span', null, 'question-text');
-      const owner = requirements.find(req => req.requirement_id === question.target);
-      text.append(element('span', question.reason), element('small', question.origin + (owner ? ' · 需求「' + owner.title + '」' : ''), 'question-origin'));
+      text.append(element('span', row.text), element('small', row.origin, 'question-origin'));
       item.append(text, element('span', '→'));
-      item.addEventListener('click', () => { const req = requirements.find(entry => entry.requirement_id === question.target); if (req) openRequirement(req); else { reviewTab = 'records'; navigate('review'); } });
+      item.addEventListener('click', row.go);
       followUp.append(item);
     }
-    if (!unique.length) followUp.append(element('p', '暂无待确认事项', 'inline-note'));
+    if (!rows.length) followUp.append(element('p', '暂无待确认事项', 'inline-note'));
     columns.append(followUp); content.append(columns);
   }
   async function localRequest(path, options = {}) {
