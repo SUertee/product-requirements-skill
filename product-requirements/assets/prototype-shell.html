@@ -261,6 +261,8 @@ html[data-picking] #screen,html[data-picking] #screen *{cursor:crosshair !import
   window.addEventListener('hashchange', () => { let id = ''; try { id = decodeURIComponent(location.hash.slice(1)); } catch { /* fall back */ } show(id); sections.get(current)?.focus({preventScroll: true}); window.scrollTo(0, 0); });
   let first = '';
   try { first = decodeURIComponent(location.hash.slice(1)); } catch { /* invalid fragment falls back to start page */ }
-  show(first || data.start_page_id);
+  // The workbench embeds this page through srcdoc, where it cannot set a fragment: it names the page to open instead.
+  const preset = document.documentElement.dataset.startPage;
+  show(first || (pages.has(preset) ? preset : data.start_page_id));
 })();
 </script></body></html>

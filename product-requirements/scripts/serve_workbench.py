@@ -70,6 +70,10 @@ class WorkbenchServer(ThreadingHTTPServer):
         if stage == 'release':
             manifest = json.loads((run_dir / 'manifest.json').read_text())
             allowed = {item['path'] for item in manifest['artifacts'] if item['path'].startswith('prototype/') and item['path'].endswith('.html')}
+            # Page-level verdicts from the 原型预览 page: "prototype/index.html#<page_id>". They are notes for the next
+            # revision; only a verdict on the file itself releases it to the customer.
+            if 'prototype/index.html' in allowed:
+                allowed.update('prototype/index.html#' + page['page_id'] for page in (project.get('prototype_design') or {}).get('pages', []) if isinstance(page, dict) and isinstance(page.get('page_id'), str))
         if not isinstance(target, str) or target not in allowed or payload.get('outcome') not in ['confirmed', 'needs_changes', 'parked']:
             raise ValueError('Choose an existing review target and valid outcome.')
         if not isinstance(target, str):

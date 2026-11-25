@@ -86,10 +86,14 @@ assert.match(mapping(), /手机号脱敏显示/);
 assert.match(mapping(), /主管可在手机上查看/, 'positioning-level NFR is listed');
 const frame = pd.querySelector('.prototype-frame');
 assert.equal(frame.getAttribute('sandbox'), 'allow-scripts allow-forms');
-assert.match(frame.getAttribute('src'), /prototype\/index\.html#tickets$/);
+// The prototype travels inside the workbench and loads through srcdoc, opening on the selected page.
+assert.equal(frame.getAttribute('src'), null);
+assert.match(frame.getAttribute('srcdoc'), /dataset\.startPage="tickets"/);
+assert.match(frame.getAttribute('srcdoc'), /window\.Prototype/);
+const initialSrcdoc = frame.getAttribute('srcdoc');
 [...pd.querySelectorAll('.prototype-layout .selection-button')].find(node => node.textContent.startsWith('新建工单')).click();
 assert.match(mapping(), /提交失败可重试/);
-assert.match(frame.getAttribute('src'), /#tickets$/, 'selecting a page does not reload the frame');
+assert.equal(frame.getAttribute('srcdoc'), initialSrcdoc, 'selecting a page does not reload the frame');
 pw.dispatchEvent(new pw.MessageEvent('message', {source: pw, data: {type: 'prototype:page', page_id: 'detail'}}));
 assert.doesNotMatch(mapping(), /处理过程留痕/, 'messages from other windows are ignored');
 pw.dispatchEvent(new pw.MessageEvent('message', {source: frame.contentWindow, data: {type: 'prototype:page', page_id: 'detail'}}));
@@ -122,5 +126,58 @@ if (process.argv[3]) {
   assert.match(nd.querySelector('.requirement-head').textContent, /NFR-/);
   assert.match(nd.querySelector('.selection-detail').textContent, /原型中怎么体现/);
 }
+// 5. Page-by-page review on the 原型预览 page, then the customer package without leaving it.
+(async () => {
+  const requests = [];
+  const dom = new JSDOM(fs.readFileSync(path.join(run, 'workbench/index.html'), 'utf8'), {url: 'http://127.0.0.1:8765/workbench/index.html#prototype', runScripts: 'outside-only', virtualConsole: quiet});
+  const rw = dom.window, rd = rw.document;
+  const payload = JSON.parse(rd.getElementById('workbench-data').textContent);
+  const state = {service: 'product-requirements-workbench/0.1', project_id: payload.project.project_id, artifact_version: payload.project.artifact_version, max_upload_bytes: 1024, lark_cli_available: false,
+    review: {revision: 0, decisions: []}, tasks: [], releases: [], customer_feedback: [], jobs: []};
+  rw.fetch = async (url, options = {}) => {
+    requests.push({url, body: options.body ? JSON.parse(options.body) : null});
+    if (url === '/api/status') return {ok: true, json: async () => state};
+    if (url === '/api/review') { const entry = JSON.parse(options.body); state.review = {revision: state.review.revision + 1, decisions: [...state.review.decisions, entry]}; return {ok: true, json: async () => ({review: state.review})}; }
+    if (url === '/api/release') { state.releases = [{release_id: 'REL-1', artifact_version: state.artifact_version}]; return {ok: true, json: async () => ({release: state.releases[0]})}; }
+    throw new Error('Unexpected request ' + url);
+  };
+  rw.navigator.clipboard = {writeText: async text => { rw.copied = text; }};
+  rw.eval(fs.readFileSync(path.join(__dirname, '../product-requirements/assets/workbench.js'), 'utf8'));
+  const settle = async () => { for (let count = 0; count < 8; count++) await new Promise(resolve => setImmediate(resolve)); };
+  await settle();
+  const bar = () => rd.querySelector('.prototype-review-bar').textContent;
+  const reviewButton = label => [...rd.querySelectorAll('.page-review button, .prototype-review-bar button')].find(node => node.textContent.trim() === label);
+  const pageIds = payload.project.prototype_design.pages.map(item => item.page_id);
+  // Pages are fine by default: no per-page sign-off, only change requests.
+  assert.match(bar(), /没有修改意见/);
+  assert.ok(reviewButton('确认并生成交付包'), 'the whole prototype can be confirmed without visiting every page');
+  assert.equal(reviewButton('没问题'), undefined, 'no per-page sign-off');
+  assert.equal(rd.querySelector('.prototype-stage').firstElementChild.className, 'prototype-page-bar', 'the change request sits above the preview');
+  reviewButton('这页要改').click();
+  const note = rd.querySelector('.page-review-input');
+  reviewButton('保存意见').click(); await settle();
+  assert.equal(requests.filter(item => item.url === '/api/review').length, 0, 'a change request needs a comment');
+  note.value = '提交后应回到详情页';
+  reviewButton('保存意见').click(); await settle();
+  assert.deepEqual(requests.filter(item => item.url === '/api/review').map(item => [item.body.review_stage, item.body.target, item.body.outcome]), [['release', 'prototype/index.html#' + pageIds[0], 'needs_changes']]);
+  assert.match(rd.querySelector('.page-review').textContent, /有修改意见.*提交后应回到详情页/);
+  assert.match(rd.querySelector('.prototype-page-chip').getAttribute('aria-label'), /有修改意见/);
+  assert.match(bar(), /1 页有修改意见/);
+  reviewButton('复制修改指令').click(); await settle();
+  assert.match(rw.copied, new RegExp(pageIds[0] + '）：提交后应回到详情页'));
+  assert.equal(reviewButton('确认并生成交付包'), undefined, 'no package while a page has a change request');
+  reviewButton('撤回').click(); await settle();
+  assert.match(bar(), /没有修改意见/);
+  assert.equal(rd.querySelector('.prototype-page-chip').dataset.verdict, undefined);
+  reviewButton('确认并生成交付包').click(); await settle();
+  const last = requests.filter(item => item.url === '/api/review').pop();
+  assert.deepEqual([last.body.target, last.body.outcome], ['prototype/index.html', 'confirmed'], 'the file itself is confirmed before packaging');
+  assert.deepEqual(requests.find(item => item.url === '/api/release').body.files, ['prototype/index.html']);
+  assert.match(bar(), /交付包已生成/);
+  assert.ok(rd.querySelector('.prototype-review-bar a[href="/api/releases/REL-1/package"]'));
+  finish();
+})().catch(error => { console.error(error); process.exit(1); });
+function finish() {
 assert.deepEqual(errors.filter(message => !/Not implemented: (HTMLDialogElement|window.scrollTo)/.test(message)), []);
-console.log('Prototype checks passed: role filtering and denied view, states, annotations, workbench mapping, frame message isolation, checklist.');
+console.log('Prototype checks passed: role filtering and denied view, states, annotations, workbench mapping, srcdoc frame, message isolation, checklist, change requests and package.');
+}

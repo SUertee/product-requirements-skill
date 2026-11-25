@@ -1128,9 +1128,12 @@
       const button = element('button', node.name, 'module-filter'); button.type = 'button'; button.dataset.componentId = node.id;
       button.addEventListener('click', () => select(node.id)); picker.append(button);
     });
+    // Nothing is selected on arrival: the card appears once a component is picked in the diagram.
+    const hint = element('p', '点选图中的组件，查看它的开发内容和交付标准', 'inline-note diagram-hint');
+    detail.hidden = true;
     function select(id, reveal = false) {
       const node = nodes.find(item => item.id === id); if (!node) return;
-      selectedArchitecture = id;
+      selectedArchitecture = id; detail.hidden = false; hint.remove();
       picker.querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.componentId === id)));
       detail.replaceChildren(element('h2', node.name)); detail.dataset.componentId = id;
       const layer = architecture.layers.find(item => item.id === node.layer);
@@ -1152,8 +1155,8 @@
       if (reveal) detail.querySelector('h2')?.scrollIntoView?.({block: 'nearest'});
     }
     // With the live diagram, nodes are clicked in the diagram itself; the chip row is only kept for the plain SVG fallback.
-    host.append(...(frame ? [] : [picker]), detail);
-    select(nodes.some(node => node.id === selectedArchitecture) ? selectedArchitecture : nodes[0].id);
+    host.append(...(frame ? [] : [picker]), hint, detail);
+    if (nodes.some(node => node.id === selectedArchitecture)) select(selectedArchitecture);
     return {host, select};
   }
   function technicalArchitecture() {
@@ -1191,7 +1194,7 @@
       };
       window.addEventListener('message', resize);
       frame.srcdoc = data.architecture_diagram.replace('</body>', '<scr' + 'ipt>' + bridge + '</scr' + 'ipt></body>');
-      frame.addEventListener('load', () => details.select(selectedArchitecture));
+      frame.addEventListener('load', () => { if (selectedArchitecture) details.select(selectedArchitecture); });
       card.append(frame); content.append(card, details.host); return;
     }
     const layers = architecture.layers || [];
@@ -1606,6 +1609,10 @@
   function nfrTitle(key) { return (project.nfrs || []).find(item => item.nfr_id === key)?.title; }
   let selectedPrototypePage = null;
   let prototypeAnnotate = false;
+  // Page-by-page review of the prototype, recorded as release-stage verdicts on "prototype/index.html#<page_id>".
+  let prototypeCommentPage = null;
+  let prototypeReviewBusy = false;
+  let prototypeReviewMessage = '';
   // The page itself cannot design a prototype: the Skill in the host (Claude Code, 码道…) designs pages from confirmed
   // FR/NFR, and the generator refuses unconfirmed input. So this page lists the hard prerequisites and hands a
   // ready-to-paste instruction to the Skill, like 交给开发 does for coding agents.
@@ -1694,8 +1701,17 @@
     const frame = element('iframe', null, 'workbench-preview prototype-frame');
     frame.title = '交互原型';
     frame.setAttribute('sandbox', 'allow-scripts allow-forms');
-    const base = '../' + artifact.path.split('/').map(encodeURIComponent).join('/');
-    frame.src = base + (prototypeAnnotate ? '?annotate=1' : '') + '#' + encodeURIComponent(selectedPrototypePage);
+    // The prototype HTML travels inside the workbench and loads through srcdoc, so it shows wherever the workbench
+    // does (file://, shared copies, sandboxed previews). Older workbenches without it still load the sibling file.
+    if (data.prototype_html) {
+      const initial = selectedPrototypePage;
+      const boot = 'document.documentElement.dataset.startPage=' + JSON.stringify(initial).replace(/</g, '\\u003c') + ';' + (prototypeAnnotate ? "document.documentElement.dataset.annotate='';" : '');
+      frame.srcdoc = data.prototype_html.replace('</head>', '<scr' + 'ipt>' + boot + '</scr' + 'ipt></head>');
+      frame.addEventListener('load', () => frame.contentWindow?.postMessage({type: 'prototype:go', page_id: initial}, '*'), {once: true});
+    } else {
+      const base = '../' + artifact.path.split('/').map(encodeURIComponent).join('/');
+      frame.src = base + (prototypeAnnotate ? '?annotate=1' : '') + '#' + encodeURIComponent(selectedPrototypePage);
+    }
     frame.style.width = widths[previewDevice];
     if (devices.length > 1) for (const device of devices) {
       const button = iconLabel(element('button', {desktop: '桌面', tablet: '平板', mobile: '手机'}[device], 'button ghost small'), device === 'desktop' ? 'prototype' : 'mobile'); button.type = 'button';
@@ -1709,24 +1725,82 @@
     tools.append(annotate, fileLink(artifact.path, '独立打开'));
     toolbar.append(tools);
     content.append(toolbar);
+    const fileTarget = artifact.path;
+    const pageTarget = id => fileTarget + '#' + id;
+    function verdicts() {
+      const latest = new Map();
+      for (const item of serverState?.review?.decisions || []) if (item.review_stage === 'release') latest.set(item.target, item);
+      return latest;
+    }
+    // Pages are fine unless someone says otherwise: only change requests are recorded per page, and one
+    // confirmation of the whole prototype releases it to the customer.
+    const pageComment = (latest, page) => { const item = latest.get(pageTarget(page.page_id)); return item?.outcome === 'needs_changes' ? item : null; };
+    const reviewBar = element('section', null, 'prototype-review-bar'); reviewBar.setAttribute('aria-label', '原型评审');
+    if (serverState) content.append(reviewBar);
+    function drawReviewBar() {
+      if (!serverState) return;
+      const latest = verdicts();
+      const changes = pages.filter(page => pageComment(latest, page));
+      const released = latest.get(fileTarget)?.outcome === 'confirmed';
+      const releases = (serverState.releases || []).filter(item => item.artifact_version === project.artifact_version);
+      reviewBar.replaceChildren();
+      const summary = element('div', null, 'prototype-review-progress');
+      if (changes.length) summary.append(element('strong', changes.length + ' 页有修改意见'), element('span', '复制指令交给 Skill 修改，生成新版本后再看', 'prototype-review-note'));
+      else if (releases.length) summary.append(element('strong', '交付包已生成'), element('span', '可以预览或下载发给客户', 'prototype-review-note'));
+      else summary.append(element('strong', '没有修改意见'), element('span', '看完原型没问题，就可以生成交付包；哪页要改，点原型上方的「这页要改」', 'prototype-review-note'));
+      reviewBar.append(summary);
+      const actions = element('div', null, 'document-actions');
+      if (changes.length) {
+        const lines = ['用「产品需求落地」Skill 修改项目《' + (project.name || project.project_id) + '》的原型（版本 ' + project.artifact_version + '）。', '修改意见：'];
+        changes.forEach(page => lines.push('- ' + page.name + '（' + page.page_id + '）：' + pageComment(latest, page).comment));
+        lines.push('按 references/prototype.md 只改这些页面，意见涉及需求变化时先改需求卡并告诉我；生成新版本后停下，等我在工作台复核。');
+        const copy = iconLabel(element('button', '复制修改指令', 'button primary small'), 'copy'); copy.type = 'button';
+        copy.addEventListener('click', async () => {
+          try { await navigator.clipboard.writeText(lines.join('\n')); prototypeReviewMessage = '已复制，粘贴到 Claude Code、码道等装了这个 Skill 的工具里'; } catch { prototypeReviewMessage = '浏览器未允许复制'; }
+          drawReviewBar();
+        });
+        actions.append(copy);
+      } else if (!releases.length) {
+        const build = iconLabel(element('button', '确认并生成交付包', 'button primary small'), 'package'); build.type = 'button';
+        build.disabled = workflowBusy;
+        build.addEventListener('click', () => workflowAction(async () => {
+          if (!released) {
+            const result = await localRequest('/api/review', {method: 'POST', body: JSON.stringify({revision: serverState.review.revision, review_stage: 'release', target: fileTarget, outcome: 'confirmed', comment: '', reviewer: ''})});
+            serverState.review = result.review;
+          }
+          return localRequest('/api/release', {method: 'POST', body: JSON.stringify({files: [fileTarget], revision: serverState.review.revision})});
+        }));
+        actions.append(build);
+      } else {
+        const release = releases[releases.length - 1];
+        const preview = iconLabel(element('a', '预览交付包', 'button small'), 'external'); preview.href = '/customer/' + release.release_id + '/index.html'; preview.target = '_blank'; preview.rel = 'noopener';
+        const download = iconLabel(element('a', '下载 ZIP', 'button small'), 'download'); download.href = '/api/releases/' + release.release_id + '/package'; download.download = project.project_id + '-' + release.artifact_version + '.zip';
+        actions.append(preview, download);
+      }
+      reviewBar.append(actions);
+      const message = prototypeReviewMessage || (workflowMessage && !workflowBusy && !releases.length ? workflowMessage : '');
+      if (message) { const status = element('p', message, 'inline-note prototype-review-message'); status.setAttribute('role', 'status'); reviewBar.append(status); }
+    }
     const layout = element('div', null, 'prototype-layout');
     const list = element('nav', null, 'selection-list'); list.setAttribute('aria-label', '原型页面');
     const side = element('div', null, 'prototype-stage');
-    const mapping = element('section', null, 'panel prototype-mapping');
+    const mapping = element('section', null, 'panel prototype-mapping'); mapping.setAttribute('aria-label', '当前页说明');
+    const pageBar = element('div', null, 'prototype-page-bar');
     function drawMapping() {
       const page = pages.find(item => item.page_id === selectedPrototypePage);
       list.querySelectorAll('[data-selection-key]').forEach(node => { if (node.dataset.selectionKey === page.page_id) node.setAttribute('aria-current', 'true'); else node.removeAttribute('aria-current'); });
-      mapping.replaceChildren(iconLabel(element('h2', page.name), 'documents'), element('p', page.purpose, 'prototype-purpose'));
+      pageBar.replaceChildren(pageReview(page));
+      mapping.replaceChildren(element('h2', '这一页做什么'), element('p', page.purpose, 'prototype-purpose'));
       const reqs = (page.requirement_ids || []).map(id => requirements.find(req => req.requirement_id === id)).filter(Boolean);
       if (reqs.length) {
-        mapping.append(element('h3', '功能需求'));
+        mapping.append(element('h3', '对应的功能需求'));
         const rows = element('ul', null, 'prototype-links');
         reqs.forEach(req => { const row = element('li'); row.append(requirementLink(req), element('span', req.requirement_id, 'muted-id')); rows.append(row); });
         mapping.append(rows);
       }
       const pageNfrs = (page.nfr_ids || []).map(id => nfrs.find(item => item.nfr_id === id)).filter(Boolean);
       if (pageNfrs.length) {
-        mapping.append(element('h3', '非功能需求'));
+        mapping.append(element('h3', '这一页体现的非功能需求'));
         const rows = element('ul', null, 'prototype-nfrs');
         pageNfrs.forEach(item => { const row = element('li'); row.append(element('strong', item.title), element('span', nfrCategories[item.category] || item.category, 'nfr-category'), element('p', item.prototype_treatment?.note || item.statement)); rows.append(row); });
         mapping.append(rows);
@@ -1734,37 +1808,99 @@
       const stateNames = {empty: '空数据', loading: '加载中', error: '出错', denied: '无权限', success: '成功'};
       const roleNames = Object.fromEntries((design.roles || []).map(role => [role.role_id, role.name]));
       const extra = [];
-      if (page.states?.length) extra.push(['页面状态', page.states.map(state => stateNames[state] || state).join('、')]);
+      if (page.states?.length) extra.push(['可演示的状态', page.states.map(state => stateNames[state] || state).join('、')]);
       if (page.roles?.length) extra.push(['可见角色', page.roles.map(role => roleNames[role] || role).join('、')]);
       if (extra.length) fields(mapping, extra);
       const overall = (design.positioning?.nfr_ids || []).map(id => nfrs.find(item => item.nfr_id === id)).filter(Boolean);
       if (overall.length) {
-        mapping.append(element('h3', '整体体现'));
+        mapping.append(element('h3', '每页都要满足'));
         const rows = element('ul', null, 'prototype-nfrs');
         overall.forEach(item => { const row = element('li'); row.append(element('strong', item.title), element('span', nfrCategories[item.category] || item.category, 'nfr-category'), element('p', item.prototype_treatment?.note || item.statement)); rows.append(row); });
         mapping.append(rows);
       }
     }
-    for (const page of pages) {
-      const button = element('button', null, 'selection-button'); button.type = 'button'; button.dataset.selectionKey = page.page_id;
-      button.append(iconLabel(element('strong', page.name), 'documents'), element('span', [(page.requirement_ids || []).length ? page.requirement_ids.length + ' 条需求' : '', (page.nfr_ids || []).length ? page.nfr_ids.length + ' 条非功能' : ''].filter(Boolean).join(' · ')));
-      button.addEventListener('click', () => { selectedPrototypePage = page.page_id; frame.contentWindow?.postMessage({type: 'prototype:go', page_id: page.page_id}, '*'); drawMapping(); });
-      list.append(button);
+    function openPage(id) { selectedPrototypePage = id; frame.contentWindow?.postMessage({type: 'prototype:go', page_id: id}, '*'); drawMapping(); }
+    function drawPages() {
+      const latest = verdicts();
+      list.replaceChildren();
+      for (const page of pages) {
+        const button = element('button', null, 'selection-button prototype-page-chip'); button.type = 'button'; button.dataset.selectionKey = page.page_id;
+        const comment = pageComment(latest, page);
+        button.append(element('strong', page.name));
+        // Only pages with a change request are marked; the chip otherwise just names the page.
+        if (comment) { button.dataset.verdict = 'needs_changes'; const mark = element('span', '要改', 'page-change-mark'); button.append(mark); button.setAttribute('aria-label', page.name + '：有修改意见'); }
+        button.addEventListener('click', () => openPage(page.page_id));
+        list.append(button);
+      }
     }
+    async function savePageComment(page, outcome, comment) {
+      prototypeReviewBusy = true; prototypeReviewMessage = ''; drawMapping();
+      try {
+        const result = await localRequest('/api/review', {method: 'POST', body: JSON.stringify({revision: serverState.review.revision, review_stage: 'release', target: pageTarget(page.page_id), outcome, comment, reviewer: ''})});
+        serverState.review = result.review; prototypeCommentPage = null;
+      } catch (error) {
+        prototypeReviewMessage = error.message;
+        try { await refreshLocal(); } catch { /* keep the first error */ }
+      } finally { prototypeReviewBusy = false; }
+      drawPages(); drawReviewBar(); drawMapping();
+    }
+    // One row above the preview, on every screen width: the page name and, if any, its change request.
+    function pageReview(page) {
+      const box = element('section', null, 'page-review'); box.setAttribute('aria-label', '这一页的修改意见');
+      const comment = pageComment(verdicts(), page);
+      if (comment) box.dataset.verdict = 'needs_changes';
+      const head = element('div', null, 'page-review-head');
+      head.append(element('strong', page.name, 'page-review-name'));
+      box.append(head);
+      if (!serverState) return box;
+      if (prototypeCommentPage === page.page_id) {
+        const label = element('label', '这一页要改什么', 'page-review-label');
+        const note = element('textarea', null, 'page-review-input'); note.rows = 2; note.value = comment?.comment || '';
+        note.placeholder = '比如：列表缺少按状态筛选；提交后应回到详情页'; label.append(note);
+        const actions = element('div', null, 'document-actions page-review-actions');
+        const save = element('button', '保存意见', 'button primary small'); save.type = 'button'; save.disabled = prototypeReviewBusy;
+        save.addEventListener('click', () => { if (!note.value.trim()) { note.focus(); return; } savePageComment(page, 'needs_changes', note.value.trim()); });
+        const cancel = element('button', '取消', 'button ghost small'); cancel.type = 'button';
+        cancel.addEventListener('click', () => { prototypeCommentPage = null; drawMapping(); });
+        actions.append(save, cancel); box.append(label, actions);
+        setTimeout(() => note.focus());
+        return box;
+      }
+      const actions = element('div', null, 'document-actions page-review-actions');
+      const edit = element('button', comment ? '改意见' : '这页要改', 'button small'); edit.type = 'button'; edit.disabled = prototypeReviewBusy;
+      edit.addEventListener('click', () => { prototypeCommentPage = page.page_id; drawMapping(); });
+      actions.append(edit);
+      if (comment) {
+        head.append(element('span', '有修改意见', 'page-review-status'));
+        const withdraw = element('button', '撤回', 'button ghost small'); withdraw.type = 'button'; withdraw.disabled = prototypeReviewBusy;
+        withdraw.addEventListener('click', () => savePageComment(page, 'confirmed', '撤回修改意见'));
+        actions.append(withdraw);
+      }
+      head.append(actions);
+      if (comment) box.append(element('p', comment.comment, 'page-review-comment'));
+      return box;
+    }
+    drawPages();
     const listener = event => {
       if (!frame.isConnected) { window.removeEventListener('message', listener); return; }
       if (event.source !== frame.contentWindow || event.data?.type !== 'prototype:page' || !pages.some(page => page.page_id === event.data.page_id)) return;
       if (selectedPrototypePage !== event.data.page_id) { selectedPrototypePage = event.data.page_id; drawMapping(); }
     };
     window.addEventListener('message', listener);
-    side.append(frame);
+    // Phone and tablet previews get a device-sized viewport instead of a strip of the desktop canvas.
+    const applyDevice = () => { frame.dataset.device = previewDevice; frame.style.width = widths[previewDevice]; };
+    applyDevice();
+    tools.querySelectorAll('[data-device]').forEach(button => button.addEventListener('click', applyDevice));
+    side.append(pageBar, frame);
     layout.append(list, side, mapping);
     content.append(layout);
     drawMapping();
+    drawReviewBar();
     const excluded = design.excluded_requirements || [];
     const skipped = confirmedNfrs.filter(item => item.prototype_treatment?.kind === 'not_applicable');
     if (excluded.length || skipped.length) {
       const card = panel('不在原型中');
+      card.append(element('p', '这些需求已确认，但不需要或没法在原型里演示，开发时照常实现。', 'inline-note'));
       const rows = element('ul', null, 'prototype-nfrs');
       excluded.forEach(item => { const row = element('li'); row.append(element('strong', requirements.find(req => req.requirement_id === item.requirement_id)?.title || item.requirement_id), element('span', '功能需求', 'nfr-category'), element('p', item.reason)); rows.append(row); });
       skipped.forEach(item => { const row = element('li'); row.append(element('strong', item.title), element('span', nfrCategories[item.category] || item.category, 'nfr-category'), element('p', item.prototype_treatment.note)); rows.append(row); });
@@ -1783,35 +1919,94 @@
     open.setAttribute('aria-label', label); open.title = '独立打开'; open.append(icon('external'));
     return open;
   }
+  // Fields of one business entity, shared by the Schema Canvas view and the plain fallback.
+  function entityDetail(entity, links, entitiesById) {
+    const key = entity.entity_id || entity.name;
+    const detail = panel((entity.name || key) + ' 的字段', 'documents');
+    detail.classList.add('entity-detail'); detail.dataset.entityId = key;
+    if (entity.description) detail.append(element('p', entity.description, 'material-metadata'));
+    if (Array.isArray(entity.fields) && entity.fields.length) {
+      const scroll = element('div', null, 'data-table-scroll');
+      const table = element('table', null, 'data-table');
+      const head = table.createTHead().insertRow();
+      for (const label of ['字段', '类型', '说明']) { const cell = element('th', label); cell.scope = 'col'; head.append(cell); }
+      const body = table.createTBody();
+      for (const field of entity.fields) {
+        const row = body.insertRow();
+        row.insertCell().textContent = field.name || field.field_id || '';
+        row.insertCell().textContent = typeLabel(field.type);
+        const {name, field_id, type, ...rest} = field;
+        row.insertCell().textContent = field.description || field.note || (Object.keys(rest).length ? Object.entries(rest).map(([k, value]) => k + '：' + display(value)).join('；') : '—');
+      }
+      scroll.append(table); detail.append(scroll);
+    } else detail.append(empty('实体字段待确认'));
+    const nearby = links.filter(link => link.from === key || link.to === key);
+    if (nearby.length) {
+      const list = element('ul', null, 'entity-relations');
+      for (const link of nearby) list.append(element('li', (entitiesById.get(link.from)?.name || link.from) + ' → ' + (entitiesById.get(link.to)?.name || link.to) + ' · ' + (link.cardinality || '关系待确认') + (link.label ? ' · ' + link.label : '')));
+      detail.append(list);
+    }
+    const reqs = requirements.filter(req => entity.requirement_ids?.includes(req.requirement_id));
+    if (reqs.length) { const used = element('p', '相关需求：', 'inline-note entity-reqs'); reqs.forEach(req => used.append(requirementLink(req))); detail.append(used); }
+    return detail;
+  }
   function database() {
-    // Same card as the architecture: the Schema Canvas diagram with its relation lines, open icon in the corner.
+    const model = project.business_model || {};
+    const entities = Array.isArray(model.entities) ? model.entities : [];
+    const identity = entity => entity.entity_id || entity.name;
+    const entitiesById = new Map(entities.map(entity => [identity(entity), entity]));
+    const links = Array.isArray(model.relations) ? model.relations.filter(link => entitiesById.has(link?.from) && entitiesById.has(link?.to)) : [];
+    // Same pattern as the architecture: a compact diagram, the page search at top right filters it, and a table's
+    // fields appear below only after it is clicked. The full Schema Canvas (with its own tools) opens from the corner icon.
     if (data.data_model_diagram) {
       const card = element('section', null, 'panel diagram-card'); card.setAttribute('aria-label', '数据模型');
       card.append(diagramOpenIcon('data-model/index.html', '在新页面打开数据模型'));
       const frame = element('iframe', null, 'architecture-preview data-model-frame'); frame.title = 'Schema Canvas 数据模型'; frame.setAttribute('sandbox', 'allow-scripts');
-      const resize = event => {
-        if (!frame.isConnected) { window.removeEventListener('message', resize); return; }
-        if (event.source !== frame.contentWindow || event.data?.type !== 'schema-canvas:size' || !Number.isFinite(event.data.height)) return;
-        frame.style.height = Math.max(320, Math.min(1800, event.data.height)) + 'px';
+      const hint = element('p', '点选图中的表，查看字段和关系', 'inline-note diagram-hint');
+      const slot = element('div', null, 'entity-detail-slot');
+      function show(key) {
+        const entity = entitiesById.get(key); if (!entity) return;
+        selectedEntity = key; hint.remove();
+        slot.replaceChildren(entityDetail(entity, links, entitiesById));
+      }
+      const bridge = `(() => {
+        const style = document.createElement('style');
+        style.textContent = 'html,body{margin:0}.top,.toolbar,.panel,.audit,footer{display:none !important}.shell{padding:0 !important;max-width:none !important}.workspace{display:block !important;margin:0 !important}.canvasWrap{height:auto !important;min-height:0 !important;overflow:auto}.canvas{zoom:.78}html:not([data-picked]) .tableNode.selected{border:1px solid #bfc9c5 !important;background:white !important}';
+        document.head.append(style);
+        const canvas = document.querySelector('.canvas');
+        const report = () => parent.postMessage({type:'product-requirements:schema-size',height:Math.ceil(document.querySelector('.canvasWrap').getBoundingClientRect().height)},'*');
+        new ResizeObserver(report).observe(document.querySelector('.canvasWrap')); report();
+        document.addEventListener('click', event => { const node = event.target.closest('.tableNode'); if (!node) return; document.documentElement.dataset.picked = ''; parent.postMessage({type:'product-requirements:schema-select',id:node.dataset.id},'*'); }, true);
+        window.addEventListener('message', event => {
+          if (event.source !== parent) return;
+          if (event.data?.type === 'product-requirements:schema-query') { const input = document.getElementById('search'); input.value = String(event.data.query || ''); input.dispatchEvent(new Event('input')); }
+          if (event.data?.type === 'product-requirements:schema-state') { const node = [...document.querySelectorAll('.tableNode')].find(item => item.dataset.id === event.data.id); if (node) { document.documentElement.dataset.picked = ''; node.click(); } }
+        });
+      })();`;
+      const listen = event => {
+        if (!frame.isConnected) { window.removeEventListener('message', listen); return; }
+        if (event.source !== frame.contentWindow) return;
+        if (['product-requirements:schema-size', 'schema-canvas:size'].includes(event.data?.type) && Number.isFinite(event.data.height)) frame.style.height = Math.max(160, Math.min(900, event.data.height)) + 'px';
+        if (event.data?.type === 'product-requirements:schema-select' && typeof event.data.id === 'string') show(event.data.id);
       };
-      window.addEventListener('message', resize);
-      frame.srcdoc = data.data_model_diagram.replace('</head>', '<scr' + 'ipt>document.documentElement.dataset.embedded="true";</scr' + 'ipt></head>');
-      card.append(frame); content.append(card);
+      window.addEventListener('message', listen);
+      frame.addEventListener('load', () => {
+        if (queryInput.value) frame.contentWindow?.postMessage({type: 'product-requirements:schema-query', query: queryInput.value}, '*');
+        if (selectedEntity && entitiesById.has(selectedEntity)) frame.contentWindow?.postMessage({type: 'product-requirements:schema-state', id: selectedEntity}, '*');
+      });
+      frame.srcdoc = data.data_model_diagram.replace('</head>', '<scr' + 'ipt>document.documentElement.dataset.embedded="true";</scr' + 'ipt></head>').replace('</body>', '<scr' + 'ipt>' + bridge + '</scr' + 'ipt></body>');
+      card.append(frame); content.append(card, hint, slot);
+      if (selectedEntity && entitiesById.has(selectedEntity)) show(selectedEntity);
       return;
     }
-    const model = project.business_model;
-    const entities = Array.isArray(model.entities) ? model.entities : [];
     if (!entities.length) { content.append(empty('业务数据模型待整理')); return; }
-    const identity = entity => entity.entity_id || entity.name;
-    const entitiesById = new Map(entities.map(entity => [identity(entity), entity]));
     const current = entitiesById.get(selectedEntity) || entities[0];
     selectedEntity = identity(current);
-    const links = Array.isArray(model.relations) ? model.relations.filter(link => entitiesById.has(link?.from) && entitiesById.has(link?.to)) : [];
-    // Same reading pattern as the architecture: entity cards on top, the selected entity's fields below.
+    // Fallback without Schema Canvas: entity cards on top, the selected entity's fields below.
     const map = panel('业务实体', 'database');
     map.classList.add('entity-map');
     const grid = element('div', null, 'entity-cards'); grid.setAttribute('role', 'group'); grid.setAttribute('aria-label', '选择业务实体');
-    for (const entity of entities) {
+    for (const entity of entities.filter(matches)) {
       const key = identity(entity);
       const related = links.filter(link => link.from === key || link.to === key).length;
       const card = element('button', null, 'entity-card'); card.type = 'button';
@@ -1821,33 +2016,7 @@
       grid.append(card);
     }
     map.append(grid);
-    const nearby = links.filter(link => link.from === selectedEntity || link.to === selectedEntity);
-    if (nearby.length) {
-      const list = element('ul', null, 'entity-relations');
-      for (const link of nearby) list.append(element('li', (entitiesById.get(link.from)?.name || link.from) + ' → ' + (entitiesById.get(link.to)?.name || link.to) + ' · ' + (link.cardinality || '关系待确认') + (link.label ? ' · ' + link.label : '')));
-      map.append(list);
-    }
-    content.append(map);
-    const detail = panel((current.name || selectedEntity) + ' 的字段', 'documents');
-    if (current.description) detail.append(element('p', current.description, 'material-metadata'));
-    if (Array.isArray(current.fields) && current.fields.length) {
-      const scroll = element('div', null, 'data-table-scroll');
-      const table = element('table', null, 'data-table');
-      const head = table.createTHead().insertRow();
-      for (const label of ['字段', '类型', '说明']) { const cell = element('th', label); cell.scope = 'col'; head.append(cell); }
-      const body = table.createTBody();
-      for (const field of current.fields) {
-        const row = body.insertRow();
-        row.insertCell().textContent = field.name || field.field_id || '';
-        row.insertCell().textContent = typeLabel(field.type);
-        const {name, field_id, type, ...rest} = field;
-        row.insertCell().textContent = field.description || field.note || (Object.keys(rest).length ? Object.entries(rest).map(([key, value]) => key + '：' + display(value)).join('；') : '—');
-      }
-      scroll.append(table); detail.append(scroll);
-    } else detail.append(empty('实体字段待确认'));
-    const reqs = requirements.filter(req => current.requirement_ids?.includes(req.requirement_id));
-    if (reqs.length) { const used = element('p', '相关需求：', 'inline-note entity-reqs'); reqs.forEach(req => used.append(requirementLink(req))); detail.append(used); }
-    content.append(detail);
+    content.append(map, entityDetail(current, links, entitiesById));
   }
   // ParTrace-style API table: header row, one group per business module, one row per endpoint; click a row for request / response / errors.
   function apiModule(item) {
@@ -2195,7 +2364,7 @@
       if (button.dataset.view === active) button.setAttribute('aria-current', 'page');
       else button.removeAttribute('aria-current');
     });
-    const searchLabels = {materials: '搜索素材或会议原话', modules: '搜索需求、规则或依据', review: '搜索评审问题', technical: '搜索接口草案'};
+    const searchLabels = {materials: '搜索素材或会议原话', modules: '搜索需求、规则或依据', review: '搜索评审问题', technical: '搜索表、字段或接口'};
     queryInput.placeholder = searchLabels[active] || '搜索';
     queryInput.setAttribute('aria-label', queryInput.placeholder);
     statusInput.hidden = true;
