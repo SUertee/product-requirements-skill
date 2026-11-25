@@ -147,13 +147,15 @@ if (process.argv[3]) {
   const settle = async () => { for (let count = 0; count < 8; count++) await new Promise(resolve => setImmediate(resolve)); };
   await settle();
   const bar = () => rd.querySelector('.prototype-review-bar').textContent;
-  const reviewButton = label => [...rd.querySelectorAll('.page-review button, .prototype-review-bar button')].find(node => node.textContent.trim() === label);
+  const reviewButton = label => [...rd.querySelectorAll('.page-review button, .prototype-page-action button, .prototype-review-bar button')].find(node => node.textContent.trim() === label);
   const pageIds = payload.project.prototype_design.pages.map(item => item.page_id);
   // Pages are fine by default: no per-page sign-off, only change requests.
   assert.match(bar(), /没有修改意见/);
   assert.ok(reviewButton('确认并生成交付包'), 'the whole prototype can be confirmed without visiting every page');
   assert.equal(reviewButton('没问题'), undefined, 'no per-page sign-off');
   assert.equal(rd.querySelector('.prototype-stage').firstElementChild.className, 'prototype-page-bar', 'the change request sits above the preview');
+  assert.ok(rd.querySelector('.prototype-stage .prototype-page-bar').hidden, 'no strip above the preview until there is something to say');
+  assert.ok(rd.querySelector('.prototype-page-row .prototype-page-action button'), 'the page button sits beside the page chips');
   reviewButton('这页要改').click();
   const note = rd.querySelector('.page-review-input');
   reviewButton('保存意见').click(); await settle();
@@ -162,6 +164,7 @@ if (process.argv[3]) {
   reviewButton('保存意见').click(); await settle();
   assert.deepEqual(requests.filter(item => item.url === '/api/review').map(item => [item.body.review_stage, item.body.target, item.body.outcome]), [['release', 'prototype/index.html#' + pageIds[0], 'needs_changes']]);
   assert.match(rd.querySelector('.page-review').textContent, /有修改意见.*提交后应回到详情页/);
+  assert.equal(rd.querySelector('.prototype-page-action button'), null, 'the strip carries the actions once a comment exists');
   assert.match(rd.querySelector('.prototype-page-chip').getAttribute('aria-label'), /有修改意见/);
   assert.match(bar(), /1 页有修改意见/);
   reviewButton('复制修改指令').click(); await settle();
@@ -170,6 +173,7 @@ if (process.argv[3]) {
   reviewButton('撤回').click(); await settle();
   assert.match(bar(), /没有修改意见/);
   assert.equal(rd.querySelector('.prototype-page-chip').dataset.verdict, undefined);
+  assert.ok(rd.querySelector('.prototype-page-bar').hidden, 'withdrawing closes the strip');
   reviewButton('确认并生成交付包').click(); await settle();
   const last = requests.filter(item => item.url === '/api/review').pop();
   assert.deepEqual([last.body.target, last.body.outcome], ['prototype/index.html', 'confirmed'], 'the file itself is confirmed before packaging');

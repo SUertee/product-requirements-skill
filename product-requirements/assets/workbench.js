@@ -1029,7 +1029,7 @@
     host.replaceChildren();
     const head = element('div', null, 'module-detail-head');
     const heading = element('h2'); heading.append(element('span', '模块', 'module-kicker'), document.createTextNode(group.title));
-    head.append(heading, element('span', group.items.length + ' 条需求，左侧选择一条查看', 'module-count'));
+    head.append(heading);
     head.append(sectionTabs([['requirements', '需求'], ['related', '相关内容']], moduleDetailTab, '模块内容', key => { moduleDetailTab = key; moduleDetails(group, host); }));
     host.append(head);
     if (moduleDetailTab === 'related') {
@@ -1133,11 +1133,10 @@
       button.addEventListener('click', () => select(node.id)); picker.append(button);
     });
     // Nothing is selected on arrival: the card appears once a component is picked in the diagram.
-    const hint = element('p', '点选图中的组件，查看它的开发内容和交付标准', 'inline-note diagram-hint');
     detail.hidden = true;
     function select(id, reveal = false) {
       const node = nodes.find(item => item.id === id); if (!node) return;
-      selectedArchitecture = id; detail.hidden = false; hint.remove();
+      selectedArchitecture = id; detail.hidden = false;
       picker.querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.componentId === id)));
       detail.replaceChildren(element('h2', node.name)); detail.dataset.componentId = id;
       const layer = architecture.layers.find(item => item.id === node.layer);
@@ -1159,7 +1158,7 @@
       if (reveal) detail.querySelector('h2')?.scrollIntoView?.({block: 'nearest'});
     }
     // With the live diagram, nodes are clicked in the diagram itself; the chip row is only kept for the plain SVG fallback.
-    host.append(...(frame ? [] : [picker]), hint, detail);
+    host.append(...(frame ? [] : [picker]), detail);
     if (nodes.some(node => node.id === selectedArchitecture)) select(selectedArchitecture);
     return {host, select};
   }
@@ -1751,7 +1750,7 @@
       const summary = element('div', null, 'prototype-review-progress');
       if (changes.length) summary.append(element('strong', changes.length + ' 页有修改意见'), element('span', '复制指令交给 Skill 修改，生成新版本后再看', 'prototype-review-note'));
       else if (releases.length) summary.append(element('strong', '交付包已生成'), element('span', '可以预览或下载发给客户', 'prototype-review-note'));
-      else summary.append(element('strong', '没有修改意见'), element('span', '看完原型没问题，就可以生成交付包；哪页要改，点原型上方的「这页要改」', 'prototype-review-note'));
+      else summary.append(element('strong', '没有修改意见'), element('span', '哪页要改就点「这页要改」，都没问题就生成交付包', 'prototype-review-note'));
       reviewBar.append(summary);
       const actions = element('div', null, 'document-actions');
       if (changes.length) {
@@ -1790,10 +1789,14 @@
     const side = element('div', null, 'prototype-stage');
     const mapping = element('section', null, 'panel prototype-mapping'); mapping.setAttribute('aria-label', '当前页说明');
     const pageBar = element('div', null, 'prototype-page-bar');
+    const pageRow = element('div', null, 'prototype-page-row'); const pageAction = element('div', null, 'prototype-page-action');
+    pageRow.append(list, pageAction);
     function drawMapping() {
       const page = pages.find(item => item.page_id === selectedPrototypePage);
       list.querySelectorAll('[data-selection-key]').forEach(node => { if (node.dataset.selectionKey === page.page_id) node.setAttribute('aria-current', 'true'); else node.removeAttribute('aria-current'); });
-      pageBar.replaceChildren(pageReview(page));
+      const review = pageReview(page);
+      pageAction.replaceChildren(...(review.inline ? [review.inline] : []));
+      pageBar.replaceChildren(...(review.panel ? [review.panel] : [])); pageBar.hidden = !review.panel;
       // One card per page: what it is for, then label/value rows that only appear when the page has them.
       const head = element('header', null, 'page-spec-head');
       head.append(element('span', '当前页', 'page-spec-eyebrow'), element('h2', page.name), element('p', page.purpose, 'prototype-purpose'));
@@ -1847,16 +1850,14 @@
       drawPages(); drawReviewBar(); drawMapping();
     }
     // One row above the preview, on every screen width: the page name and, if any, its change request.
+    // The current page's change request. With nothing to say it is a single button beside the page chips;
+    // a saved comment or the comment form opens a strip above the preview.
     function pageReview(page) {
-      const box = element('section', null, 'page-review'); box.setAttribute('aria-label', '这一页的修改意见');
+      if (!serverState) return {inline: null, panel: null};
       const comment = pageComment(verdicts(), page);
-      if (comment) box.dataset.verdict = 'needs_changes';
-      const head = element('div', null, 'page-review-head');
-      head.append(element('strong', page.name, 'page-review-name'));
-      box.append(head);
-      if (!serverState) return box;
       if (prototypeCommentPage === page.page_id) {
-        const label = element('label', '这一页要改什么', 'page-review-label');
+        const box = element('section', null, 'page-review'); box.setAttribute('aria-label', '这一页的修改意见');
+        const label = element('label', '「' + page.name + '」要改什么', 'page-review-label');
         const note = element('textarea', null, 'page-review-input'); note.rows = 2; note.value = comment?.comment || '';
         note.placeholder = '比如：列表缺少按状态筛选；提交后应回到详情页'; label.append(note);
         const actions = element('div', null, 'document-actions page-review-actions');
@@ -1866,21 +1867,20 @@
         cancel.addEventListener('click', () => { prototypeCommentPage = null; drawMapping(); });
         actions.append(save, cancel); box.append(label, actions);
         setTimeout(() => note.focus());
-        return box;
+        return {inline: null, panel: box};
       }
-      const actions = element('div', null, 'document-actions page-review-actions');
       const edit = element('button', comment ? '改意见' : '这页要改', 'button small'); edit.type = 'button'; edit.disabled = prototypeReviewBusy;
       edit.addEventListener('click', () => { prototypeCommentPage = page.page_id; drawMapping(); });
-      actions.append(edit);
-      if (comment) {
-        head.append(element('span', '有修改意见', 'page-review-status'));
-        const withdraw = element('button', '撤回', 'button ghost small'); withdraw.type = 'button'; withdraw.disabled = prototypeReviewBusy;
-        withdraw.addEventListener('click', () => savePageComment(page, 'confirmed', '撤回修改意见'));
-        actions.append(withdraw);
-      }
-      head.append(actions);
-      if (comment) box.append(element('p', comment.comment, 'page-review-comment'));
-      return box;
+      if (!comment) return {inline: edit, panel: null};
+      const box = element('section', null, 'page-review'); box.setAttribute('aria-label', '这一页的修改意见'); box.dataset.verdict = 'needs_changes';
+      const head = element('div', null, 'page-review-head');
+      head.append(element('span', '「' + page.name + '」有修改意见', 'page-review-status'));
+      const actions = element('div', null, 'document-actions page-review-actions');
+      const withdraw = element('button', '撤回', 'button ghost small'); withdraw.type = 'button'; withdraw.disabled = prototypeReviewBusy;
+      withdraw.addEventListener('click', () => savePageComment(page, 'confirmed', '撤回修改意见'));
+      actions.append(edit, withdraw); head.append(actions);
+      box.append(head, element('p', comment.comment, 'page-review-comment'));
+      return {inline: null, panel: box};
     }
     drawPages();
     const listener = event => {
@@ -1894,7 +1894,7 @@
     applyDevice();
     tools.querySelectorAll('[data-device]').forEach(button => button.addEventListener('click', applyDevice));
     side.append(pageBar, frame);
-    layout.append(list, side, mapping);
+    layout.append(pageRow, side, mapping);
     content.append(layout);
     drawMapping();
     drawReviewBar();
@@ -1977,11 +1977,10 @@
       const card = element('section', null, 'panel diagram-card'); card.setAttribute('aria-label', '数据模型');
       card.append(diagramOpenIcon('data-model/index.html', '在新页面打开数据模型'));
       const frame = element('iframe', null, 'architecture-preview data-model-frame'); frame.title = 'Schema Canvas 数据模型'; frame.setAttribute('sandbox', 'allow-scripts');
-      const hint = element('p', '点选图中的表，查看字段和关系', 'inline-note diagram-hint');
       const slot = element('div', null, 'entity-detail-slot');
       function show(key) {
         const entity = entitiesById.get(key); if (!entity) return;
-        selectedEntity = key; hint.remove();
+        selectedEntity = key;
         slot.replaceChildren(entityDetail(entity, links, entitiesById));
       }
       const bridge = `(() => {
@@ -2010,7 +2009,7 @@
         if (selectedEntity && entitiesById.has(selectedEntity)) frame.contentWindow?.postMessage({type: 'product-requirements:schema-state', id: selectedEntity}, '*');
       });
       frame.srcdoc = data.data_model_diagram.replace('</head>', '<scr' + 'ipt>document.documentElement.dataset.embedded="true";</scr' + 'ipt></head>').replace('</body>', '<scr' + 'ipt>' + bridge + '</scr' + 'ipt></body>');
-      card.append(frame); content.append(card, hint, slot);
+      card.append(frame); content.append(card, slot);
       if (selectedEntity && entitiesById.has(selectedEntity)) show(selectedEntity);
       return;
     }
