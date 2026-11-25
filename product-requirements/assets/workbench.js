@@ -1097,27 +1097,31 @@
     const roleList = req => (Array.isArray(req.role) ? req.role : req.role ? [req.role] : []).filter(role => typeof role === 'string' && role.trim());
     const roles = [...new Set(items.flatMap(item => roleList(item.req)))];
     if (!items.length || !roles.length) return empty('角色与功能关系待补充');
-    const height = Math.max(240, items.length * 76 + 80, roles.length * 120 + 50);
-    const svg = svgNode('svg', {viewBox: '0 0 920 ' + height, role: 'group', 'aria-label': '用例图：角色与功能'});
-    svg.append(svgNode('rect', {x: 310, y: 18, width: 590, height: height - 36, rx: 12, class: 'usecase-boundary'}));
-    svg.append(svgNode('text', {x: 330, y: 45, class: 'diagram-label'}, project.name || '功能范围'));
-    const rolePositions = new Map(roles.map((role, index) => [role, 70 + index * ((height - 120) / Math.max(1, roles.length - 1))]));
-    items.forEach(({req}, index) => roleList(req).forEach(role => svg.append(svgNode('line', {x1: 150, y1: rolePositions.get(role) + 24, x2: 450, y2: 90 + index * 76, class: 'usecase-link'}))));
+    // Drawn at its natural size (see .usecase-diagram) so it reads like the rest of the page instead of stretching.
+    const step = 52, top = 84, rowY = index => top + index * step;
+    const height = Math.max(200, rowY(items.length - 1) + 56, roles.length * 110 + 40);
+    const svg = svgNode('svg', {viewBox: '0 0 760 ' + height, role: 'group', 'aria-label': '用例图：角色与功能'});
+    svg.append(svgNode('rect', {x: 220, y: 16, width: 524, height: height - 32, rx: 12, class: 'usecase-boundary'}));
+    svg.append(svgNode('text', {x: 240, y: 44, class: 'diagram-label'}, project.name || '功能范围'));
+    // Actors are spread over the span of the use cases, so a single actor sits level with the middle of the list.
+    const first = rowY(0), last = rowY(items.length - 1);
+    const rolePositions = new Map(roles.map((role, index) => [role, roles.length === 1 ? (first + last) / 2 - 36 : first - 20 + index * ((last - first) / (roles.length - 1))]));
+    items.forEach(({req}, index) => roleList(req).forEach(role => svg.append(svgNode('line', {x1: 112, y1: rolePositions.get(role) + 36, x2: 302, y2: rowY(index), class: 'usecase-link'}))));
     roles.forEach(role => {
       const y = rolePositions.get(role);
-      const actor = svgNode('g'); actor.append(svgNode('circle', {cx: 125, cy: y, r: 12, class: 'usecase-actor'}));
-      actor.append(svgNode('path', {d: `M125 ${y + 12}v32m-22 -20h44m-22 20l-20 27m20 -27l20 27`, class: 'usecase-actor'}));
-      actor.append(svgNode('text', {x: 125, y: y + 92, 'text-anchor': 'middle', class: 'diagram-label'}, role)); svg.append(actor);
+      const actor = svgNode('g'); actor.append(svgNode('circle', {cx: 90, cy: y, r: 11, class: 'usecase-actor'}));
+      actor.append(svgNode('path', {d: `M90 ${y + 11}v28m-20 -18h40m-20 18l-17 24m17 -24l17 24`, class: 'usecase-actor'}));
+      actor.append(svgNode('text', {x: 90, y: y + 84, 'text-anchor': 'middle', class: 'diagram-label'}, role)); svg.append(actor);
     });
     items.forEach(({req, group}, index) => {
-      const y = 90 + index * 76;
+      const y = rowY(index);
       const node = svgNode('g', {role: 'button', tabindex: 0, 'aria-label': '查看功能：' + req.title, 'data-usecase-id': req.requirement_id});
-      node.append(svgNode('ellipse', {cx: 660, cy: y, rx: 210, ry: 27, class: 'usecase-function'}));
-      node.append(svgNode('text', {x: 660, y: y + 5, 'text-anchor': 'middle', class: 'diagram-label'}, req.title));
+      node.append(svgNode('ellipse', {cx: 482, cy: y, rx: 180, ry: 20, class: 'usecase-function'}));
+      node.append(svgNode('text', {x: 482, y: y + 5, 'text-anchor': 'middle', class: 'diagram-label'}, req.title));
       const choose = () => onSelect(group.key, req.requirement_id);
       node.addEventListener('click', choose); node.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') {event.preventDefault(); choose();} }); svg.append(node);
     });
-    const wrapper = element('div', null, 'content-diagram'); wrapper.append(svg); return wrapper;
+    const wrapper = element('div', null, 'content-diagram usecase-diagram'); wrapper.append(svg); return wrapper;
   }
   function architectureDetails(architecture, frame = null) {
     const nodes = architecture.components;

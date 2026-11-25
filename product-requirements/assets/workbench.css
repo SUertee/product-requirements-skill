@@ -369,6 +369,8 @@ video { width: 100%; max-height: 520px; margin-top: 20px; background: var(--ui-n
 
 .content-diagram { overflow-x: auto; margin-top: 16px; }
 .content-diagram > svg { display: block; width: 100%; min-width: 700px; height: auto; }
+.usecase-diagram { margin: 0; padding: 8px 12px; }
+.usecase-diagram > svg { min-width: 560px; max-width: 760px; margin: 0 auto; }
 .usecase-boundary { fill: var(--ui-surface-subtle); stroke: var(--ui-border); }
 .usecase-link,.architecture-link { stroke: var(--ui-diagram-line); stroke-width: 1.5; fill: none; }
 .usecase-actor { fill: none; stroke: var(--ui-ink-2); stroke-width: 2; }
