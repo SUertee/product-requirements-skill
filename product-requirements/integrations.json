@@ -7,8 +7,10 @@
     "environment_variable": "ARCHIFY_SKILL_DIR"
   },
   "schema-canvas": {
-    "source": "user-owned skill",
-    "environment_variable": "SCHEMA_CANVAS_SKILL_DIR",
-    "distribution_permission": "user confirmed ownership on 2026-11-15"
+    "repository": "https://github.com/SUertee/schema-canvas",
+    "commit": "26233b6ff6273c86f28e11f49aaced9dadb4eb01",
+    "skill_subdirectory": ".",
+    "license": "MIT",
+    "environment_variable": "SCHEMA_CANVAS_SKILL_DIR"
   }
 }
