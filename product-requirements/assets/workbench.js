@@ -1790,34 +1790,32 @@
       const page = pages.find(item => item.page_id === selectedPrototypePage);
       list.querySelectorAll('[data-selection-key]').forEach(node => { if (node.dataset.selectionKey === page.page_id) node.setAttribute('aria-current', 'true'); else node.removeAttribute('aria-current'); });
       pageBar.replaceChildren(pageReview(page));
-      mapping.replaceChildren(element('h2', '这一页做什么'), element('p', page.purpose, 'prototype-purpose'));
+      // One card per page: what it is for, then label/value rows that only appear when the page has them.
+      const head = element('header', null, 'page-spec-head');
+      head.append(element('span', '当前页', 'page-spec-eyebrow'), element('h2', page.name), element('p', page.purpose, 'prototype-purpose'));
+      const spec = element('dl', null, 'page-spec');
+      const row = (label, body) => { const value = element('dd'); value.append(body); spec.append(element('dt', label), value); };
       const reqs = (page.requirement_ids || []).map(id => requirements.find(req => req.requirement_id === id)).filter(Boolean);
       if (reqs.length) {
-        mapping.append(element('h3', '对应的功能需求'));
         const rows = element('ul', null, 'prototype-links');
-        reqs.forEach(req => { const row = element('li'); row.append(requirementLink(req), element('span', req.requirement_id, 'muted-id')); rows.append(row); });
-        mapping.append(rows);
+        reqs.forEach(req => { const item = element('li'); item.append(element('span', req.requirement_id, 'req-id'), requirementLink(req)); rows.append(item); });
+        row('功能需求', rows);
       }
       const pageNfrs = (page.nfr_ids || []).map(id => nfrs.find(item => item.nfr_id === id)).filter(Boolean);
-      if (pageNfrs.length) {
-        mapping.append(element('h3', '这一页体现的非功能需求'));
-        const rows = element('ul', null, 'prototype-nfrs');
-        pageNfrs.forEach(item => { const row = element('li'); row.append(element('strong', item.title), element('span', nfrCategories[item.category] || item.category, 'nfr-category'), element('p', item.prototype_treatment?.note || item.statement)); rows.append(row); });
-        mapping.append(rows);
-      }
+      if (pageNfrs.length) row('非功能需求', specItems(pageNfrs.map(item => [item.title, nfrCategories[item.category] || item.category, item.prototype_treatment?.note || item.statement])));
       const stateNames = {empty: '空数据', loading: '加载中', error: '出错', denied: '无权限', success: '成功'};
       const roleNames = Object.fromEntries((design.roles || []).map(role => [role.role_id, role.name]));
-      const extra = [];
-      if (page.states?.length) extra.push(['可演示的状态', page.states.map(state => stateNames[state] || state).join('、')]);
-      if (page.roles?.length) extra.push(['可见角色', page.roles.map(role => roleNames[role] || role).join('、')]);
-      if (extra.length) fields(mapping, extra);
-      const overall = (design.positioning?.nfr_ids || []).map(id => nfrs.find(item => item.nfr_id === id)).filter(Boolean);
-      if (overall.length) {
-        mapping.append(element('h3', '每页都要满足'));
-        const rows = element('ul', null, 'prototype-nfrs');
-        overall.forEach(item => { const row = element('li'); row.append(element('strong', item.title), element('span', nfrCategories[item.category] || item.category, 'nfr-category'), element('p', item.prototype_treatment?.note || item.statement)); rows.append(row); });
-        mapping.append(rows);
-      }
+      if (page.states?.length) row('可演示状态', chips(page.states.map(state => stateNames[state] || state)));
+      if (page.roles?.length) row('可见角色', chips(page.roles.map(role => roleNames[role] || role)));
+      mapping.replaceChildren(head);
+      if (spec.children.length) mapping.append(spec);
+    }
+    function chips(names) { const list = element('ul', null, 'spec-chips'); names.forEach(name => list.append(element('li', name))); return list; }
+    // Requirement-like entries: title and category tag on one line, the note underneath.
+    function specItems(items) {
+      const list = element('ul', null, 'spec-items');
+      items.forEach(([title, tag, note]) => { const item = element('li'); const line = element('div', null, 'spec-item-title'); line.append(element('strong', title), element('span', tag, 'nfr-category')); item.append(line); if (note) item.append(element('p', note)); list.append(item); });
+      return list;
     }
     function openPage(id) { selectedPrototypePage = id; frame.contentWindow?.postMessage({type: 'prototype:go', page_id: id}, '*'); drawMapping(); }
     function drawPages() {
@@ -1896,15 +1894,28 @@
     content.append(layout);
     drawMapping();
     drawReviewBar();
+    // Rules that hold for the whole prototype, kept apart from the per-page card.
+    const overall = (design.positioning?.nfr_ids || []).map(id => nfrs.find(item => item.nfr_id === id)).filter(Boolean);
     const excluded = design.excluded_requirements || [];
     const skipped = confirmedNfrs.filter(item => item.prototype_treatment?.kind === 'not_applicable');
-    if (excluded.length || skipped.length) {
-      const card = panel('不在原型中');
-      card.append(element('p', '这些需求已确认，但不需要或没法在原型里演示，开发时照常实现。', 'inline-note'));
-      const rows = element('ul', null, 'prototype-nfrs');
-      excluded.forEach(item => { const row = element('li'); row.append(element('strong', requirements.find(req => req.requirement_id === item.requirement_id)?.title || item.requirement_id), element('span', '功能需求', 'nfr-category'), element('p', item.reason)); rows.append(row); });
-      skipped.forEach(item => { const row = element('li'); row.append(element('strong', item.title), element('span', nfrCategories[item.category] || item.category, 'nfr-category'), element('p', item.prototype_treatment.note)); rows.append(row); });
-      card.append(rows); content.append(card);
+    if (overall.length || excluded.length || skipped.length) {
+      const card = panel('整个原型');
+      card.classList.add('prototype-scope');
+      const groups = element('div', null, 'prototype-scope-groups');
+      if (overall.length) {
+        const group = element('section', null, 'prototype-scope-group');
+        group.append(element('h3', '每页都要满足'), element('p', '所有页面共同遵守，不在每页重复列出。', 'inline-note'), specItems(overall.map(item => [item.title, nfrCategories[item.category] || item.category, item.prototype_treatment?.note || item.statement])));
+        groups.append(group);
+      }
+      if (excluded.length || skipped.length) {
+        const group = element('section', null, 'prototype-scope-group');
+        group.append(element('h3', '不在原型中'), element('p', '已确认，但不需要或没法在原型里演示，开发时照常实现。', 'inline-note'), specItems([
+          ...excluded.map(item => [requirements.find(req => req.requirement_id === item.requirement_id)?.title || item.requirement_id, '功能需求', item.reason]),
+          ...skipped.map(item => [item.title, nfrCategories[item.category] || item.category, item.prototype_treatment.note]),
+        ]));
+        groups.append(group);
+      }
+      card.append(groups); content.append(card);
     }
   }
   function prototype() {

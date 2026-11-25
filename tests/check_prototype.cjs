@@ -83,7 +83,8 @@ assert.deepEqual(titles, data.project.prototype_design.pages.map(item => item.na
 const mapping = () => pd.querySelector('.prototype-mapping').textContent;
 assert.match(mapping(), /查询工单/);
 assert.match(mapping(), /手机号脱敏显示/);
-assert.match(mapping(), /主管可在手机上查看/, 'positioning-level NFR is listed');
+assert.doesNotMatch(mapping(), /主管可在手机上查看/, 'positioning-level NFRs stay out of the page card');
+assert.match(pd.querySelector('.prototype-scope').textContent, /每页都要满足.*主管可在手机上查看/, 'positioning-level NFR is listed once for the whole prototype');
 const frame = pd.querySelector('.prototype-frame');
 assert.equal(frame.getAttribute('sandbox'), 'allow-scripts allow-forms');
 // The prototype travels inside the workbench and loads through srcdoc, opening on the selected page.
