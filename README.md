@@ -82,7 +82,7 @@ Skill 会给出工作台的地址。在「功能需求」里逐条点确认、�
 | [Archify](docs/references/archify.md) | 业务模块图、技术架构图、流程图 |
 | [Schema Canvas](docs/references/schema-canvas.md) | 交互式数据模型：实体、字段、关系，可搜索和聚焦 |
 
-两者都不随 Skill 安装。本地找不到时，Agent 按 integrations.json 固定的提交从 GitHub 下载到临时目录（需要 git 和网络）；下载失败时工作台退回内置的简易图示。来源、固定版本和许可证见上面两个链接，定位配置见 [integrations.json](product-requirements/integrations.json)。
+两者都不随 Skill 安装。本地已有时直接使用；找不到时，Agent 会先问你是否下载，同意后按 integrations.json 固定的提交从 GitHub 下载到临时目录（需要 git 和网络）。跳过或下载失败时，工作台退回内置的简易图示。来源、固定版本和许可证见上面两个链接，定位配置见 [integrations.json](product-requirements/integrations.json)。
 
 ## 当前状态
 
