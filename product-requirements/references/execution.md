@@ -88,7 +88,16 @@ python3 product-requirements/scripts/intake_runner.py \
 
 #### 缺少依赖时按需下载
 
-生成业务模块图、技术架构图或流程图前定位 Archify，生成数据模型（erd）前定位 Schema Canvas。找到可用入口时直接读取。找不到时，由 Agent 在当前任务中按下列命令下载 [integrations.json](../integrations.json) 指定的提交到临时目录。两者都作为外部依赖留在 Skill 包外。
+生成业务模块图、技术架构图或流程图前定位 Archify，生成数据模型（erd）前定位 Schema Canvas。找到可用入口时直接读取，不再询问。找不到时，经用户同意后，由 Agent 在当前任务中按下列命令下载 [integrations.json](../integrations.json) 指定的提交到临时目录。两者都作为外部依赖留在 Skill 包外。
+
+下载前先询问用户，规则如下：
+
+- 开始生成前一次定位本次要用的全部依赖，缺失的合成一个问题，每个任务只问一次，不在生成中途分开问。
+- 问题写明要下载的仓库与固定提交、受影响的成果（如技术架构图、数据模型）、所需环境（git 与网络，Archify 另需 Node.js），以及跳过后的结果：工作台改用内置的简易图示。
+- 只给两个选项：下载，或跳过并使用简易图示。
+- 用户在当前对话中已明确同意自动下载缺失依赖时，直接下载，不再询问。
+- 无法询问用户的无人值守运行默认跳过下载。
+- 跳过或下载失败时照常运行生成器，缺失依赖的成果在 generation.json 中记为 failed 并保留原因，其余成果继续生成。
 
 从 `product-requirements/` 运行以下 Bash 命令，`capability` 取 `archify` 或 `schema-canvas`，两者都缺时各运行一次。下载完成并定位成功后，读取返回的 `SKILL.md` 和该任务需要的上游参考，再在带有同一环境变量（`ARCHIFY_SKILL_DIR` 或 `SCHEMA_CANVAS_SKILL_DIR`）的环境中运行生成器。若下一条工具调用启动了新 shell，显式传入这个环境变量。
 
