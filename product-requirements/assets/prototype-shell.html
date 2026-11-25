@@ -167,7 +167,8 @@ html[data-picking] #screen,html[data-picking] #screen *{cursor:crosshair !import
     const element = node instanceof Element ? node.closest(POINTABLE) : null;
     return element && section && section.contains(element) && element !== section ? element : null;
   }
-  let picking = false, hovered = null;
+  // The workbench preview starts picking by message and gets the picked place back instead of opening the form.
+  let picking = false, hovered = null, embeddedPick = false;
   function highlight(element) {
     hovered?.classList.remove('pt-pick-target');
     hovered = element;
@@ -180,6 +181,7 @@ html[data-picking] #screen,html[data-picking] #screen *{cursor:crosshair !import
     document.getElementById('pick-page').focus();
   }
   function stopPicking() {
+    if (embeddedPick) { embeddedPick = false; parent.postMessage({type: 'prototype:pick-end'}, '*'); }
     picking = false;
     delete document.documentElement.dataset.picking;
     document.getElementById('pickbar').hidden = true;
@@ -189,11 +191,16 @@ html[data-picking] #screen,html[data-picking] #screen *{cursor:crosshair !import
     const page = pages.get(current);
     const marked = element.closest('[data-req]');
     const ids = marked ? marked.dataset.req.split(/\s+/).filter(Boolean) : (page.requirement_ids || []);
+    if (embeddedPick) { pickedInWorkbench(describe(element), ids); return; }
     openFeedback(page.name + ' › ' + describe(element), ids);
+  }
+  function pickedInWorkbench(location, ids) {
+    parent.postMessage({type: 'prototype:picked', page_id: current, location, requirement_ids: ids}, '*');
+    stopPicking();
   }
   document.getElementById('feedback').addEventListener('click', () => (picking ? stopPicking() : startPicking()));
   document.getElementById('pick-cancel').addEventListener('click', stopPicking);
-  document.getElementById('pick-page').addEventListener('click', () => openFeedback('', pages.get(current).requirement_ids || []));
+  document.getElementById('pick-page').addEventListener('click', () => (embeddedPick ? pickedInWorkbench('整页', pages.get(current).requirement_ids || []) : openFeedback('', pages.get(current).requirement_ids || [])));
   document.addEventListener('mouseover', event => { if (picking) highlight(target(event.target)); });
   document.addEventListener('focusin', event => { if (picking) highlight(target(event.target)); });
   // Capture phase: while picking, a click selects the element instead of running the prototype's own action.
@@ -256,6 +263,7 @@ html[data-picking] #screen,html[data-picking] #screen *{cursor:crosshair !import
   window.addEventListener('message', event => {
     if (event.source !== parent || !event.data || typeof event.data.type !== 'string') return;
     if (event.data.type === 'prototype:go' && pages.has(event.data.page_id)) P.go(event.data.page_id);
+    if (event.data.type === 'prototype:pick') { if (event.data.on) { startPicking(); embeddedPick = true; } else stopPicking(); }
     if (event.data.type === 'prototype:annotate') { if (event.data.on) document.documentElement.dataset.annotate = ''; else delete document.documentElement.dataset.annotate; }
   });
   window.addEventListener('hashchange', () => { let id = ''; try { id = decodeURIComponent(location.hash.slice(1)); } catch { /* fall back */ } show(id); sections.get(current)?.focus({preventScroll: true}); window.scrollTo(0, 0); });

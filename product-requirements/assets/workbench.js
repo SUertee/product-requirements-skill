@@ -57,6 +57,7 @@
   let appliedTask = null;  // version created from the review bar this session
   let pendingChanges = [];
   let previewDevice = 'desktop';
+  let previewDeviceChosen = false;
 
   function element(tag, text, className) {
     const result = document.createElement(tag);
@@ -1669,7 +1670,7 @@
         const controls = element('div', null, 'document-actions');
         controls.setAttribute('role', 'group');
         controls.setAttribute('aria-label', '原型预览尺寸');
-        for (const [key, label] of [['desktop', '桌面'], ['tablet', '平板'], ['mobile', '手机']]) {
+        for (const [key, label] of [['desktop', '电脑'], ['tablet', '平板'], ['mobile', '手机']]) {
           const button = element('button', label, 'button small');
           button.type = 'button';
           button.setAttribute('aria-pressed', String(key === previewDevice));
@@ -1703,7 +1704,7 @@
   let selectedPrototypePage = null;
   let prototypeAnnotate = false;
   // Page-by-page review of the prototype, recorded as release-stage verdicts on "prototype/index.html#<page_id>".
-  let prototypeCommentPage = null;
+  let prototypeDraft = null; // {page_id, location}: a place picked in the prototype, waiting for its comment
   let prototypeReviewBusy = false;
   let prototypeReviewMessage = '';
   // The page itself cannot design a prototype: the Skill in the host (Claude Code, 码道…) designs pages from confirmed
@@ -1782,14 +1783,12 @@
     const pages = design.pages;
     const nfrs = project.nfrs || [];
     if (!pages.some(page => page.page_id === selectedPrototypePage)) selectedPrototypePage = design.start_page_id || pages[0].page_id;
+    // Any page can be checked at any width; the devices the design targets open first and are marked.
     const devices = design.positioning?.target_devices?.length ? design.positioning.target_devices : ['desktop'];
-    if (!devices.includes(previewDevice)) previewDevice = devices[0];
+    if (!previewDeviceChosen) previewDevice = devices[0];
     const widths = {desktop: '100%', tablet: '768px', mobile: '390px'};
-    const covered = new Set(pages.flatMap(page => page.requirement_ids || []));
-    const confirmedNfrs = nfrs.filter(item => item.review_status === 'confirmed');
-    const shown = confirmedNfrs.filter(item => item.prototype_treatment?.kind === 'shown').length;
     const toolbar = element('div', null, 'prototype-toolbar');
-    toolbar.append(iconLabel(element('span', [artifact.artifact_version || project.artifact_version, '覆盖 ' + covered.size + ' 条需求', confirmedNfrs.length ? '体现 ' + shown + ' 条非功能需求' : ''].filter(Boolean).join(' · '), 'prototype-summary'), 'prototype'));
+    const switcher = element('div', null, 'device-switch'); switcher.setAttribute('role', 'group'); switcher.setAttribute('aria-label', '预览尺寸');
     const tools = element('div', null, 'document-actions');
     const frame = element('iframe', null, 'workbench-preview prototype-frame');
     frame.title = '交互原型';
@@ -1805,18 +1804,24 @@
       const base = '../' + artifact.path.split('/').map(encodeURIComponent).join('/');
       frame.src = base + (prototypeAnnotate ? '?annotate=1' : '') + '#' + encodeURIComponent(selectedPrototypePage);
     }
-    frame.style.width = widths[previewDevice];
-    if (devices.length > 1) for (const device of devices) {
-      const button = iconLabel(element('button', {desktop: '桌面', tablet: '平板', mobile: '手机'}[device], 'button ghost small'), device === 'desktop' ? 'prototype' : 'mobile'); button.type = 'button';
-      button.setAttribute('aria-pressed', String(device === previewDevice));
-      button.addEventListener('click', () => { previewDevice = device; frame.style.width = widths[device]; tools.querySelectorAll('[data-device]').forEach(item => item.setAttribute('aria-pressed', String(item === button))); });
-      button.dataset.device = device; tools.append(button);
+    const applyDevice = () => { frame.dataset.device = previewDevice; frame.style.width = widths[previewDevice]; switcher.querySelectorAll('[data-device]').forEach(item => item.setAttribute('aria-pressed', String(item.dataset.device === previewDevice))); };
+    for (const device of ['desktop', 'tablet', 'mobile']) {
+      const button = iconLabel(element('button', {desktop: '电脑', tablet: '平板', mobile: '手机'}[device], 'button ghost small'), device === 'desktop' ? 'prototype' : 'mobile'); button.type = 'button';
+      button.dataset.device = device;
+      if (devices.includes(device)) { button.dataset.target = 'true'; button.title = '原型按这种设备设计'; }
+      button.addEventListener('click', () => { previewDevice = device; previewDeviceChosen = true; applyDevice(); });
+      switcher.append(button);
     }
     const annotate = iconLabel(element('button', '标注需求', 'button ghost small'), 'modules'); annotate.type = 'button';
     annotate.setAttribute('aria-pressed', String(prototypeAnnotate));
     annotate.addEventListener('click', () => { prototypeAnnotate = !prototypeAnnotate; annotate.setAttribute('aria-pressed', String(prototypeAnnotate)); frame.contentWindow?.postMessage({type: 'prototype:annotate', on: prototypeAnnotate}, '*'); });
+    // Change requests are made on the prototype itself: pick a place in it, then say what to change there.
+    const pick = iconLabel(element('button', '提修改意见', 'button small'), 'edit'); pick.type = 'button';
+    pick.setAttribute('aria-pressed', 'false');
+    pick.addEventListener('click', () => { const on = pick.getAttribute('aria-pressed') !== 'true'; pick.setAttribute('aria-pressed', String(on)); frame.contentWindow?.postMessage({type: 'prototype:pick', on}, '*'); });
+    if (serverState) tools.append(pick);
     tools.append(annotate, fileLink(artifact.path, '独立打开'));
-    toolbar.append(tools);
+    toolbar.append(switcher, tools);
     content.append(toolbar);
     const fileTarget = artifact.path;
     const pageTarget = id => fileTarget + '#' + id;
@@ -1825,28 +1830,46 @@
       for (const item of serverState?.review?.decisions || []) if (item.review_stage === 'release') latest.set(item.target, item);
       return latest;
     }
-    // Pages are fine unless someone says otherwise: only change requests are recorded per page, and one
-    // confirmation of the whole prototype releases it to the customer.
-    const pageComment = (latest, page) => { const item = latest.get(pageTarget(page.page_id)); return item?.outcome === 'needs_changes' ? item : null; };
+    // A page's change request holds one line per picked place: "【位置】意见". Older single comments count as 整页.
+    const pageNotes = (latest, page) => {
+      const item = latest.get(pageTarget(page.page_id));
+      if (item?.outcome !== 'needs_changes') return [];
+      return String(item.comment || '').split('\n').map(line => line.trim()).filter(Boolean).map(line => { const match = line.match(/^【(.+?)】(.*)$/); return match ? {location: match[1], text: match[2].trim()} : {location: '整页', text: line}; });
+    };
+    const notesText = notes => notes.map(note => '【' + note.location + '】' + note.text).join('\n');
+    async function saveNotes(page, notes) {
+      prototypeReviewBusy = true; prototypeReviewMessage = ''; drawReviewBar();
+      try {
+        const body = notes.length ? {outcome: 'needs_changes', comment: notesText(notes)} : {outcome: 'confirmed', comment: '撤回修改意见'};
+        const result = await localRequest('/api/review', {method: 'POST', body: JSON.stringify({revision: serverState.review.revision, review_stage: 'release', target: pageTarget(page.page_id), reviewer: '', ...body})});
+        serverState.review = result.review; prototypeDraft = null;
+      } catch (error) {
+        prototypeReviewMessage = error.message;
+        try { await refreshLocal(); } catch { /* keep the first error */ }
+      } finally { prototypeReviewBusy = false; }
+      drawReviewBar();
+    }
     const reviewBar = element('section', null, 'prototype-review-bar'); reviewBar.setAttribute('aria-label', '原型评审');
     if (serverState) content.append(reviewBar);
     function drawReviewBar() {
       if (!serverState) return;
       const latest = verdicts();
-      const changes = pages.filter(page => pageComment(latest, page));
+      const noted = pages.map(page => ({page, notes: pageNotes(latest, page)})).filter(item => item.notes.length);
+      const total = noted.reduce((sum, item) => sum + item.notes.length, 0);
       const released = latest.get(fileTarget)?.outcome === 'confirmed';
       const releases = (serverState.releases || []).filter(item => item.artifact_version === project.artifact_version);
       reviewBar.replaceChildren();
+      const head = element('div', null, 'prototype-review-head');
       const summary = element('div', null, 'prototype-review-progress');
-      if (changes.length) summary.append(element('strong', changes.length + ' 页有修改意见'), element('span', '复制指令交给 Skill 修改，生成新版本后再看', 'prototype-review-note'));
-      else if (releases.length) summary.append(element('strong', '交付包已生成'), element('span', '可以预览或下载发给客户', 'prototype-review-note'));
-      else summary.append(element('strong', '没有修改意见'), element('span', '哪页要改就点「这页要改」，都没问题就生成交付包', 'prototype-review-note'));
-      reviewBar.append(summary);
+      if (total) summary.append(element('strong', total + ' 条修改意见'));
+      else if (releases.length) summary.append(element('strong', '交付包已生成'));
+      else summary.append(element('strong', '没有修改意见'), element('span', '点「提修改意见」，再点原型上要改的地方', 'prototype-review-note'));
+      head.append(summary);
       const actions = element('div', null, 'document-actions');
-      if (changes.length) {
+      if (total) {
         const lines = ['用「产品需求落地」Skill 修改项目《' + (project.name || project.project_id) + '》的原型（版本 ' + project.artifact_version + '）。', '修改意见：'];
-        changes.forEach(page => lines.push('- ' + page.name + '（' + page.page_id + '）：' + pageComment(latest, page).comment));
-        lines.push('按 references/prototype.md 只改这些页面，意见涉及需求变化时先改需求卡并告诉我；生成新版本后停下，等我在工作台复核。');
+        noted.forEach(({page, notes}) => notes.forEach(note => lines.push('- ' + page.name + '（' + page.page_id + '）› ' + note.location + '：' + note.text)));
+        lines.push('按 references/prototype.md 只改这些位置，意见涉及需求变化时先改需求卡并告诉我；生成新版本后停下，等我在工作台复核。');
         const copy = iconLabel(element('button', '复制修改指令', 'button primary small'), 'copy'); copy.type = 'button';
         copy.addEventListener('click', async () => {
           try { await navigator.clipboard.writeText(lines.join('\n')); prototypeReviewMessage = '已复制，粘贴到 Claude Code、码道等装了这个 Skill 的工具里'; } catch { prototypeReviewMessage = '浏览器未允许复制'; }
@@ -1870,24 +1893,44 @@
         const download = iconLabel(element('a', '下载 ZIP', 'button small'), 'download'); download.href = '/api/releases/' + release.release_id + '/package'; download.download = project.project_id + '-' + release.artifact_version + '.zip';
         actions.append(preview, download);
       }
-      reviewBar.append(actions);
+      head.append(actions);
+      reviewBar.append(head);
+      // The place just picked in the prototype, waiting for what should change there.
+      const draftPage = prototypeDraft && pages.find(page => page.page_id === prototypeDraft.page_id);
+      if (draftPage) {
+        const box = element('div', null, 'page-review');
+        const label = element('label', null, 'page-review-label');
+        label.append(element('span', draftPage.name + ' › ' + prototypeDraft.location, 'prototype-note-place'), document.createTextNode(' 要改什么'));
+        const note = element('textarea', null, 'page-review-input'); note.rows = 2; note.placeholder = '比如：按钮改成「提交审核」；这里缺少按状态筛选'; label.append(note);
+        const buttons = element('div', null, 'document-actions page-review-actions');
+        const save = element('button', '保存意见', 'button primary small'); save.type = 'button'; save.disabled = prototypeReviewBusy;
+        save.addEventListener('click', () => { if (!note.value.trim()) { note.focus(); return; } saveNotes(draftPage, [...pageNotes(latest, draftPage), {location: prototypeDraft.location, text: note.value.trim().replace(/\s*\n\s*/g, ' ')}]); });
+        const cancel = element('button', '取消', 'button ghost small'); cancel.type = 'button';
+        cancel.addEventListener('click', () => { prototypeDraft = null; drawReviewBar(); });
+        buttons.append(save, cancel); box.append(label, buttons); reviewBar.append(box);
+        setTimeout(() => note.focus());
+      }
+      if (total) {
+        const list = element('ul', null, 'prototype-notes');
+        for (const {page, notes} of noted) notes.forEach((note, index) => {
+          const item = element('li');
+          const text = element('div', null, 'prototype-note-text');
+          text.append(element('span', page.name + ' › ' + note.location, 'prototype-note-place'), element('p', note.text));
+          const remove = element('button', '删除', 'button ghost small'); remove.type = 'button'; remove.disabled = prototypeReviewBusy;
+          remove.addEventListener('click', () => saveNotes(page, notes.filter((_, other) => other !== index)));
+          item.append(text, remove); list.append(item);
+        });
+        reviewBar.append(list);
+      }
       const message = prototypeReviewMessage || (workflowMessage && !workflowBusy && !releases.length ? workflowMessage : '');
       if (message) { const status = element('p', message, 'inline-note prototype-review-message'); status.setAttribute('role', 'status'); reviewBar.append(status); }
     }
     const layout = element('div', null, 'prototype-layout');
-    const list = element('nav', null, 'selection-list'); list.setAttribute('aria-label', '原型页面');
     const side = element('div', null, 'prototype-stage');
     const mapping = element('section', null, 'panel prototype-mapping'); mapping.setAttribute('aria-label', '当前页说明');
-    const pageBar = element('div', null, 'prototype-page-bar');
-    const pageRow = element('div', null, 'prototype-page-row'); const pageAction = element('div', null, 'prototype-page-action');
-    pageRow.append(list, pageAction);
+    // One card for the page on screen: what it is for, then the requirements it carries.
     function drawMapping() {
       const page = pages.find(item => item.page_id === selectedPrototypePage);
-      list.querySelectorAll('[data-selection-key]').forEach(node => { if (node.dataset.selectionKey === page.page_id) node.setAttribute('aria-current', 'true'); else node.removeAttribute('aria-current'); });
-      const review = pageReview(page);
-      pageAction.replaceChildren(...(review.inline ? [review.inline] : []));
-      pageBar.replaceChildren(...(review.panel ? [review.panel] : [])); pageBar.hidden = !review.panel;
-      // One card per page: what it is for, then label/value rows that only appear when the page has them.
       const head = element('header', null, 'page-spec-head');
       head.append(element('span', '当前页', 'page-spec-eyebrow'), element('h2', page.name), element('p', page.purpose, 'prototype-purpose'));
       const spec = element('dl', null, 'page-spec');
@@ -1914,103 +1957,25 @@
       items.forEach(([title, tag, note]) => { const item = element('li'); const line = element('div', null, 'spec-item-title'); line.append(element('strong', title), element('span', tag, 'nfr-category')); item.append(line); if (note) item.append(element('p', note)); list.append(item); });
       return list;
     }
-    function openPage(id) { selectedPrototypePage = id; frame.contentWindow?.postMessage({type: 'prototype:go', page_id: id}, '*'); drawMapping(); }
-    function drawPages() {
-      const latest = verdicts();
-      list.replaceChildren();
-      for (const page of pages) {
-        const button = element('button', null, 'selection-button prototype-page-chip'); button.type = 'button'; button.dataset.selectionKey = page.page_id;
-        const comment = pageComment(latest, page);
-        button.append(element('strong', page.name));
-        // Only pages with a change request are marked; the chip otherwise just names the page.
-        if (comment) { button.dataset.verdict = 'needs_changes'; const mark = element('span', '要改', 'page-change-mark'); button.append(mark); button.setAttribute('aria-label', page.name + '：有修改意见'); }
-        button.addEventListener('click', () => openPage(page.page_id));
-        list.append(button);
-      }
-    }
-    async function savePageComment(page, outcome, comment) {
-      prototypeReviewBusy = true; prototypeReviewMessage = ''; drawMapping();
-      try {
-        const result = await localRequest('/api/review', {method: 'POST', body: JSON.stringify({revision: serverState.review.revision, review_stage: 'release', target: pageTarget(page.page_id), outcome, comment, reviewer: ''})});
-        serverState.review = result.review; prototypeCommentPage = null;
-      } catch (error) {
-        prototypeReviewMessage = error.message;
-        try { await refreshLocal(); } catch { /* keep the first error */ }
-      } finally { prototypeReviewBusy = false; }
-      drawPages(); drawReviewBar(); drawMapping();
-    }
-    // One row above the preview, on every screen width: the page name and, if any, its change request.
-    // The current page's change request. With nothing to say it is a single button beside the page chips;
-    // a saved comment or the comment form opens a strip above the preview.
-    function pageReview(page) {
-      if (!serverState) return {inline: null, panel: null};
-      const comment = pageComment(verdicts(), page);
-      if (prototypeCommentPage === page.page_id) {
-        const box = element('section', null, 'page-review'); box.setAttribute('aria-label', '这一页的修改意见');
-        const label = element('label', '「' + page.name + '」要改什么', 'page-review-label');
-        const note = element('textarea', null, 'page-review-input'); note.rows = 2; note.value = comment?.comment || '';
-        note.placeholder = '比如：列表缺少按状态筛选；提交后应回到详情页'; label.append(note);
-        const actions = element('div', null, 'document-actions page-review-actions');
-        const save = element('button', '保存意见', 'button primary small'); save.type = 'button'; save.disabled = prototypeReviewBusy;
-        save.addEventListener('click', () => { if (!note.value.trim()) { note.focus(); return; } savePageComment(page, 'needs_changes', note.value.trim()); });
-        const cancel = element('button', '取消', 'button ghost small'); cancel.type = 'button';
-        cancel.addEventListener('click', () => { prototypeCommentPage = null; drawMapping(); });
-        actions.append(save, cancel); box.append(label, actions);
-        setTimeout(() => note.focus());
-        return {inline: null, panel: box};
-      }
-      const edit = element('button', comment ? '改意见' : '这页要改', 'button small'); edit.type = 'button'; edit.disabled = prototypeReviewBusy;
-      edit.addEventListener('click', () => { prototypeCommentPage = page.page_id; drawMapping(); });
-      if (!comment) return {inline: edit, panel: null};
-      const box = element('section', null, 'page-review'); box.setAttribute('aria-label', '这一页的修改意见'); box.dataset.verdict = 'needs_changes';
-      const head = element('div', null, 'page-review-head');
-      head.append(element('span', '「' + page.name + '」有修改意见', 'page-review-status'));
-      const actions = element('div', null, 'document-actions page-review-actions');
-      const withdraw = element('button', '撤回', 'button ghost small'); withdraw.type = 'button'; withdraw.disabled = prototypeReviewBusy;
-      withdraw.addEventListener('click', () => savePageComment(page, 'confirmed', '撤回修改意见'));
-      actions.append(edit, withdraw); head.append(actions);
-      box.append(head, element('p', comment.comment, 'page-review-comment'));
-      return {inline: null, panel: box};
-    }
-    drawPages();
     const listener = event => {
       if (!frame.isConnected) { window.removeEventListener('message', listener); return; }
-      if (event.source !== frame.contentWindow || event.data?.type !== 'prototype:page' || !pages.some(page => page.page_id === event.data.page_id)) return;
-      if (selectedPrototypePage !== event.data.page_id) { selectedPrototypePage = event.data.page_id; drawMapping(); }
+      if (event.source !== frame.contentWindow || typeof event.data?.type !== 'string') return;
+      const known = pages.some(page => page.page_id === event.data.page_id);
+      if (event.data.type === 'prototype:page' && known && selectedPrototypePage !== event.data.page_id) { selectedPrototypePage = event.data.page_id; drawMapping(); }
+      if (event.data.type === 'prototype:pick-end') pick.setAttribute('aria-pressed', 'false');
+      if (event.data.type === 'prototype:picked' && known && serverState) {
+        pick.setAttribute('aria-pressed', 'false');
+        prototypeDraft = {page_id: event.data.page_id, location: String(event.data.location || '整页').replace(/[【】\n]/g, ' ').trim().slice(0, 60) || '整页'};
+        drawReviewBar();
+      }
     };
     window.addEventListener('message', listener);
-    // Phone and tablet previews get a device-sized viewport instead of a strip of the desktop canvas.
-    const applyDevice = () => { frame.dataset.device = previewDevice; frame.style.width = widths[previewDevice]; };
     applyDevice();
-    tools.querySelectorAll('[data-device]').forEach(button => button.addEventListener('click', applyDevice));
-    side.append(pageBar, frame);
-    layout.append(pageRow, side, mapping);
+    side.append(frame);
+    layout.append(side, mapping);
     content.append(layout);
     drawMapping();
     drawReviewBar();
-    // Rules that hold for the whole prototype, kept apart from the per-page card.
-    const overall = (design.positioning?.nfr_ids || []).map(id => nfrs.find(item => item.nfr_id === id)).filter(Boolean);
-    const excluded = design.excluded_requirements || [];
-    const skipped = confirmedNfrs.filter(item => item.prototype_treatment?.kind === 'not_applicable');
-    if (overall.length || excluded.length || skipped.length) {
-      const card = panel('整个原型');
-      card.classList.add('prototype-scope');
-      const groups = element('div', null, 'prototype-scope-groups');
-      if (overall.length) {
-        const group = element('section', null, 'prototype-scope-group');
-        group.append(element('h3', '每页都要满足'), element('p', '所有页面共同遵守，不在每页重复列出。', 'inline-note'), specItems(overall.map(item => [item.title, nfrCategories[item.category] || item.category, item.prototype_treatment?.note || item.statement])));
-        groups.append(group);
-      }
-      if (excluded.length || skipped.length) {
-        const group = element('section', null, 'prototype-scope-group');
-        group.append(element('h3', '不在原型中'), element('p', '已确认，但不需要或没法在原型里演示，开发时照常实现。', 'inline-note'), specItems([
-          ...excluded.map(item => [requirements.find(req => req.requirement_id === item.requirement_id)?.title || item.requirement_id, '功能需求', item.reason]),
-          ...skipped.map(item => [item.title, nfrCategories[item.category] || item.category, item.prototype_treatment.note]),
-        ]));
-        groups.append(group);
-      }
-      card.append(groups); content.append(card);
-    }
   }
   function prototype() {
     const artifact = data.artifacts.find(item => item.path === 'prototype/index.html');

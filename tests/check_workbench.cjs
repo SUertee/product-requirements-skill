@@ -258,7 +258,7 @@ async function settle() {
   assert.equal(document.querySelector('.generation-results'), null);
   button('手机').click();
   assert.equal(document.querySelector('iframe').style.width, '390px');
-  button('桌面').click();
+  button('电脑').click();
   assert.equal(document.querySelector('iframe').style.width, '100%');
   assert.equal(document.querySelector('[aria-label="原型视图"]'), null);
   navigate('technical');
