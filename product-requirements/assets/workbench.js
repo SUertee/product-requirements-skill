@@ -132,6 +132,13 @@
     }
     parent.append(list);
   }
+  // "11-25 10:09" in local time; the year only when it is not this year.
+  function shortTime(value) {
+    const date = new Date(String(value || '').replace(' ', 'T'));
+    if (!value || Number.isNaN(date.getTime())) return String(value || '').slice(0, 16).replace('T', ' ');
+    const pad = number => String(number).padStart(2, '0');
+    return (date.getFullYear() !== new Date().getFullYear() ? date.getFullYear() + '-' : '') + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes());
+  }
   function badges(parent, values) {
     const row = element('div', null, 'workbench-meta');
     values.forEach(value => row.append(element('span', value)));
@@ -631,7 +638,12 @@
       ...open.map(item => ({text: item.text, origin: 'AI 读会议时提出 · 需求「' + item.req.title + '」', go: () => openRequirement(item.req, 'questions')})),
       ...[...findings].map(([reason, owners]) => ({text: reason, origin: '规则检查发现 · ' + (owners.length > 1 ? owners.length + ' 条需求' : owners.length ? '需求「' + owners[0].title + '」' : '评审记录'), go: () => owners.length ? openRequirement(owners[0], 'edit', owners.field) : (reviewTab = 'records', navigate('review'))})),
     ];
-    if (rows.length) followUp.append(element('p', '还有 ' + rows.length + ' 项，点一项跳到对应需求处理', 'inline-note'));
+    // Settled so far: questions answered here (pending) or closed in earlier versions.
+    const settled = requirements.flatMap(req => openQuestions(req)).filter(item => item.answer).length + requirements.reduce((sum, req) => sum + (req.answered_questions || []).length, 0);
+    const heading = followUp.firstElementChild;
+    const head = element('header', null, 'panel-head'); heading.replaceWith(head);
+    const progress = element('span', settled + ' / ' + (settled + rows.length), 'panel-count'); progress.title = '已处理 ' + settled + ' 项，共 ' + (settled + rows.length) + ' 项';
+    head.append(heading, progress);
     for (const row of rows) {
       const item = element('button', null, 'output-row question-item'); item.type = 'button';
       const text = element('span', null, 'question-text');
@@ -2344,23 +2356,53 @@
         content.append(versionCard);
       }
       versionHistory();
-      const records = [...(data.review.decisions || []), ...(serverState?.review.decisions || [])];
-      const seen = new Set();
-      const labels = {confirmed: '已确认', needs_changes: '需要修改', parked: '暂缓'};
-      records.forEach(record => {
-        const identity = JSON.stringify(record); if (seen.has(identity) || !matches(record)) return; seen.add(identity);
-        const req = requirements.find(item => item.requirement_id === record.target);
-        const card = panel(req?.title || record.target || '评审意见', 'review');
-        card.classList.add('review-entry'); card.dataset.outcome = record.outcome;
-        const note = iconLabel(element('p', labels[record.outcome] || record.outcome, 'review-decision'), record.outcome === 'confirmed' ? 'decided' : record.outcome === 'parked' ? 'pause' : 'edit');
-        const head = element('header', null, 'review-entry-head');
-        head.append(card.firstElementChild, note); card.append(head);
-        fields(card, [['意见', record.comment], ['记录人', record.reviewer], ['时间', record.decided_at || record.created_at || record.created]].filter(([, value]) => value));
-        content.append(card);
-      });
+      // Saved notes, newest first. A later note on the same item replaces the earlier one (as when the version is
+      // generated), and a withdrawn page comment leaves nothing to show.
+      const pending = new Set((serverState?.review.decisions || []).map(record => JSON.stringify(record)));
+      const latest = new Map();
+      for (const record of [...(data.review.decisions || []), ...(serverState?.review.decisions || [])]) latest.set(record.target, record);
+      const entries = [...latest.values()].filter(record => record.comment !== '撤回修改意见' && matches(record)).reverse();
+      const seen = new Set(entries.map(record => record.target));
+      if (entries.length) {
+        const card = panel('评审意见', 'review');
+        card.classList.add('review-log');
+        const list = element('ul', null, 'review-log-list');
+        for (const record of entries) {
+          const item = element('li', null, 'review-entry'); item.dataset.outcome = record.outcome;
+          const {name, outcome, comment} = reviewSubject(record);
+          const head = element('div', null, 'review-entry-head');
+          head.append(element('strong', name), element('span', outcome, 'review-decision'));
+          if (pending.has(JSON.stringify(record))) { const tag = element('span', '待生效', 'review-pending'); tag.title = '生成新版本后生效'; head.append(tag); }
+          const when = record.decided_at || record.created_at || record.created;
+          if (when) head.append(element('time', shortTime(when), 'review-time'));
+          item.append(head);
+          if (comment) item.append(element('p', comment, 'review-comment-text'));
+          list.append(item);
+        }
+        card.append(list); content.append(card);
+      }
       if (!seen.size && !changes.length && !conflicts.length && !(data.history || []).length) content.append(empty('还没有评审记录。在「功能需求」里对需求给出结论或修改后，会记在这里'));
       return;
     }
+  }
+  // What a review note is about, in words: a requirement, one of its questions, or a page of the prototype.
+  function reviewSubject(record) {
+    const target = String(record.target || '');
+    const labels = {confirmed: '确认', needs_changes: '需要修改', parked: '暂缓'};
+    const [owner, question] = target.split('#question-');
+    if (question) {
+      const req = requirements.find(item => item.requirement_id === owner);
+      const [, asked, answer] = String(record.comment || '').match(/^问题：(.*)\n回答：(.*)$/s) || [null, '', record.comment];
+      return {name: (req?.title || owner) + ' · 问题 ' + question, outcome: record.outcome === 'parked' ? '不影响本期' : '已回答',
+        comment: (asked ? asked + ' → ' : '') + (answer || '')};
+    }
+    if (target.startsWith('prototype/')) {
+      const id = target.split('#')[1];
+      const page = (project.prototype_design?.pages || []).find(item => item.page_id === id);
+      return {name: '原型 · ' + (page?.name || id || '整体'), outcome: record.outcome === 'needs_changes' ? '这页要改' : labels[record.outcome] || record.outcome, comment: record.comment};
+    }
+    const req = requirements.find(item => item.requirement_id === target);
+    return {name: req?.title || nfrTitle(target) || target || '评审意见', outcome: labels[record.outcome] || record.outcome, comment: record.comment};
   }
   // How each version came to be, newest first: analysis, verdicts applied (with the decisions), generation, edits.
   function versionHistory() {
@@ -2375,19 +2417,22 @@
     for (const entry of history) {
       const item = element('li', null, entry.version === project.artifact_version ? 'current' : '');
       const head = element('div', null, 'version-history-head');
-      head.append(element('strong', entry.version), element('span', kinds[entry.kind] || entry.kind, 'pr-kind'), element('span', '基于 ' + (entry.baseline_version || '—') + ' · ' + String(entry.created || '').slice(0, 16).replace('T', ' '), 'inline-note'));
+      head.append(element('strong', entry.version), element('span', kinds[entry.kind] || entry.kind, 'pr-kind'), element('span', (entry.baseline_version ? '基于 ' + entry.baseline_version + ' · ' : '') + shortTime(entry.created), 'inline-note'));
       item.append(head);
       const facts = [];
       if (entry.decisions?.length) {
-        const counts = {};
-        entry.decisions.forEach(decision => { counts[decision.outcome] = (counts[decision.outcome] || 0) + 1; });
-        facts.push(entry.decisions.length + ' 条结论（' + Object.entries(counts).map(([key, count]) => (outcomes[key] || key) + ' ' + count).join('、') + '）');
+        facts.push(entry.decisions.length + ' 条评审结论生效');
       }
       if (entry.changes) facts.push(entry.changes + ' 处内容变化');
       if (entry.conflicts) facts.push(entry.conflicts + ' 处需核对');
       if (entry.document) facts.push('修改 ' + entry.document);
       const made = (entry.generated || []).filter(item => item.status === 'success');
-      if (made.length) facts.push('成果：' + made.map(item => (capabilities[item.capability] || item.capability) + (item.reused_from ? '（沿用 ' + item.reused_from + '）' : '')).join('、'));
+      // Outputs regenerated in this version vs. carried over unchanged from an earlier one.
+      const name = item => capabilities[item.capability] || item.capability;
+      const fresh = made.filter(item => !item.reused_from);
+      if (fresh.length) facts.push('新生成：' + fresh.map(name).join('、'));
+      const reused = made.filter(item => item.reused_from);
+      if (reused.length) facts.push('沿用' + (reused.every(item => item.reused_from === entry.baseline_version) ? '上一版' : '旧版') + '：' + reused.map(name).join('、'));
       if (facts.length) item.append(element('p', facts.join(' · '), 'version-history-facts'));
       if (entry.decisions?.length) {
         const rows = element('ul', null, 'version-history-decisions');

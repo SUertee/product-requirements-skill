@@ -188,6 +188,9 @@ async function settle() {
   assert.equal(JSON.parse(requests.find(item => item.url === '/api/review').options.body).target, 'REQ-001');
   navigate('review');
   assert.match(document.getElementById('page-content').textContent, /合成评审：需要核对验收/);
+  const logged = document.querySelector('.review-log .review-entry');
+  assert.equal(logged.querySelector('strong').textContent, payload.project.requirements[0].title, 'review notes name the requirement, not its ID');
+  assert(logged.querySelector('.review-pending'), 'a saved note not yet applied is marked 待生效');
   navigate('modules');
   assert(document.querySelector('.review-pending-bar'), 'pending verdicts and edits shown on the requirement page');
   assert.match(document.querySelector('.requirement-identity .status-tag').textContent, /需修改（待生效）/, 'saved verdict shows right away as pending');
@@ -210,6 +213,8 @@ async function settle() {
   await settle();
   assert.equal(JSON.parse(requests.filter(item => item.url === '/api/review').at(-1).options.body).target, questioned.requirement_id + '#question-1');
   assert.match(questionedStatus().textContent, /已确认/, 'answering the last question settles the requirement');
+  navigate('overview');
+  assert.match(document.querySelector('.panel-count').textContent, /^1 \/ \d+$/, 'the open-items card counts what is settled');
   navigate('documents');
   assert(document.querySelectorAll('.selection-list button').length >= 3);
   button('PRD').click();
