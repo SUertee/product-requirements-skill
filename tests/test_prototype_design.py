@@ -58,6 +58,19 @@ class PrototypeDesignChecks(unittest.TestCase):
         positioning['theme'] = {'accent': 'orange'}
         self.assertRejected(project, 'positioning.theme needs accent as #RRGGBB')
 
+    def test_page_css_must_fit_a_phone(self):
+        from prototype_design import rigid_layout
+        self.assertEqual(rigid_layout('.a{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}'), 'grid-template-columns: repeat(3,minmax(0,1fr))')
+        self.assertEqual(rigid_layout('.a{grid-template-columns:200px 1fr 1fr}'), 'grid-template-columns: 200px 1fr 1fr')
+        self.assertEqual(rigid_layout('.a{width:640px}'), 'width: 640px')
+        self.assertIsNone(rigid_layout('.a{grid-template-columns:auto 1fr}'))
+        self.assertIsNone(rigid_layout('.a{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}'))
+        self.assertIsNone(rigid_layout('.a{grid-template-columns:repeat(3,1fr)}@media (max-width:599px){.a{grid-template-columns:1fr}}'))
+        self.assertIsNone(rigid_layout('.a{max-width:720px}'))
+        project = confirmed_project()
+        project['prototype_design']['pages'][0]['css'] = '.svc-x{display:grid;grid-template-columns:repeat(3,1fr)}'
+        self.assertRejected(project, 'without an @media rule for narrow screens')
+
     def assertRejected(self, project, fragment):
         with self.assertRaises(ValueError) as caught:
             check_design(project)

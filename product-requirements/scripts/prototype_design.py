@@ -47,6 +47,24 @@ def _contrast(first, second):
     return (light + 0.05) / (dark + 0.05)
 
 
+def rigid_layout(css):
+    """A layout that cannot fit a 390px phone: three or more fixed grid columns or a fixed width of 400px or more,
+    with no media query in the page css to change it. Returns the offending declaration, or None."""
+    if '@media' in css:
+        return None
+    for value in re.findall(r'grid-template-columns\s*:\s*([^;}]+)', css, re.I):
+        if 'auto-fit' in value or 'auto-fill' in value:
+            continue
+        count = re.match(r'\s*repeat\(\s*(\d+)', value)
+        tracks = int(count[1]) if count else len(re.findall(r'minmax\([^)]*\)|[^\s()]+(?:\([^)]*\))?', value.strip()))
+        if tracks >= 3:
+            return 'grid-template-columns: ' + value.strip()
+    for prop, number in re.findall(r'(?<![-\w])((?:min-)?width)\s*:\s*(\d+)px', css, re.I):
+        if int(number) >= 400:
+            return prop + ': ' + number + 'px'
+    return None
+
+
 def theme_tokens(positioning):
     """Token overrides for one project's prototype: a brand accent and light or dark navigation.
 
@@ -241,6 +259,7 @@ def check_design(project):
         css = page.get('css', '')
         require(isinstance(css, str) and len(css) <= MAX_PAGE_SCRIPT and not re.search(r'url\s*\(|@import|expression\s*\(|</style', css, re.I),
                 key + ' css must be plain rules without url(), @import or closing tags')
+        require(not rigid_layout(css), key + ' css fixes ' + str(rigid_layout(css)) + ' without an @media rule for narrow screens; use ui-grid or add @media (max-width: 599px)')
         total += len(markup) + len(script) + len(css)
 
         scan = MarkupScan()

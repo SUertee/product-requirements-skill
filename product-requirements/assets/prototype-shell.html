@@ -40,7 +40,9 @@ html[data-archetype="dashboard"] .ui-main{max-width:1600px}
 .pt-mobile .ui-nav nav{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:space-around;gap:0;padding:6px 8px calc(6px + env(safe-area-inset-bottom));background:var(--ui-nav);z-index:10}
 .pt-mobile .ui-nav nav a{flex:1;text-align:center;padding:10px 4px;font-size:var(--ui-text-sm)}
 .pt-mobile .ui-main{padding:16px 16px 96px}
-@media (max-width:899px){.ui-nav nav{display:flex;flex-wrap:wrap;gap:4px}.ui-nav nav a{padding:8px 10px}}
+@media (max-width:899px){.ui-nav{gap:10px}.ui-nav h1{font-size:var(--ui-text-md);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ui-nav nav{display:flex;flex-wrap:nowrap;gap:4px;overflow-x:auto;scrollbar-width:none}.ui-nav nav a{flex:none;padding:8px 10px;white-space:nowrap}}
+/* Narrow-screen safety net for page content: nothing wider than the screen, tables scroll in place. */
+@media (max-width:599px){.ui-main .pt-page{overflow-wrap:anywhere}.ui-main .pt-page img,.ui-main .pt-page video{max-width:100%;height:auto}.ui-actions .ui-button{flex:1 1 auto}}
 .pt-feedback{position:fixed;right:24px;bottom:24px;z-index:15;box-shadow:var(--ui-shadow-overlay)}
 .pt-mobile .pt-feedback{right:16px;bottom:84px}
 .pt-pickbar{position:fixed;left:50%;top:16px;transform:translateX(-50%);z-index:30;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;max-width:calc(100vw - 32px);padding:10px 12px 10px 16px;border-radius:var(--ui-radius);background:var(--ui-nav);color:var(--ui-nav-ink);box-shadow:var(--ui-shadow-overlay);font-size:var(--ui-text-sm)}
