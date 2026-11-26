@@ -182,6 +182,23 @@ class DocumentBundleTests(unittest.TestCase):
         self.assertEqual(payload['project']['modules'][0]['module_id'], 'MOD-001')
         self.assertFalse(any(item['path'].startswith('prototype/') for item in payload['artifacts']))
 
+    def test_technical_design_names_prototype_pages(self):
+        self.project['prototype_design'] = {'pages': [{'page_id': 'tickets'}]}
+        self.project['apis'] = [{'api_id': 'API-001', 'name': '查询工单', 'requirement_ids': ['REQ-001'], 'page_ids': ['tickets']}]
+        self.project['technical_architecture'] = {'layers': [{'id': 'web', 'name': '前端'}],
+                                                  'components': [{'id': 'list', 'name': '工单列表', 'layer': 'web', 'page_ids': ['tickets']}]}
+        self.save()
+        self.read()
+        self.project['apis'][0]['page_ids'] = ['orders']
+        self.save()
+        with self.assertRaisesRegex(ValueError, 'invalid page_ids'):
+            self.read()
+        self.project['apis'][0]['page_ids'] = ['tickets']
+        self.project['technical_architecture']['components'][0]['page_ids'] = ['orders']
+        self.save()
+        with self.assertRaisesRegex(ValueError, 'Component has invalid page_ids'):
+            self.read()
+
     def test_module_must_reference_existing_requirement(self):
         self.project['modules'] = [{'module_id': 'MOD-001', 'requirement_ids': ['REQ-404']}]
         self.save()

@@ -1942,6 +1942,8 @@
       head.append(element('span', '当前页', 'page-spec-eyebrow'), element('h2', page.name), element('p', page.purpose, 'prototype-purpose'));
       const spec = element('dl', null, 'page-spec');
       const row = (label, body) => { const value = element('dd'); value.append(body); spec.append(element('dt', label), value); };
+      const module = pageModule(page);
+      if (module) row('所属模块', element('span', module.name));
       const reqs = (page.requirement_ids || []).map(id => requirements.find(req => req.requirement_id === id)).filter(Boolean);
       if (reqs.length) {
         const rows = element('ul', null, 'prototype-links');
@@ -1954,6 +1956,14 @@
       const roleNames = Object.fromEntries((design.roles || []).map(role => [role.role_id, role.name]));
       if (page.states?.length) row('可演示状态', chips(page.states.map(state => stateNames[state] || state)));
       if (page.roles?.length) row('可见角色', chips(page.roles.map(role => roleNames[role] || role)));
+      const servers = pageServers(page.page_id);
+      if (servers.apis.length || servers.components.length) {
+        const list = chips([...servers.apis.map(item => item.name || item.api_id), ...servers.components.map(item => item.name)]);
+        const more = element('button', '看页面对照', 'source-link'); more.type = 'button';
+        more.addEventListener('click', () => { technicalTab = 'pages'; navigate('technical'); });
+        const box = element('div'); box.append(list, more);
+        row('技术实现', box);
+      }
       mapping.replaceChildren(head);
       if (spec.children.length) mapping.append(spec);
     }
@@ -2125,6 +2135,48 @@
     map.append(grid);
     content.append(map, entityDetail(current, links, entitiesById));
   }
+  // Technical design is drawn from the prototype: each prototype page lists the APIs and components that serve it.
+  function prototypePages() { return project.prototype_design?.pages || []; }
+  function pageServers(pageId) {
+    return {apis: (project.apis || []).filter(item => item.page_ids?.includes(pageId)),
+      components: (project.technical_architecture?.components || []).filter(item => item.page_ids?.includes(pageId))};
+  }
+  function pageModule(page) { return (project.modules || []).find(module => module.module_id === page.module_id); }
+  function openPrototypePage(pageId) { selectedPrototypePage = pageId; navigate('prototype'); }
+  function prototypePageLink(page) {
+    const link = element('button', page.name, 'source-link'); link.type = 'button';
+    link.addEventListener('click', () => openPrototypePage(page.page_id));
+    return link;
+  }
+  function pageMapping() {
+    const pages = prototypePages();
+    if (!pages.length) { content.append(empty('还没有原型。技术设计按原型页面整理：先在「原型预览」生成原型，再让 Skill 为每个页面补接口和构件')); return; }
+    const served = pages.filter(page => { const s = pageServers(page.page_id); return s.apis.length || s.components.length; });
+    const card = element('section', null, 'panel requirement-card page-tech');
+    card.setAttribute('aria-label', '原型页面与技术实现');
+    const head = element('header', null, 'panel-head');
+    head.append(element('h2', '原型页面 → 技术实现'), element('span', served.length + ' / ' + pages.length, 'panel-count'));
+    card.append(head, element('p', '技术设计从原型出发：每个页面读写的数据落成接口，接口归到架构构件，用到的数据进数据模型。', 'inline-note'));
+    const modules = project.modules || [];
+    const groups = [...modules.map(module => [module.name, pages.filter(page => page.module_id === module.module_id)]),
+      ['未归属模块', pages.filter(page => !modules.some(module => module.module_id === page.module_id))]].filter(([, list]) => list.length);
+    for (const [name, list] of groups) {
+      if (groups.length > 1 || modules.length) card.append(element('h3', name, 'page-tech-group'));
+      const rows = element('ul', null, 'page-tech-list');
+      for (const page of list) {
+        const {apis, components} = pageServers(page.page_id);
+        const row = element('li', null, 'page-tech-row');
+        const title = element('div', null, 'page-tech-page'); title.append(prototypePageLink(page), element('span', page.purpose || '', 'inline-note'));
+        const body = element('div', null, 'page-tech-servers');
+        if (!apis.length && !components.length) body.append(element('span', '还没落到技术设计', 'ui-badge warning'));
+        if (apis.length) { const ul = element('ul', null, 'spec-chips page-tech-apis'); apis.forEach(item => ul.append(element('li', String(item.method || '').toUpperCase() + ' ' + (item.path || item.name || item.api_id)))); body.append(ul); }
+        if (components.length) { const ul = element('ul', null, 'spec-chips'); components.forEach(item => ul.append(element('li', item.name))); body.append(ul); }
+        row.append(title, body); rows.append(row);
+      }
+      card.append(rows);
+    }
+    content.append(card);
+  }
   // ParTrace-style API table: header row, one group per business module, one row per endpoint; click a row for request / response / errors.
   function apiModule(item) {
     const modules = project.modules || [];
@@ -2162,6 +2214,8 @@
         }
         const related = requirements.filter(req => item.requirement_ids?.includes(req.requirement_id));
         if (related.length) { const links = element('p', '关联需求：', 'inline-note api-related'); related.forEach(req => links.append(requirementLink(req))); body.append(links); }
+        const callers = prototypePages().filter(page => item.page_ids?.includes(page.page_id));
+        if (callers.length) { const links = element('p', '调用页面：', 'inline-note api-related'); callers.forEach(page => links.append(prototypePageLink(page))); body.append(links); }
         row.append(body); list.append(row);
       }
     });
@@ -2451,7 +2505,7 @@
     content.append(card);
   }
   function technical() {
-    const tabs = {diagrams: '技术架构', database: '数据模型', api: '接口'};
+    const tabs = {pages: '页面对照', diagrams: '技术架构', database: '数据模型', api: '接口'};
     const navigation = element('div', null, 'technical-tabs page-tabs');
     navigation.setAttribute('role', 'tablist');
     navigation.setAttribute('aria-label', '技术设计分类');
@@ -2461,7 +2515,7 @@
     panelNode.setAttribute('aria-labelledby', 'tab-' + technicalTab);
     content.append(navigation, panelNode);
     for (const [key, label] of Object.entries(tabs)) {
-      const button = iconLabel(element('button', label), {diagrams: 'technical', database: 'database', api: 'api'}[key]);
+      const button = iconLabel(element('button', label), {pages: 'prototype', diagrams: 'technical', database: 'database', api: 'api'}[key]);
       button.id = 'tab-' + key;
       button.type = 'button';
       button.setAttribute('role', 'tab');
@@ -2488,6 +2542,7 @@
     const before = new Set(content.children);
     if (technicalTab === 'database') database();
     else if (technicalTab === 'api') api();
+    else if (technicalTab === 'pages') pageMapping();
     else technicalArchitecture();
     Array.from(content.children).filter(child => !before.has(child)).forEach(child => panelNode.append(child));
   }

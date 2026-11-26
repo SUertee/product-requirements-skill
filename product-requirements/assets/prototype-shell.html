@@ -20,6 +20,10 @@ html[data-annotate] [data-req],html[data-annotate] [data-nfr]{outline:2px dashed
 html[data-annotate] [data-nfr]:not([data-req]){outline-color:var(--ui-warning-mark)}
 html[data-annotate] [data-req]::before,html[data-annotate] [data-nfr]::before{content:attr(data-req) " " attr(data-nfr);position:absolute;top:-11px;right:4px;padding:0 6px;border-radius:var(--ui-radius-sm);background:var(--ui-accent);color:var(--ui-on-accent);font-size:var(--ui-text-xs);line-height:18px;font-weight:600;white-space:nowrap;z-index:5;pointer-events:none}
 html[data-annotate] [data-nfr]:not([data-req])::before{background:var(--ui-warning-mark)}
+.pt-nav-group{margin:16px 12px 4px;font-size:var(--ui-text-xs);font-weight:600;color:var(--ui-nav-muted);letter-spacing:.02em}
+.pt-nav-group:first-child{margin-top:4px}
+html:not([data-archetype="workspace"]):not([data-archetype="dashboard"]) .pt-nav-group{display:none}
+@media (max-width:899px){.pt-nav-group{display:none}}
 /* Archetype skeletons: one UI spec, different navigation. workspace/dashboard keep the side nav, mobile_app uses .pt-mobile. */
 html[data-archetype="website"] .ui-shell,html[data-archetype="flow"] .ui-shell,html[data-archetype="chat"] .ui-shell{display:block}
 html[data-archetype="website"] .ui-nav,html[data-archetype="flow"] .ui-nav,html[data-archetype="chat"] .ui-nav{position:sticky;top:0;z-index:10;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 24px;padding:12px 32px}
@@ -105,8 +109,14 @@ html[data-picking] #screen,html[data-picking] #screen *{cursor:crosshair !import
   }
   function drawNav() {
     const nav = document.getElementById('pages'); nav.replaceChildren();
+    // Side navigation follows the solution's business modules: a heading whenever the module changes.
+    const moduleNames = Object.fromEntries((data.modules || []).map(item => [item.module_id, item.name]));
+    const grouped = (data.modules || []).length > 1;
+    let lastModule;
     for (const page of data.pages) {
       if (page.nav === false || !allowed(page)) continue;
+      if (grouped && page.module_id && page.module_id !== lastModule && moduleNames[page.module_id]) nav.append(h('p', {class: 'pt-nav-group', text: moduleNames[page.module_id]}));
+      lastModule = page.module_id;
       const link = h('a', {href: '#' + encodeURIComponent(page.page_id), 'data-page': page.page_id, text: page.name});
       if (page.page_id === current) link.setAttribute('aria-current', 'page');
       nav.append(link);

@@ -1090,3 +1090,15 @@ video { width: 100%; max-height: 520px; margin-top: 20px; background: var(--ui-n
 .design-spec-facts div { display: grid; gap: 2px; }
 .design-spec .inline-note { margin: 0; }
 
+
+/* 技术设计 · 页面对照：原型页面 → 接口与构件 */
+.page-tech .inline-note { margin: 4px 0 12px; }
+.page-tech-group { margin: 16px 0 6px; font-size: var(--ui-text-sm); color: var(--ui-muted); font-weight: 600; }
+.page-tech-list { margin: 0; padding: 0; list-style: none; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); }
+.page-tech-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 12px 20px; padding: 12px 16px; }
+.page-tech-row + .page-tech-row { border-top: 1px solid var(--ui-border); }
+.page-tech-page { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.page-tech-page .inline-note { margin: 0; }
+.page-tech-servers { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+.page-tech-apis li { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--ui-text-xs); }
+@media (max-width: 699px) { .page-tech-row { grid-template-columns: minmax(0, 1fr); } }

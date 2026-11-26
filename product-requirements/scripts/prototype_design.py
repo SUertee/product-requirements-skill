@@ -271,6 +271,38 @@ def validate_nfrs(project, requirement_ids, sources):
     return seen
 
 
+# Page CSS may lay things out freely but takes colour, type, radius and shadow from the design spec, so
+# every project keeps one look and a theme change reaches every page.
+NAMED_COLOURS = r'white|black|red|green|blue|gray|grey|orange|yellow|purple|pink|brown|navy|teal|silver|gold'
+COLOUR_PROPS = re.compile(r'^(?:color|background(?:-color)?|border(?:-(?:top|right|bottom|left))?(?:-color)?|outline(?:-color)?|fill|stroke|box-shadow|text-shadow|caret-color|accent-color|text-decoration-color)$')
+
+
+def loose_styles(css):
+    """Return the hard-coded values in CSS declarations that should come from var(--ui-*) tokens."""
+    found = []
+    for prop, value in re.findall(r'(?:^|[;{])\s*([-a-zA-Z]+)\s*:\s*([^;{}]*)(?=[;}])', css):
+        prop, value = prop.lower(), value.strip()
+        if prop.startswith('--'):
+            continue
+        colour = re.search(r'#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(', value)
+        if not colour and COLOUR_PROPS.match(prop):
+            colour = re.search(r'\b(?:' + NAMED_COLOURS + r')\b', value, re.I)
+        if colour:
+            found.append(f'{prop}: {colour.group(0)}')
+        if prop in {'font-size', 'font'} and re.search(r'\b\d+(?:\.\d+)?(?:px|rem|em|pt)\b', value):
+            found.append(f'{prop}: {value[:24]}')
+        if prop == 'font-family' and not re.fullmatch(r'(?:var\(--ui-[a-z-]+\)|inherit)', value):
+            found.append(f'{prop}: {value[:24]}')
+        if prop.endswith('radius') and re.search(r'\b(?!0(?:px)?\b)\d+(?:\.\d+)?px\b', value):
+            found.append(f'{prop}: {value[:24]}')
+    return list(dict.fromkeys(found))
+
+
+STYLE_HINT = ('use the design tokens instead: var(--ui-accent / ink / ink-2 / muted / surface / surface-muted / border / '
+              'success / warning / danger and their -soft forms), var(--ui-text-xs…2xl), var(--ui-radius-sm / radius / radius-pill), '
+              'var(--ui-font) and var(--ui-card-shadow); tint with color-mix(in srgb, var(--ui-…) 12%, var(--ui-surface))')
+
+
 class MarkupScan(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -293,6 +325,8 @@ class MarkupScan(HTMLParser):
                 self.problems.append(f'{name}="{value[:60]}" loads an external or scripted resource')
             if name == 'style' and re.search(r'url\s*\(|expression\s*\(', value, re.I):
                 self.problems.append('style attribute must not load resources')
+            if name == 'style' and loose_styles('{' + value + ';}'):
+                self.problems.append('style attribute hard-codes ' + ', '.join(loose_styles('{' + value + ';}')) + '; ' + STYLE_HINT)
             if name == 'data-req':
                 self.reqs.update(value.split())
             elif name == 'data-nfr':
@@ -350,6 +384,14 @@ def check_design(project):
         page_ids.append(page['page_id'])
     require(design.get('start_page_id', page_ids[0]) in page_ids, 'start_page_id must be one of the pages')
 
+    # Pages come from the solution's business modules: each page belongs to one module, and the requirements
+    # it carries belong to that module (or to no module), so the prototype's navigation follows the 方案.
+    modules = {item['module_id']: item for item in project.get('modules', []) if isinstance(item, dict) and item.get('module_id')}
+    owners = {}
+    for module_id, module in modules.items():
+        for req in module.get('requirement_ids', []):
+            owners.setdefault(req, set()).add(module_id)
+
     total = 0
     covered_reqs, shown_nfrs, page_reports = set(), set(global_nfrs), []
     for page in pages:
@@ -364,6 +406,14 @@ def check_design(project):
             require(item.get('review_status') == 'confirmed' and item.get('lifecycle_status') != 'cancelled', f'{req} must be confirmed before it appears in the prototype')
             require(text(item.get('acceptance_criteria')) or (isinstance(item.get('acceptance_criteria'), list) and item['acceptance_criteria']),
                     f'{req} needs acceptance criteria before prototyping')
+        module_id = page.get('module_id')
+        if modules and reqs:
+            require(module_id in modules, f'{key} needs module_id, one of the solution modules: ' + ', '.join(modules))
+        elif module_id is not None:
+            require(module_id in modules, f'{key} has unknown module_id {module_id}')
+        if module_id:
+            stray = [req for req in reqs if owners.get(req) and module_id not in owners[req]]
+            require(not stray, f'{key} is in module {module_id} but carries {", ".join(stray)} from another module; split the page or fix the module')
         for nfr in page_nfrs:
             item = nfrs.get(nfr)
             require(item is not None, f'{key} references unknown {nfr}')
@@ -379,6 +429,7 @@ def check_design(project):
         css = page.get('css', '')
         require(isinstance(css, str) and len(css) <= MAX_PAGE_SCRIPT and not re.search(r'url\s*\(|@import|expression\s*\(|</style', css, re.I),
                 key + ' css must be plain rules without url(), @import or closing tags')
+        require(not loose_styles(css), key + ' css hard-codes ' + ', '.join(loose_styles(css)[:6]) + '; ' + STYLE_HINT)
         require(not rigid_layout(css), key + ' css fixes ' + str(rigid_layout(css)) + ' without an @media rule for narrow screens; use ui-grid or add @media (max-width: 599px)')
         total += len(markup) + len(script) + len(css)
 
@@ -400,7 +451,7 @@ def check_design(project):
         require(scan.roles <= role_ids, f'{key} uses unknown data-roles values')
         covered_reqs.update(reqs)
         shown_nfrs.update(page_nfrs)
-        page_reports.append({'page_id': key, 'name': page['name'], 'requirement_ids': reqs, 'nfr_ids': page_nfrs, 'states': states, 'roles': page_roles})
+        page_reports.append({'page_id': key, 'name': page['name'], 'module_id': module_id, 'requirement_ids': reqs, 'nfr_ids': page_nfrs, 'states': states, 'roles': page_roles})
     require(total <= MAX_TOTAL, 'Prototype pages exceed the total size limit')
     require(json.dumps(design.get('sample_data', {}), ensure_ascii=False).__len__() <= 500_000, 'sample_data exceeds the size limit')
 
@@ -425,6 +476,7 @@ def check_design(project):
 
     report = {
         'pages': page_reports,
+        'modules': [{'module_id': key, 'name': item.get('name', key), 'page_ids': [row['page_id'] for row in page_reports if row['module_id'] == key]} for key, item in modules.items()],
         'requirements': {'in_scope': len(in_scope), 'covered': sorted(covered_reqs), 'excluded': excluded},
         'nfrs': nfr_rows,
         'archetype': archetype,
@@ -443,9 +495,10 @@ def build(project, design, report):
         'roles': design.get('roles', []),
         'start_page_id': design.get('start_page_id', design['pages'][0]['page_id']),
         'sample_data': design.get('sample_data', {}),
-        'pages': [{key: page[key] for key in ['page_id', 'name', 'purpose', 'nav', 'roles', 'states', 'requirement_ids', 'nfr_ids', 'markup', 'script', 'css'] if key in page} for page in design['pages']],
+        'pages': [{key: page[key] for key in ['page_id', 'name', 'purpose', 'module_id', 'nav', 'roles', 'states', 'requirement_ids', 'nfr_ids', 'markup', 'script', 'css'] if key in page} for page in design['pages']],
         'requirements': {key: requirement['title'] for key, requirement in ((item['requirement_id'], item) for item in project['requirements'])},
         'nfrs': {item['nfr_id']: item['title'] for item in project.get('nfrs', [])},
+        'modules': [{'module_id': row['module_id'], 'name': row['name']} for row in report.get('modules', [])],
     }
     payload['theme'] = theme_tokens(design['positioning'])[1]
     if design.get('feedback_form_url'):
