@@ -38,6 +38,15 @@
 - 无人值守运行时取最贴近核心主流程的形态，并在 `design_context` 记下理由，留给复核。
 - 旧设计没有 `archetype` 时按 `workspace` 处理。
 
+### 配色
+
+原型用客户产品的颜色，不沿用工作台的深蓝。写在 `positioning.theme`：
+
+- `accent`：主色，`#RRGGBB`。优先取客户资料里的品牌色或 Logo 主色；会议和资料里都没有时问用户一次，用户没有偏好就不写，用默认蓝。
+- `nav`：`light` 或 `dark`。缺省时工作台、数据看板用深色导航，其余形态用浅色。
+
+生成时只从主色推出一组颜色：按钮、链接、选中底色、边框，以及深色导航的底色；字号、间距、圆角和成功／警告／危险色保持统一规范。亮色主色（橙、黄、浅绿）配白字对比度不够时，按钮文字改成深色、保留品牌色；深色字也不够时才加深主色。覆盖报告的 `theme.notes` 记下这些调整。
+
 ## NFR 在原型中的体现
 
 原型不连接真实服务，NFR 转成看得见的设计：
@@ -61,7 +70,7 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| positioning | archetype（见原型形态）、product_type（具体业务说法）、target_devices（desktop／tablet／mobile）、main_flow，可选 nfr_ids |
+| positioning | archetype（见原型形态）、product_type（具体业务说法）、target_devices（desktop／tablet／mobile）、main_flow，可选 theme（见配色）和 nfr_ids |
 | roles | 可选，role_id（小写字母、数字、连字符）与 name。多于一个角色时原型显示角色切换 |
 | start_page_id | 默认打开的页面 |
 | sample_data | 示例数据，页面脚本通过 `P.data` 读写 |

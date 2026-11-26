@@ -25,11 +25,11 @@ html[data-archetype="website"] .ui-shell,html[data-archetype="flow"] .ui-shell,h
 html[data-archetype="website"] .ui-nav,html[data-archetype="flow"] .ui-nav,html[data-archetype="chat"] .ui-nav{position:sticky;top:0;z-index:10;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 24px;padding:12px 32px}
 html[data-archetype="website"] .ui-nav nav,html[data-archetype="flow"] .ui-nav nav,html[data-archetype="chat"] .ui-nav nav{display:flex;flex-wrap:wrap;gap:4px}
 html[data-archetype="website"] .ui-nav h1,html[data-archetype="flow"] .ui-nav h1,html[data-archetype="chat"] .ui-nav h1{font-size:var(--ui-text-md)}
-html[data-archetype="website"] .ui-nav{background:var(--ui-surface);color:var(--ui-ink);border-bottom:1px solid var(--ui-border)}
-html[data-archetype="website"] .ui-nav a:hover,html[data-archetype="website"] .ui-nav a[aria-current="page"]{background:var(--ui-surface-muted);color:var(--ui-accent-ink)}
+html[data-archetype="website"] .ui-nav,html[data-archetype="flow"] .ui-nav,html[data-archetype="chat"] .ui-nav{border-bottom:1px solid var(--ui-nav-line)}
+html[data-nav="light"] .ui-nav a[aria-current="page"]{color:var(--ui-accent-ink);font-weight:600}
+html[data-nav="light"] .ui-nav{border-right:1px solid var(--ui-nav-line)}
 html[data-archetype="website"] .ui-nav h1,html[data-archetype="flow"] .ui-nav h1,html[data-archetype="chat"] .ui-nav h1{margin-right:auto}
 html[data-archetype="website"] .pt-role,html[data-archetype="flow"] .pt-role,html[data-archetype="chat"] .pt-role{order:2;grid-auto-flow:column;align-items:center}
-html[data-archetype="website"] .pt-role select{background:var(--ui-surface);color:var(--ui-ink);border-color:var(--ui-border-strong)}
 html[data-archetype="website"] .ui-main{max-width:1120px}
 html[data-archetype="flow"] .ui-main{max-width:760px}
 html[data-archetype="chat"] .ui-main{max-width:960px}
@@ -242,6 +242,7 @@ html[data-picking] #screen,html[data-picking] #screen *{cursor:crosshair !import
   document.getElementById('notice').textContent = '交互原型 · ' + data.artifact_version + ' · 示例数据，操作只在本页面内模拟';
   const archetype = data.positioning.archetype || 'workspace';
   document.documentElement.dataset.archetype = archetype;
+  document.documentElement.dataset.nav = (data.theme && data.theme.nav) || 'dark';
   if (archetype === 'mobile_app' || (data.positioning.target_devices || []).every(device => device === 'mobile')) document.documentElement.classList.add('pt-mobile');
   if (params.has('annotate')) document.documentElement.dataset.annotate = '';
   if (roles.length > 1) {

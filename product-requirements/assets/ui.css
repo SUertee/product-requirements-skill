@@ -79,12 +79,17 @@ a { color: var(--ui-accent-ink); text-underline-offset: 3px; }
 .ui-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .ui-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 8px 16px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius-sm); color: var(--ui-ink); background: var(--ui-surface); cursor: pointer; text-decoration: none; }
 .ui-button:hover { background: var(--ui-surface-muted); }
-.ui-button.primary { color: var(--ui-on-accent); background: var(--ui-accent); border-color: var(--ui-accent); }
-.ui-button.primary:hover { background: var(--ui-accent-ink); }
+.ui-button { font-weight: 500; }
+.ui-button.primary { color: var(--ui-on-accent); background: var(--ui-accent); border-color: var(--ui-accent); font-weight: 600; }
+.ui-button.primary:hover { filter: brightness(.94); }
 .ui-button.danger { color: var(--ui-danger); }
 .ui-button:disabled { opacity: .55; cursor: default; }
-.ui-field { display: grid; gap: 8px; }
-.ui-field input, .ui-field select, .ui-field textarea { width: 100%; min-height: 44px; padding: 8px 12px; color: var(--ui-ink); background: var(--ui-surface); border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius-sm); }
+.ui-field { display: grid; gap: 6px; color: var(--ui-ink-2); font-size: var(--ui-text-sm); font-weight: 600; }
+.ui-field input, .ui-field select, .ui-field textarea { width: 100%; min-height: 44px; padding: 8px 12px; color: var(--ui-ink); background: var(--ui-surface); border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius-sm); font-size: var(--ui-text-md); font-weight: 400; }
+.ui-field input:focus, .ui-field select:focus, .ui-field textarea:focus { border-color: var(--ui-accent); outline: 3px solid var(--ui-accent-soft-strong); outline-offset: 0; }
+.ui-field input::placeholder, .ui-field textarea::placeholder { color: var(--ui-muted); }
+.ui-field input[type="file"] { padding: 8px; border-style: dashed; background: var(--ui-surface-subtle); color: var(--ui-muted); cursor: pointer; }
+.ui-field input[type="file"]::file-selector-button { margin-right: 12px; min-height: 32px; padding: 4px 14px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius-sm); background: var(--ui-surface); color: var(--ui-ink); font: inherit; font-weight: 600; cursor: pointer; }
 .ui-field [aria-invalid="true"] { border-color: var(--ui-danger); }
 .ui-muted { color: var(--ui-muted); font-size: var(--ui-text-sm); }
 .ui-error { color: var(--ui-danger); }
@@ -95,7 +100,7 @@ a { color: var(--ui-accent-ink); text-underline-offset: 3px; }
 .ui-table-scroll th, .ui-table-scroll td { white-space: nowrap; }
 .ui-preview { display: block; width: 100%; min-height: 65dvh; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-surface); }
 /* Shared building blocks for every prototype archetype (workspace, dashboard, mobile_app, chat, website, flow). */
-.ui-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.ui-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 12px; }
 .ui-stat { display: grid; gap: 4px; padding: 20px; background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); }
 .ui-stat strong { font-size: var(--ui-text-xl); line-height: 1.2; }
 .ui-stat span { color: var(--ui-muted); font-size: var(--ui-text-sm); }
@@ -106,11 +111,16 @@ a { color: var(--ui-accent-ink); text-underline-offset: 3px; }
 .ui-list { display: grid; margin: 0; padding: 0; list-style: none; background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); }
 .ui-list > li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; padding: 12px 16px; border-top: 1px solid var(--ui-border); }
 .ui-list > li:first-child { border-top: 0; }
-.ui-steps { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 24px; padding: 0; list-style: none; counter-reset: step; }
-.ui-steps li { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: var(--ui-radius-pill); background: var(--ui-surface-muted); color: var(--ui-ink-2); font-size: var(--ui-text-sm); counter-increment: step; }
-.ui-steps li::before { content: counter(step); display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--ui-surface); font-size: var(--ui-text-xs); }
-.ui-steps [aria-current="step"] { background: var(--ui-accent-soft); color: var(--ui-accent-ink); font-weight: 600; }
-.ui-steps [aria-current="step"]::before { background: var(--ui-accent); color: var(--ui-on-accent); }
+.ui-steps { display: flex; gap: 8px; margin: 0 0 32px; padding: 0; list-style: none; counter-reset: step; }
+.ui-steps li { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--ui-muted); font-size: var(--ui-text-sm); white-space: nowrap; counter-increment: step; }
+.ui-steps li:last-child { flex: none; }
+.ui-steps li::before { content: counter(step); flex: none; display: inline-grid; place-items: center; width: 26px; height: 26px; border: 1.5px solid var(--ui-border-strong); border-radius: 50%; background: var(--ui-surface); font-size: var(--ui-text-xs); font-weight: 600; }
+.ui-steps li:not(:last-child)::after { content: ""; flex: 1; min-width: 16px; height: 2px; border-radius: var(--ui-radius-pill); background: var(--ui-border); }
+.ui-steps [aria-current="step"] { color: var(--ui-ink); font-weight: 600; }
+.ui-steps [aria-current="step"]::before { background: var(--ui-accent); border-color: var(--ui-accent); color: var(--ui-on-accent); }
+.ui-steps li:has(~ [aria-current="step"]) { color: var(--ui-ink-2); }
+.ui-steps li:has(~ [aria-current="step"])::before { content: "✓"; background: var(--ui-accent-soft); border-color: var(--ui-accent-border); color: var(--ui-accent-ink); }
+.ui-steps li:has(~ [aria-current="step"])::after { background: var(--ui-accent-border); }
 .ui-chat { display: grid; grid-template-rows: minmax(0, 1fr) auto; height: calc(100dvh - 260px); min-height: 360px; background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); }
 .ui-messages { display: flex; flex-direction: column; gap: 12px; padding: 16px; overflow-y: auto; }
 .ui-message { align-self: flex-start; max-width: min(75%, 560px); padding: 10px 14px; border-radius: var(--ui-radius); background: var(--ui-surface-muted); overflow-wrap: anywhere; }

@@ -42,6 +42,22 @@ class PrototypeDesignChecks(unittest.TestCase):
         project['prototype_design']['positioning']['archetype'] = '小程序'
         self.assertRejected(project, 'positioning.archetype must be one of')
 
+    def test_theme_derives_accent_tokens_and_keeps_contrast(self):
+        project = confirmed_project()
+        positioning = project['prototype_design']['positioning']
+        positioning.update(archetype='flow', theme={'accent': '#ff6a00'})
+        design, report = check_design(project)
+        self.assertEqual(report['theme']['nav'], 'light', 'customer-facing archetypes default to a light bar')
+        self.assertEqual(report['theme']['accent'], '#ff6a00', 'a bright brand colour keeps its hue')
+        html = build(project, design, report)
+        self.assertIn('--ui-accent:#ff6a00;', html)
+        self.assertIn('--ui-on-accent:var(--ui-ink);', html, 'and carries dark button text')
+        positioning['theme'] = {'accent': '#7c3aed', 'nav': 'dark'}
+        _, report = check_design(project)
+        self.assertEqual((report['theme']['nav'], report['theme']['notes']), ('dark', []))
+        positioning['theme'] = {'accent': 'orange'}
+        self.assertRejected(project, 'positioning.theme needs accent as #RRGGBB')
+
     def assertRejected(self, project, fragment):
         with self.assertRaises(ValueError) as caught:
             check_design(project)
