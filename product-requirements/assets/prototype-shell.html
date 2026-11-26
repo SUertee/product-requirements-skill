@@ -20,12 +20,29 @@ html[data-annotate] [data-req],html[data-annotate] [data-nfr]{outline:2px dashed
 html[data-annotate] [data-nfr]:not([data-req]){outline-color:var(--ui-warning-mark)}
 html[data-annotate] [data-req]::before,html[data-annotate] [data-nfr]::before{content:attr(data-req) " " attr(data-nfr);position:absolute;top:-11px;right:4px;padding:0 6px;border-radius:var(--ui-radius-sm);background:var(--ui-accent);color:var(--ui-on-accent);font-size:var(--ui-text-xs);line-height:18px;font-weight:600;white-space:nowrap;z-index:5;pointer-events:none}
 html[data-annotate] [data-nfr]:not([data-req])::before{background:var(--ui-warning-mark)}
+/* Archetype skeletons: one UI spec, different navigation. workspace/dashboard keep the side nav, mobile_app uses .pt-mobile. */
+html[data-archetype="website"] .ui-shell,html[data-archetype="flow"] .ui-shell,html[data-archetype="chat"] .ui-shell{display:block}
+html[data-archetype="website"] .ui-nav,html[data-archetype="flow"] .ui-nav,html[data-archetype="chat"] .ui-nav{position:sticky;top:0;z-index:10;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 24px;padding:12px 32px}
+html[data-archetype="website"] .ui-nav nav,html[data-archetype="flow"] .ui-nav nav,html[data-archetype="chat"] .ui-nav nav{display:flex;flex-wrap:wrap;gap:4px}
+html[data-archetype="website"] .ui-nav h1,html[data-archetype="flow"] .ui-nav h1,html[data-archetype="chat"] .ui-nav h1{font-size:var(--ui-text-md)}
+html[data-archetype="website"] .ui-nav,html[data-archetype="flow"] .ui-nav,html[data-archetype="chat"] .ui-nav{border-bottom:1px solid var(--ui-nav-line)}
+html[data-nav="light"] .ui-nav a[aria-current="page"]{color:var(--ui-accent-ink);font-weight:600}
+html[data-nav="light"] .ui-nav{border-right:1px solid var(--ui-nav-line)}
+html[data-archetype="website"] .ui-nav h1,html[data-archetype="flow"] .ui-nav h1,html[data-archetype="chat"] .ui-nav h1{margin-right:auto}
+html[data-archetype="website"] .pt-role,html[data-archetype="flow"] .pt-role,html[data-archetype="chat"] .pt-role{order:2;grid-auto-flow:column;align-items:center}
+html[data-archetype="website"] .ui-main{max-width:1120px}
+html[data-archetype="flow"] .ui-main{max-width:760px}
+html[data-archetype="chat"] .ui-main{max-width:960px}
+html[data-archetype="dashboard"] .ui-main{max-width:1600px}
+@media (max-width:899px){html[data-archetype="website"] .ui-nav,html[data-archetype="flow"] .ui-nav,html[data-archetype="chat"] .ui-nav{padding:10px 16px}}
 .pt-mobile .ui-shell{display:block;max-width:480px;margin:0 auto;min-height:100dvh;background:var(--ui-page)}
 .pt-mobile .ui-nav{position:sticky;top:0;z-index:10;padding:12px 16px;gap:10px}
 .pt-mobile .ui-nav nav{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:space-around;gap:0;padding:6px 8px calc(6px + env(safe-area-inset-bottom));background:var(--ui-nav);z-index:10}
 .pt-mobile .ui-nav nav a{flex:1;text-align:center;padding:10px 4px;font-size:var(--ui-text-sm)}
 .pt-mobile .ui-main{padding:16px 16px 96px}
-@media (max-width:899px){.ui-nav nav{display:flex;flex-wrap:wrap;gap:4px}.ui-nav nav a{padding:8px 10px}}
+@media (max-width:899px){.ui-nav{gap:10px}.ui-nav h1{font-size:var(--ui-text-md);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ui-nav nav{display:flex;flex-wrap:nowrap;gap:4px;overflow-x:auto;scrollbar-width:none}.ui-nav nav a{flex:none;padding:8px 10px;white-space:nowrap}}
+/* Narrow-screen safety net for page content: nothing wider than the screen, tables scroll in place. */
+@media (max-width:599px){.ui-main .pt-page{overflow-wrap:anywhere}.ui-main .pt-page img,.ui-main .pt-page video{max-width:100%;height:auto}.ui-actions .ui-button{flex:1 1 auto}}
 .pt-feedback{position:fixed;right:24px;bottom:24px;z-index:15;box-shadow:var(--ui-shadow-overlay)}
 .pt-mobile .pt-feedback{right:16px;bottom:84px}
 .pt-pickbar{position:fixed;left:50%;top:16px;transform:translateX(-50%);z-index:30;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;max-width:calc(100vw - 32px);padding:10px 12px 10px 16px;border-radius:var(--ui-radius);background:var(--ui-nav);color:var(--ui-nav-ink);box-shadow:var(--ui-shadow-overlay);font-size:var(--ui-text-sm)}
@@ -225,7 +242,10 @@ html[data-picking] #screen,html[data-picking] #screen *{cursor:crosshair !import
 
   document.getElementById('project-name').textContent = data.name;
   document.getElementById('notice').textContent = '交互原型 · ' + data.artifact_version + ' · 示例数据，操作只在本页面内模拟';
-  if ((data.positioning.target_devices || []).every(device => device === 'mobile')) document.documentElement.classList.add('pt-mobile');
+  const archetype = data.positioning.archetype || 'workspace';
+  document.documentElement.dataset.archetype = archetype;
+  document.documentElement.dataset.nav = (data.theme && data.theme.nav) || 'dark';
+  if (archetype === 'mobile_app' || (data.positioning.target_devices || []).every(device => device === 'mobile')) document.documentElement.classList.add('pt-mobile');
   if (params.has('annotate')) document.documentElement.dataset.annotate = '';
   if (roles.length > 1) {
     const select = document.getElementById('role');

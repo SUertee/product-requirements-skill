@@ -8,7 +8,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'product-requirements/scripts'))
-from prototype_design import check_design, validate_nfrs
+from prototype_design import build, check_design, validate_nfrs
 from prototype_fixture import exercise_designed, service_desk_project
 
 
@@ -30,6 +30,46 @@ class PrototypeDesignChecks(unittest.TestCase):
         kinds = {row['nfr_id']: row['kind'] for row in report['nfrs']}
         self.assertEqual(kinds['NFR-007'], 'not_applicable')
         self.assertEqual(kinds['NFR-002'], 'shown')
+
+    def test_archetype_defaults_to_workspace_and_must_be_known(self):
+        _, report = check_design(confirmed_project())
+        self.assertEqual(report['archetype'], 'workspace')
+        project = confirmed_project()
+        project['prototype_design']['positioning']['archetype'] = 'mobile_app'
+        design, report = check_design(project)
+        self.assertEqual(report['archetype'], 'mobile_app')
+        self.assertIn('"archetype": "mobile_app"', build(project, design, report))
+        project['prototype_design']['positioning']['archetype'] = '小程序'
+        self.assertRejected(project, 'positioning.archetype must be one of')
+
+    def test_theme_derives_accent_tokens_and_keeps_contrast(self):
+        project = confirmed_project()
+        positioning = project['prototype_design']['positioning']
+        positioning.update(archetype='flow', theme={'accent': '#ff6a00'})
+        design, report = check_design(project)
+        self.assertEqual(report['theme']['nav'], 'light', 'customer-facing archetypes default to a light bar')
+        self.assertEqual(report['theme']['accent'], '#ff6a00', 'a bright brand colour keeps its hue')
+        html = build(project, design, report)
+        self.assertIn('--ui-accent:#ff6a00;', html)
+        self.assertIn('--ui-on-accent:var(--ui-ink);', html, 'and carries dark button text')
+        positioning['theme'] = {'accent': '#7c3aed', 'nav': 'dark'}
+        _, report = check_design(project)
+        self.assertEqual((report['theme']['nav'], report['theme']['notes']), ('dark', []))
+        positioning['theme'] = {'accent': 'orange'}
+        self.assertRejected(project, 'positioning.theme needs accent as #RRGGBB')
+
+    def test_page_css_must_fit_a_phone(self):
+        from prototype_design import rigid_layout
+        self.assertEqual(rigid_layout('.a{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}'), 'grid-template-columns: repeat(3,minmax(0,1fr))')
+        self.assertEqual(rigid_layout('.a{grid-template-columns:200px 1fr 1fr}'), 'grid-template-columns: 200px 1fr 1fr')
+        self.assertEqual(rigid_layout('.a{width:640px}'), 'width: 640px')
+        self.assertIsNone(rigid_layout('.a{grid-template-columns:auto 1fr}'))
+        self.assertIsNone(rigid_layout('.a{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}'))
+        self.assertIsNone(rigid_layout('.a{grid-template-columns:repeat(3,1fr)}@media (max-width:599px){.a{grid-template-columns:1fr}}'))
+        self.assertIsNone(rigid_layout('.a{max-width:720px}'))
+        project = confirmed_project()
+        project['prototype_design']['pages'][0]['css'] = '.svc-x{display:grid;grid-template-columns:repeat(3,1fr)}'
+        self.assertRejected(project, 'without an @media rule for narrow screens')
 
     def assertRejected(self, project, fragment):
         with self.assertRaises(ValueError) as caught:

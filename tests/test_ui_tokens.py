@@ -44,7 +44,7 @@ class UiTokenTests(unittest.TestCase):
                 with self.subTest(file=name, line=number):
                     self.assertIsNone(COLOUR.search(line), f'{name}:{number} uses a literal colour: {line.strip()[:120]}')
                     for value in FONT_SIZE.findall(line):
-                        self.assertRegex(value.strip(), r'^(var\(--ui-text-(xs|sm|md|lg|xl)\)|inherit)$', f'{name}:{number}')
+                        self.assertRegex(value.strip(), r'^(var\(--ui-text-(xs|sm|md|lg|xl|2xl)\)|inherit)$', f'{name}:{number}')
                     for value in RADIUS.findall(line):
                         self.assertRegex(value.strip(), r'^(var\(--ui-radius(-sm|-pill)?\)|0|50%)$', f'{name}:{number}')
 

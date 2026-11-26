@@ -19,6 +19,89 @@ NFR_CATEGORIES = {
     'compliance': '审计与合规', 'other': '其他',
 }
 DEVICES = {'desktop', 'tablet', 'mobile'}
+# Prototype archetypes (原型形态). Each has its own shell layout and build rules in references/prototype.md; all of them
+# share the one UI spec in assets/ui.css. Designs written before archetypes existed are treated as workspace.
+ARCHETYPES = {'workspace', 'dashboard', 'mobile_app', 'chat', 'website', 'flow'}
+# Back-office archetypes keep the dark navigation; customer-facing ones default to a light bar.
+DARK_NAV = {'workspace', 'dashboard'}
+HEX = re.compile(r'^#[0-9a-fA-F]{6}$')
+
+
+def _rgb(value):
+    return tuple(int(value[index:index + 2], 16) for index in (1, 3, 5))
+
+
+def _hex(rgb):
+    return '#' + ''.join(f'{round(max(0, min(255, part))):02x}' for part in rgb)
+
+
+def _mix(colour, other, amount):
+    return tuple(a + (b - a) * amount for a, b in zip(colour, other))
+
+
+def _contrast(first, second):
+    def luminance(rgb):
+        parts = [(part / 255) / 12.92 if part / 255 <= 0.03928 else ((part / 255 + 0.055) / 1.055) ** 2.4 for part in rgb]
+        return 0.2126 * parts[0] + 0.7152 * parts[1] + 0.0722 * parts[2]
+    light, dark = sorted([luminance(first), luminance(second)], reverse=True)
+    return (light + 0.05) / (dark + 0.05)
+
+
+def rigid_layout(css):
+    """A layout that cannot fit a 390px phone: three or more fixed grid columns or a fixed width of 400px or more,
+    with no media query in the page css to change it. Returns the offending declaration, or None."""
+    if '@media' in css:
+        return None
+    for value in re.findall(r'grid-template-columns\s*:\s*([^;}]+)', css, re.I):
+        if 'auto-fit' in value or 'auto-fill' in value:
+            continue
+        count = re.match(r'\s*repeat\(\s*(\d+)', value)
+        tracks = int(count[1]) if count else len(re.findall(r'minmax\([^)]*\)|[^\s()]+(?:\([^)]*\))?', value.strip()))
+        if tracks >= 3:
+            return 'grid-template-columns: ' + value.strip()
+    for prop, number in re.findall(r'(?<![-\w])((?:min-)?width)\s*:\s*(\d+)px', css, re.I):
+        if int(number) >= 400:
+            return prop + ': ' + number + 'px'
+    return None
+
+
+def theme_tokens(positioning):
+    """Token overrides for one project's prototype: a brand accent and light or dark navigation.
+
+    Only the accent family and the navigation change; type, spacing, radius and status colours stay the shared
+    spec. An accent too light for white button text carries dark text, or is darkened when neither reaches 4.5:1."""
+    theme = positioning.get('theme') or {}
+    archetype = positioning.get('archetype', 'workspace')
+    nav = theme.get('nav') or ('dark' if archetype in DARK_NAV else 'light')
+    tokens, notes = {}, []
+    if theme.get('accent'):
+        white, black = (255, 255, 255), (0, 0, 0)
+        accent, dark_text = _rgb(theme['accent']), (32, 45, 64)
+        steps = 0
+        if _contrast(accent, white) < 4.5 and _contrast(accent, dark_text) >= 4.5:
+            # Bright brand colours (orange, yellow, light green) keep their hue and carry dark text instead.
+            tokens['on-accent'] = 'var(--ui-ink)'
+            notes.append(f"accent {theme['accent']} carries dark text for 4.5:1 contrast")
+        while _contrast(accent, white) < 4.5 and 'on-accent' not in tokens and steps < 40:
+            accent = _mix(accent, black, 0.05); steps += 1
+        if steps:
+            notes.append(f"accent darkened from {theme['accent']} to {_hex(accent)} for 4.5:1 text contrast")
+        ink = accent
+        while _contrast(ink, (243, 245, 248)) < 4.5 and steps < 80:
+            ink = _mix(ink, black, 0.05); steps += 1
+        tokens.update({'accent': _hex(accent), 'accent-ink': _hex(_mix(ink, black, 0.1)), 'accent-soft': _hex(_mix(accent, white, 0.92)),
+                       'accent-soft-strong': _hex(_mix(accent, white, 0.84)), 'accent-border': _hex(_mix(accent, white, 0.6))})
+    if nav == 'light':
+        tokens.update({'nav': 'var(--ui-surface)', 'nav-ink': 'var(--ui-ink)', 'nav-muted': 'var(--ui-muted)', 'nav-hover': 'var(--ui-surface-muted)',
+                       'nav-active': 'var(--ui-accent-soft)', 'nav-line': 'var(--ui-border)'})
+    elif theme.get('accent'):
+        # A dark navigation tinted with the brand colour, so it belongs to the same palette.
+        accent = _rgb(tokens['accent'])
+        base = _mix(accent, (14, 20, 32), 0.82)
+        tokens.update({'nav': _hex(base), 'nav-hover': _hex(_mix(base, (255, 255, 255), 0.08)), 'nav-active': _hex(_mix(base, (255, 255, 255), 0.14)),
+                       'nav-line': _hex(_mix(base, (255, 255, 255), 0.22))})
+    css = ':root{' + ''.join(f'--ui-{key}:{value};' for key, value in tokens.items()) + '}' if tokens else ''
+    return css, {'nav': nav, 'accent': tokens.get('accent', '#2863d6'), 'notes': notes}
 STATES = {'empty', 'loading', 'error', 'denied', 'success'}
 IDENTITY = re.compile(r'^[a-z][a-z0-9-]{0,47}$')
 MAX_PAGE_MARKUP = 200_000
@@ -118,6 +201,11 @@ def check_design(project):
     positioning = design.get('positioning')
     require(isinstance(positioning, dict) and text(positioning.get('product_type')) and text(positioning.get('main_flow')),
             'positioning needs product_type and main_flow')
+    archetype = positioning.get('archetype', 'workspace')
+    theme = positioning.get('theme', {})
+    require(isinstance(theme, dict) and (theme.get('accent') is None or (isinstance(theme['accent'], str) and HEX.match(theme['accent'])))
+            and theme.get('nav') in (None, 'light', 'dark'), 'positioning.theme needs accent as #RRGGBB and nav as light or dark')
+    require(archetype in ARCHETYPES, 'positioning.archetype must be one of ' + ', '.join(sorted(ARCHETYPES)))
     devices = positioning.get('target_devices')
     require(isinstance(devices, list) and devices and set(devices) <= DEVICES, 'positioning.target_devices must use desktop, tablet or mobile')
     global_nfrs = positioning.get('nfr_ids', [])
@@ -171,6 +259,7 @@ def check_design(project):
         css = page.get('css', '')
         require(isinstance(css, str) and len(css) <= MAX_PAGE_SCRIPT and not re.search(r'url\s*\(|@import|expression\s*\(|</style', css, re.I),
                 key + ' css must be plain rules without url(), @import or closing tags')
+        require(not rigid_layout(css), key + ' css fixes ' + str(rigid_layout(css)) + ' without an @media rule for narrow screens; use ui-grid or add @media (max-width: 599px)')
         total += len(markup) + len(script) + len(css)
 
         scan = MarkupScan()
@@ -218,6 +307,8 @@ def check_design(project):
         'pages': page_reports,
         'requirements': {'in_scope': len(in_scope), 'covered': sorted(covered_reqs), 'excluded': excluded},
         'nfrs': nfr_rows,
+        'archetype': archetype,
+        'theme': theme_tokens(positioning)[1],
         'target_devices': devices,
         'global_nfr_ids': global_nfrs,
     }
@@ -236,11 +327,13 @@ def build(project, design, report):
         'requirements': {key: requirement['title'] for key, requirement in ((item['requirement_id'], item) for item in project['requirements'])},
         'nfrs': {item['nfr_id']: item['title'] for item in project.get('nfrs', [])},
     }
+    payload['theme'] = theme_tokens(design['positioning'])[1]
     if design.get('feedback_form_url'):
         payload['feedback'] = {'url': design['feedback_form_url'], 'project_id': project['project_id']}
     data = json.dumps(payload, ensure_ascii=False).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026').replace('\u2028', '\\u2028').replace('\u2029', '\\u2029')
     template = (PACKAGE / 'assets/prototype-shell.html').read_text(encoding='utf-8')
-    return template.replace('__PROTOTYPE_STYLE__', (PACKAGE / 'assets/ui.css').read_text(encoding='utf-8')).replace('__PROTOTYPE_DATA__', data)
+    theme_css, _ = theme_tokens(design['positioning'])
+    return template.replace('__PROTOTYPE_STYLE__', (PACKAGE / 'assets/ui.css').read_text(encoding='utf-8') + '\n' + theme_css).replace('__PROTOTYPE_DATA__', data)
 
 
 def generate_designed_prototype(project, root):
