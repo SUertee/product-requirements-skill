@@ -18,7 +18,7 @@ metadata:
 
 - 新会议或后台接收材料，读取 [输入与预处理](references/ingestion.md)。本地文件使用 `scripts/ingest_material.py`。飞书妙记先读 [外部接入](references/ingestion.md)，运行 `scripts/feishu_connector.py --check` 确认可用后再导入。运行前查看 `--help`。纯文本标准化可直接运行 `scripts/normalize_transcript.py`。
 - 首次需求整理，读取 [需求建模与评审](references/workflow.md)。
-- 生成业务模块图、技术架构图、流程图或 ERD 前，读取 [能力接入与设计路由](references/execution.md)。本地已有依赖时直接使用；Archify 或 Schema Canvas 缺失时，先一次性询问用户是否下载固定版本，同意后按其中步骤下载，跳过则改用内置简易图示。
+- 生成业务模块图、技术架构图、流程图、ERD 或设计原型前，读取 [能力接入与设计路由](references/execution.md)。本地已有依赖时直接使用；Archify、Schema Canvas 或 UI/UX Pro Max 缺失时，先一次性询问用户是否下载固定版本，同意后按其中步骤下载，跳过则改用内置简易图示或默认设计规范。
 - 生成客户原型，读取 [原型设计与生成](references/prototype.md) 和 [内置 UI 规范](references/ui-design.md)，使用 assets/ui.css 与 assets/prototype-shell.html。
 - 生成内部工作台，读取 [工作台页面规范](references/ui-design.md) 和内置 UI 规范，使用 assets/workbench-template.html、assets/workbench.css 与 assets/workbench.js。
 - 需要在网页中导入和记录评审时，运行 scripts/serve_workbench.py，传入已生成的 run-dir 与该项目的 workspace。读取接收箱的分析请求，再执行语义分析与新版本生成。
@@ -35,7 +35,7 @@ metadata:
 4. 按业务需要建模角色、流程、实体、字段、关系和状态，将结果存入共享项目数据。
 5. 生成方案、PRD 草稿与内部 HTML 工作台框架，集中展示待确认问题与影响。
 6. 负责人在工作台「功能需求」逐条确认需求（连同它的验收标准）和「非功能需求」组里的 NFR；不对的点「需要修改」或直接修改内容。
-7. 按 [原型设计与生成](references/prototype.md)，先判断原型形态（工作台、数据看板、移动应用、对话、网站、流程表单），需求里看不出来或有多种可能时先问用户；再按该形态的构建规范，从已确认 FR 与 NFR 设计信息架构和页面，写入 prototype_design，经脚本检查覆盖关系后生成可交互原型。
+7. 按 [原型设计与生成](references/prototype.md)，先判断原型形态（工作台、数据看板、移动应用、对话、网站、流程表单），需求里看不出来或有多种可能时先问用户；再用 UI/UX Pro Max 按产品类型制定设计规范（主题色、字体、圆角、密度），经用户确认后按该形态的构建规范，从已确认 FR 与 NFR 设计信息架构和页面，写入 prototype_design，经脚本检查覆盖关系后生成可交互原型。
 8. 将方案、PRD、原型以及 Archify 图示和 Schema Canvas 数据模型汇入内部工作台，检查版本与依据一致性。
 9. 负责人复核原型与工作台，选择客户可见内容和版本，按用户授权部署分享。客户反馈回写需求基线并形成下一版本。
 

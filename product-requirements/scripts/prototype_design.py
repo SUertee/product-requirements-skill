@@ -65,29 +65,72 @@ def rigid_layout(css):
     return None
 
 
-def theme_tokens(positioning):
-    """Token overrides for one project's prototype: a brand accent and light or dark navigation.
+# The project design spec (positioning.theme): brand colours, font style, corner radius, density and elevation.
+# Everything else (type scale, spacing, status colours, components) stays the shared spec in assets/ui.css.
+SURFACE_COLOURS = ('page', 'surface', 'ink', 'muted', 'border')
+FONTS = {
+    'sans': 'Inter, "PingFang SC", "Microsoft YaHei", sans-serif',
+    'serif': '"Noto Serif SC", "Songti SC", "STSong", Georgia, serif',
+    'rounded': 'ui-rounded, "SF Pro Rounded", "PingFang SC", "Microsoft YaHei", sans-serif',
+    'mono': 'ui-monospace, "SF Mono", Menlo, "PingFang SC", monospace',
+}
+RADII = {'sharp': ('4px', '6px'), 'default': ('8px', '10px'), 'round': ('12px', '18px')}
+DENSITY = {'compact': ('36px', '16px'), 'default': ('44px', '24px'), 'comfortable': ('48px', '28px')}
+ELEVATION = {'flat': 'none', 'soft': '0 1px 2px rgb(15 23 42 / .06), 0 6px 16px rgb(15 23 42 / .06)'}
+THEME_FIELDS = {'source', 'style', 'keywords', 'accent', 'nav', 'font', 'radius', 'density', 'elevation', *SURFACE_COLOURS}
 
-    Only the accent family and the navigation change; type, spacing, radius and status colours stay the shared
-    spec. An accent too light for white button text carries dark text, or is darkened when neither reaches 4.5:1."""
+
+def check_theme(theme, archetype):
+    require(isinstance(theme, dict) and set(theme) <= THEME_FIELDS, 'positioning.theme fields: ' + ', '.join(sorted(THEME_FIELDS)))
+    for key in ('accent', *SURFACE_COLOURS):
+        require(theme.get(key) is None or (isinstance(theme[key], str) and HEX.match(theme[key])), f'positioning.theme.{key} must be #RRGGBB')
+    require(theme.get('nav') in (None, 'light', 'dark'), 'positioning.theme.nav must be light or dark')
+    for key, allowed in (('font', FONTS), ('radius', RADII), ('density', DENSITY), ('elevation', ELEVATION)):
+        require(theme.get(key) in (None, *allowed), f'positioning.theme.{key} must be one of ' + ', '.join(allowed))
+    for key in ('source', 'style', 'keywords'):
+        require(theme.get(key) is None or (isinstance(theme[key], str) and len(theme[key]) <= 200), f'positioning.theme.{key} must be short text')
+    # The prototype has a light mode only, and text must stay readable on its own background.
+    for key in ('page', 'surface'):
+        if theme.get(key):
+            require(_contrast(_rgb(theme[key]), (0, 0, 0)) >= 12, f'positioning.theme.{key} must be a light background')
+    if theme.get('ink'):
+        require(_contrast(_rgb(theme['ink']), _rgb(theme.get('surface') or '#ffffff')) >= 7, 'positioning.theme.ink needs 7:1 contrast on the surface')
+    if theme.get('muted'):
+        require(_contrast(_rgb(theme['muted']), _rgb(theme.get('page') or '#f3f5f8')) >= 4.5, 'positioning.theme.muted needs 4.5:1 contrast on the page')
+    require(not (archetype == 'mobile_app' and theme.get('density') == 'compact'), 'mobile_app keeps 44px touch targets; density cannot be compact')
+
+
+def theme_tokens(positioning):
+    """Token overrides for one project's prototype, from its design spec, plus a summary for the report.
+
+    An accent too light for white button text carries dark text, or is darkened when neither reaches 4.5:1."""
     theme = positioning.get('theme') or {}
     archetype = positioning.get('archetype', 'workspace')
     nav = theme.get('nav') or ('dark' if archetype in DARK_NAV else 'light')
     tokens, notes = {}, []
+    white, black = (255, 255, 255), (0, 0, 0)
+    for key in SURFACE_COLOURS:
+        if theme.get(key):
+            tokens[key] = theme[key]
+    if theme.get('page'):
+        page = _rgb(theme['page'])
+        tokens.update({'surface-subtle': _hex(_mix(page, white, 0.5)), 'surface-muted': _hex(_mix(page, black, 0.04))})
+    if theme.get('border'):
+        tokens['border-strong'] = _hex(_mix(_rgb(theme['border']), black, 0.18))
     if theme.get('accent'):
-        white, black = (255, 255, 255), (0, 0, 0)
-        accent, dark_text = _rgb(theme['accent']), (32, 45, 64)
+        accent = _rgb(theme['accent'])
+        dark_text = _rgb(theme.get('ink') or '#202d40')
         steps = 0
-        if _contrast(accent, white) < 4.5 and _contrast(accent, dark_text) >= 4.5:
+        if _contrast(accent, white) < 4.5 and max(_contrast(accent, dark_text), _contrast(accent, black)) >= 4.5:
             # Bright brand colours (orange, yellow, light green) keep their hue and carry dark text instead.
-            tokens['on-accent'] = 'var(--ui-ink)'
+            tokens['on-accent'] = 'var(--ui-ink)' if _contrast(accent, dark_text) >= 4.5 else '#000000'
             notes.append(f"accent {theme['accent']} carries dark text for 4.5:1 contrast")
         while _contrast(accent, white) < 4.5 and 'on-accent' not in tokens and steps < 40:
             accent = _mix(accent, black, 0.05); steps += 1
         if steps:
             notes.append(f"accent darkened from {theme['accent']} to {_hex(accent)} for 4.5:1 text contrast")
         ink = accent
-        while _contrast(ink, (243, 245, 248)) < 4.5 and steps < 80:
+        while _contrast(ink, _rgb(theme.get('page') or '#f3f5f8')) < 4.5 and steps < 80:
             ink = _mix(ink, black, 0.05); steps += 1
         tokens.update({'accent': _hex(accent), 'accent-ink': _hex(_mix(ink, black, 0.1)), 'accent-soft': _hex(_mix(accent, white, 0.92)),
                        'accent-soft-strong': _hex(_mix(accent, white, 0.84)), 'accent-border': _hex(_mix(accent, white, 0.6))})
@@ -96,12 +139,91 @@ def theme_tokens(positioning):
                        'nav-active': 'var(--ui-accent-soft)', 'nav-line': 'var(--ui-border)'})
     elif theme.get('accent'):
         # A dark navigation tinted with the brand colour, so it belongs to the same palette.
-        accent = _rgb(tokens['accent'])
-        base = _mix(accent, (14, 20, 32), 0.82)
-        tokens.update({'nav': _hex(base), 'nav-hover': _hex(_mix(base, (255, 255, 255), 0.08)), 'nav-active': _hex(_mix(base, (255, 255, 255), 0.14)),
-                       'nav-line': _hex(_mix(base, (255, 255, 255), 0.22))})
+        base = _mix(_rgb(tokens['accent']), (14, 20, 32), 0.82)
+        tokens.update({'nav': _hex(base), 'nav-hover': _hex(_mix(base, white, 0.08)), 'nav-active': _hex(_mix(base, white, 0.14)),
+                       'nav-line': _hex(_mix(base, white, 0.22))})
+    font, radius, density, elevation = (theme.get('font') or 'sans', theme.get('radius') or 'default',
+                                        theme.get('density') or 'default', theme.get('elevation') or 'flat')
+    # The font style sets headings (as the design system pairs a display face with a plain body); rounded and
+    # mono products carry it into body text too.
+    if font != 'sans':
+        tokens['font-heading'] = FONTS[font]
+        if font in ('rounded', 'mono'):
+            tokens['font'] = FONTS[font]
+    if radius != 'default':
+        tokens['radius-sm'], tokens['radius'] = RADII[radius]
+    if density != 'default':
+        tokens['control-height'], tokens['card-padding'] = DENSITY[density]
+    if elevation != 'flat':
+        tokens['card-shadow'] = ELEVATION[elevation]
     css = ':root{' + ''.join(f'--ui-{key}:{value};' for key, value in tokens.items()) + '}' if tokens else ''
-    return css, {'nav': nav, 'accent': tokens.get('accent', '#2863d6'), 'notes': notes}
+    summary = {'source': theme.get('source') or ('brand' if theme.get('accent') else 'default'), 'style': theme.get('style', ''),
+               'nav': nav, 'accent': tokens.get('accent', '#2863d6'), 'font': font, 'radius': radius, 'density': density,
+               'elevation': elevation, 'colors': {key: theme[key] for key in SURFACE_COLOURS if theme.get(key)}, 'notes': notes}
+    return css, summary
+
+
+def _chroma(value):
+    r, g, b = (part / 255 for part in _rgb(value))
+    high, low = max(r, g, b), min(r, g, b)
+    return high - low
+
+
+def theme_from_design_system(design_system, archetype='workspace'):
+    """Turn a UI/UX Pro Max --design-system --json result into positioning.theme.
+
+    Its "accent" is the call-to-action colour; our accent is the interactive colour, so a near-black primary
+    hands over to its accent. Dark palettes, web fonts, glass/clay effects and landing-page patterns are not
+    carried over: the prototype is a light, single-file page built from the shared components."""
+    system = design_system.get('design_system', design_system)
+    colours = {key.lower().replace(' ', '_'): value for key, value in (system.get('colors') or {}).items() if isinstance(value, str)}
+    style = system.get('style') or {}
+    typography = system.get('typography') or {}
+    words = ' '.join(str(value) for value in (style.get('name'), style.get('keywords'), style.get('effects'), typography.get('mood'),
+                                              typography.get('heading'), typography.get('body'))).lower()
+    theme = {'source': 'ui-ux-pro-max', 'style': str(style.get('name') or '')[:200]}
+    if style.get('keywords'):
+        theme['keywords'] = str(style['keywords'])[:200]
+    primary = colours.get('primary')
+    pick = primary if primary and HEX.match(primary) and _chroma(primary) >= 0.25 else colours.get('accent')
+    if pick and HEX.match(pick):
+        theme['accent'] = pick.lower()
+    background, foreground = colours.get('background'), colours.get('foreground') or colours.get('text')
+    if background and HEX.match(background) and _contrast(_rgb(background), (0, 0, 0)) >= 12:
+        theme['page'] = background.lower()
+        for ours, theirs in (('surface', 'card'), ('ink', None), ('muted', 'muted_foreground'), ('border', 'border')):
+            value = foreground if ours == 'ink' else colours.get(theirs)
+            if value and HEX.match(value):
+                theme[ours] = value.lower()
+    # Drop colours that would fail our contrast rules rather than fail generation.
+    try:
+        check_theme(theme, archetype)
+    except ValueError:
+        for key in ('muted', 'ink', 'surface', 'page', 'border'):
+            theme.pop(key, None)
+    heading = str(typography.get('heading') or '').lower()
+    has = lambda *terms: any(re.search(r'(?<![a-z-])' + re.escape(term) + r'(?![a-z-])', words) for term in terms)
+    if any(name in heading for name in ('serif', 'garamond', 'playfair', 'lora', 'merriweather', 'cormorant', 'libre baskerville', 'noto serif')) and 'sans' not in heading:
+        theme['font'] = 'serif'
+    elif any(name in heading for name in ('mono', 'code')):
+        theme['font'] = 'mono'
+    elif any(name in heading for name in ('baloo', 'nunito', 'fredoka', 'quicksand', 'varela round', 'comfortaa')):
+        theme['font'] = 'rounded'
+    if has('brutalism', 'brutalist', 'swiss', 'sharp', 'editorial'):
+        theme['radius'] = 'sharp'
+    elif has('claymorphism', 'clay', 'bubbly', 'rounded', 'playful', 'toy-like'):
+        theme['radius'] = 'round'
+    if has('glassmorphism', 'claymorphism', 'neumorphism', 'soft 3d', 'depth', 'double shadows'):
+        theme['elevation'] = 'soft'
+    if archetype == 'dashboard' or has('data-dense', 'dense'):
+        theme['density'] = 'compact'
+    elif archetype not in ('workspace', 'dashboard') and has('spacious', 'large sections', 'airy'):
+        theme['density'] = 'comfortable'
+    theme['nav'] = 'dark' if archetype in DARK_NAV else 'light'
+    check_theme(theme, archetype)
+    return theme
+
+
 STATES = {'empty', 'loading', 'error', 'denied', 'success'}
 IDENTITY = re.compile(r'^[a-z][a-z0-9-]{0,47}$')
 MAX_PAGE_MARKUP = 200_000
@@ -202,10 +324,8 @@ def check_design(project):
     require(isinstance(positioning, dict) and text(positioning.get('product_type')) and text(positioning.get('main_flow')),
             'positioning needs product_type and main_flow')
     archetype = positioning.get('archetype', 'workspace')
-    theme = positioning.get('theme', {})
-    require(isinstance(theme, dict) and (theme.get('accent') is None or (isinstance(theme['accent'], str) and HEX.match(theme['accent'])))
-            and theme.get('nav') in (None, 'light', 'dark'), 'positioning.theme needs accent as #RRGGBB and nav as light or dark')
     require(archetype in ARCHETYPES, 'positioning.archetype must be one of ' + ', '.join(sorted(ARCHETYPES)))
+    check_theme(positioning.get('theme', {}), archetype)
     devices = positioning.get('target_devices')
     require(isinstance(devices, list) and devices and set(devices) <= DEVICES, 'positioning.target_devices must use desktop, tablet or mobile')
     global_nfrs = positioning.get('nfr_ids', [])
@@ -353,8 +473,17 @@ def generate_designed_prototype(project, root):
 
 def main():
     parser = argparse.ArgumentParser(description='Check prototype_design in a project.json before generation.')
-    parser.add_argument('project', type=Path)
+    parser.add_argument('project', type=Path, help='project.json, or a UI/UX Pro Max design system JSON with --theme-from')
+    parser.add_argument('--theme-from', action='store_true', help='print positioning.theme converted from a UI/UX Pro Max --design-system --json file')
+    parser.add_argument('--archetype', default='workspace', choices=sorted(ARCHETYPES))
     args = parser.parse_args()
+    if args.theme_from:
+        try:
+            print(json.dumps(theme_from_design_system(json.loads(args.project.read_text(encoding='utf-8-sig')), args.archetype), ensure_ascii=False, indent=2))
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+            print('Design system conversion failed: ' + str(error), file=sys.stderr)
+            raise SystemExit(1)
+        return
     try:
         _, report = check_design(json.loads(args.project.read_text(encoding='utf-8-sig')))
     except (OSError, ValueError, KeyError, TypeError) as error:

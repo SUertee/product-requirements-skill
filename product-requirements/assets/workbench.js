@@ -1704,6 +1704,7 @@
   let selectedPrototypePage = null;
   let prototypeAnnotate = false;
   // Page-by-page review of the prototype, recorded as release-stage verdicts on "prototype/index.html#<page_id>".
+  let prototypeSpecOpen = false;
   let prototypeDraft = null; // {page_id, location}: a place picked in the prototype, waiting for its comment
   let prototypeReviewBusy = false;
   let prototypeReviewMessage = '';
@@ -1820,9 +1821,15 @@
     pick.setAttribute('aria-pressed', 'false');
     pick.addEventListener('click', () => { const on = pick.getAttribute('aria-pressed') !== 'true'; pick.setAttribute('aria-pressed', String(on)); frame.contentWindow?.postMessage({type: 'prototype:pick', on}, '*'); });
     if (serverState) tools.append(pick);
-    tools.append(annotate, fileLink(artifact.path, '独立打开'));
+    // The project's design spec (positioning.theme): what the prototype's colours, type and shapes were built from.
+    const spec = designSpec(design.positioning || {});
+    const specButton = iconLabel(element('button', '设计规范', 'button ghost small'), 'documents'); specButton.type = 'button';
+    specButton.setAttribute('aria-pressed', String(prototypeSpecOpen));
+    specButton.addEventListener('click', () => { prototypeSpecOpen = !prototypeSpecOpen; specButton.setAttribute('aria-pressed', String(prototypeSpecOpen)); spec.hidden = !prototypeSpecOpen; });
+    spec.hidden = !prototypeSpecOpen;
+    tools.append(specButton, annotate, fileLink(artifact.path, '独立打开'));
     toolbar.append(switcher, tools);
-    content.append(toolbar);
+    content.append(toolbar, spec);
     const fileTarget = artifact.path;
     const pageTarget = id => fileTarget + '#' + id;
     function verdicts() {
@@ -1976,6 +1983,37 @@
     content.append(layout);
     drawMapping();
     drawReviewBar();
+  }
+  function designSpec(positioning) {
+    const theme = positioning.theme || {};
+    const archetype = positioning.archetype || 'workspace';
+    const card = element('section', null, 'panel design-spec'); card.setAttribute('aria-label', '设计规范');
+    const sources = {'ui-ux-pro-max': '由 UI/UX Pro Max 按产品类型推荐', brand: '客户品牌色', default: '内置默认'};
+    const source = theme.source || (theme.accent ? 'brand' : 'default');
+    const head = element('header', null, 'design-spec-head');
+    head.append(element('h2', theme.style || '统一规范'), element('span', sources[source] || source, 'design-spec-source'));
+    card.append(head);
+    if (theme.keywords) card.append(element('p', theme.keywords, 'design-spec-keywords'));
+    const colours = [['主色', theme.accent || '#2863d6'], ['页面底色', theme.page || '#f3f5f8'], ['卡片', theme.surface || '#ffffff'],
+      ['文字', theme.ink || '#202d40'], ['次要文字', theme.muted || '#5f6e83'], ['边框', theme.border || '#dfe5ed']];
+    const swatches = element('ul', null, 'design-swatches');
+    for (const [name, value] of colours) {
+      const item = element('li'); const chip = element('span', null, 'design-swatch'); chip.style.background = value;
+      item.append(chip, element('strong', name), element('code', value.toUpperCase())); swatches.append(item);
+    }
+    const names = {
+      archetype: {workspace: '工作台／管理后台', dashboard: '数据看板', mobile_app: '移动应用', chat: '对话／聊天', website: '网站／落地页', flow: '流程／表单'},
+      font: {sans: '无衬线', serif: '衬线', rounded: '圆体', mono: '等宽'}, radius: {sharp: '方正', default: '适中', round: '圆润'},
+      density: {compact: '紧凑', default: '适中', comfortable: '宽松'}, elevation: {flat: '平面', soft: '浅阴影'}, nav: {light: '浅色', dark: '深色'},
+    };
+    const nav = theme.nav || (['workspace', 'dashboard'].includes(archetype) ? 'dark' : 'light');
+    const facts = element('dl', null, 'design-spec-facts');
+    for (const [label, value] of [['形态', names.archetype[archetype]], ['导航', names.nav[nav]], ['字体', names.font[theme.font || 'sans']],
+      ['圆角', names.radius[theme.radius || 'default']], ['密度', names.density[theme.density || 'default']], ['卡片', names.elevation[theme.elevation || 'flat']]]) {
+      const pair = element('div'); pair.append(element('dt', label), element('dd', value || '—')); facts.append(pair);
+    }
+    card.append(swatches, facts, element('p', (source === 'ui-ux-pro-max' ? '风格名和关键词来自推荐，只换算成上面的颜色、字体、圆角、密度和卡片层次，特效不带入原型。' : '') + '字号、间距、按钮、表单、表格和状态色在所有项目里一致，见内置 UI 规范。要改哪一项，用「提修改意见」写在原型上。', 'inline-note'));
+    return card;
   }
   function prototype() {
     const artifact = data.artifacts.find(item => item.path === 'prototype/index.html');

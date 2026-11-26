@@ -38,14 +38,37 @@
 - 无人值守运行时取最贴近核心主流程的形态，并在 `design_context` 记下理由，留给复核。
 - 旧设计没有 `archetype` 时按 `workspace` 处理。
 
-### 配色
+### 设计规范
 
-原型用客户产品的颜色，不沿用工作台的深蓝。写在 `positioning.theme`：
+每个原型有一份自己的设计规范，写在 `positioning.theme`，管主题色、字体、圆角、密度和卡片层次；字号阶梯、间距、组件写法和成功／警告／危险色仍是统一的内置规范，不随项目变化。
 
-- `accent`：主色，`#RRGGBB`。优先取客户资料里的品牌色或 Logo 主色；会议和资料里都没有时问用户一次，用户没有偏好就不写，用默认蓝。
-- `nav`：`light` 或 `dark`。缺省时工作台、数据看板用深色导航，其余形态用浅色。
+| 字段 | 取值 | 作用 |
+| --- | --- | --- |
+| source、style、keywords | 文字 | 规范从哪来（ui-ux-pro-max、brand、default）、风格名和关键词，供复核 |
+| accent | `#RRGGBB` | 主色：按钮、链接、选中、焦点，并推出浅底、边框和深色导航底色 |
+| page、surface、ink、muted、border | `#RRGGBB`，可选 | 页面底色、卡片底色、正文、次要文字、边框。只支持浅色，正文对卡片至少 7:1，次要文字对底色至少 4.5:1 |
+| nav | light／dark | 导航深浅。缺省时工作台、看板用深色，其余用浅色 |
+| font | sans／serif／rounded／mono | 字体气质，用系统字体实现，原型不加载网络字体。serif 只用于标题，正文仍是无衬线；rounded、mono 标题和正文一起用 |
+| radius | sharp／default／round | 圆角：方正、适中、圆润 |
+| density | compact／default／comfortable | 控件高度和卡片内距；移动应用不能用 compact（触控至少 44px） |
+| elevation | flat／soft | 卡片平面或浅阴影 |
 
-生成时只从主色推出一组颜色：按钮、链接、选中底色、边框，以及深色导航的底色；字号、间距、圆角和成功／警告／危险色保持统一规范。亮色主色（橙、黄、浅绿）配白字对比度不够时，按钮文字改成深色、保留品牌色；深色字也不够时才加深主色。覆盖报告的 `theme.notes` 记下这些调整。
+制定步骤：
+
+1. 定好原型形态后，按 [按需下载](execution.md#缺少依赖时按需下载) 定位 UI/UX Pro Max。缺失时和其他依赖合在一次询问里；跳过则用内置默认规范，只按品牌色设 accent。
+2. 用产品类型、行业和风格词查询，不写客户名称和项目内部信息：
+
+   ```bash
+   python3 "$UI_UX_PRO_MAX_SKILL_DIR/scripts/search.py" "<产品类型> <行业> <风格词>" --design-system --json > design-system.json
+   python3 scripts/prototype_design.py --theme-from --archetype <形态> design-system.json
+   ```
+
+   第二条把推荐转成 `positioning.theme`：主色接近黑色时改用它的行动色；深色配色、网络字体、毛玻璃／黏土等特效和落地页版式不带入，只换算成上表的取值。
+3. 客户资料里有品牌色时，用品牌色覆盖 accent，source 写 brand。
+4. 把规范摘要（风格、主色和几种底色、字体、圆角、密度）发给用户确认或调整，再写入 project.json 生成原型。工作台“原型预览”的“设计规范”按钮可随时查看。
+5. 生成后按 UI/UX Pro Max 给的交付前检查清单逐项核对（对比度、焦点、触控尺寸、窄屏、减少动效），未通过的项写进 `design_context.review_notes`。
+
+亮色主色（橙、黄、浅绿）配白字对比度不够时，按钮文字改深色、保留品牌色；深色字也不够时才加深主色。覆盖报告的 `theme.notes` 记下这些调整。
 
 ## NFR 在原型中的体现
 
@@ -70,7 +93,7 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| positioning | archetype（见原型形态）、product_type（具体业务说法）、target_devices（desktop／tablet／mobile）、main_flow，可选 theme（见配色）和 nfr_ids |
+| positioning | archetype（见原型形态）、product_type（具体业务说法）、target_devices（desktop／tablet／mobile）、main_flow，可选 theme（见设计规范）和 nfr_ids |
 | roles | 可选，role_id（小写字母、数字、连字符）与 name。多于一个角色时原型显示角色切换 |
 | start_page_id | 默认打开的页面 |
 | sample_data | 示例数据，页面脚本通过 `P.data` 读写 |
