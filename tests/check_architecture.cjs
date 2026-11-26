@@ -22,7 +22,7 @@ const first = payload.project.technical_architecture.components[0];
 const last = payload.project.technical_architecture.components.at(-1);
 const detail = () => d.querySelector('.architecture-inspector');
 assert.equal(detail().hidden,true,'no component card until one is picked');
-assert.match(d.querySelector('.diagram-hint').textContent,/点选图中的组件/);
+assert.equal(d.querySelector('.diagram-hint'),null,'no hint text before picking');
 function select(id,source) { w.dispatchEvent(new w.MessageEvent('message',{source,data:{type:'product-requirements:architecture-select',id}})); }
 select('component_'+(payload.project.technical_architecture.components.length-1),w);
 assert.equal(detail().hidden,true,'messages from other windows are ignored');
@@ -30,7 +30,6 @@ select('component_999',frame.contentWindow); assert.equal(detail().hidden,true);
 select('component_'+(payload.project.technical_architecture.components.length-1),frame.contentWindow);
 assert.equal(detail().hidden,false);
 assert.equal(detail().dataset.componentId,last.id);
-assert.equal(d.querySelector('.diagram-hint'),null,'hint goes away after picking');
 assert.match(detail().textContent,/开发内容/); assert.match(detail().textContent,/交付标准/);
 assert.equal(d.querySelector('button[data-component-id]'), null, 'no chip row under the live diagram');
 select('component_0',frame.contentWindow);

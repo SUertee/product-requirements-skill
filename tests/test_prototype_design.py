@@ -167,6 +167,15 @@ class DesignedPrototypeEndToEnd(unittest.TestCase):
                     workbench.save_review({'revision': 1, 'review_stage': 'release', 'target': 'prototype/index.html#missing', 'outcome': 'confirmed'})
                 with self.assertRaises(ValueError):
                     workbench.save_review({'revision': 1, 'review_stage': 'definition', 'target': 'prototype/index.html#tickets', 'outcome': 'confirmed'})
+                project_file = result['v3'] / 'project.json'
+                project = json.loads(project_file.read_text())
+                owner = project['requirements'][0]['requirement_id']
+                project['requirements'][0]['open_questions'] = ['首版做哪种场景？']
+                project_file.write_text(json.dumps(project, ensure_ascii=False))
+                saved = workbench.save_review({'revision': 1, 'review_stage': 'definition', 'target': owner + '#question-1', 'outcome': 'confirmed', 'comment': '问题：首版做哪种场景？\n回答：先做 FDE'})
+                self.assertEqual(saved['decisions'][-1]['target'], owner + '#question-1')
+                with self.assertRaises(ValueError):
+                    workbench.save_review({'revision': 2, 'review_stage': 'definition', 'target': owner + '#question-2', 'outcome': 'confirmed'})
 
     def test_each_version_records_how_it_was_made(self):
         with tempfile.TemporaryDirectory() as temporary:

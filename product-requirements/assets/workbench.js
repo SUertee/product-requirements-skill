@@ -21,6 +21,9 @@
   let selectedModule = null;
   let moduleView = 'list';
   let selectedRequirement = null;
+  let requirementFocus = null;
+  let editorField = null;
+  let questionMessage = '';
   let moduleDetailTab = 'requirements';
   let requirementTab = 'detail';
   let moduleFrame = null;
@@ -54,6 +57,7 @@
   let appliedTask = null;  // version created from the review bar this session
   let pendingChanges = [];
   let previewDevice = 'desktop';
+  let previewDeviceChosen = false;
 
   function element(tag, text, className) {
     const result = document.createElement(tag);
@@ -129,6 +133,13 @@
     }
     parent.append(list);
   }
+  // "11-25 10:09" in local time; the year only when it is not this year.
+  function shortTime(value) {
+    const date = new Date(String(value || '').replace(' ', 'T'));
+    if (!value || Number.isNaN(date.getTime())) return String(value || '').slice(0, 16).replace('T', ' ');
+    const pad = number => String(number).padStart(2, '0');
+    return (date.getFullYear() !== new Date().getFullYear() ? date.getFullYear() + '-' : '') + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes());
+  }
   function badges(parent, values) {
     const row = element('div', null, 'workbench-meta');
     values.forEach(value => row.append(element('span', value)));
@@ -180,14 +191,18 @@
     content.append(layout);
     return detail;
   }
-  function openRequirement(req) {
+  function openRequirement(req, focus = null, field = null) {
+    editorField = field;
     selectedRequirement = req.requirement_id;
+    requirementFocus = focus;
     moduleView = 'list';
-    requirementTab = 'detail';
+    requirementTab = focus === 'edit' && serverState ? 'edit' : 'detail';
+    if (focus === 'edit') focus = null;
     moduleDetailTab = 'requirements';
     selectedModule = null;
     queryInput.value = ''; statusInput.value = ''; evidenceInput.value = '';
     navigate('modules');
+    if (focus) requestAnimationFrame(() => { const node = document.querySelector('.requirement-' + focus); if (node) { node.scrollIntoView({block: 'center', behavior: 'smooth'}); node.classList.add('flash'); setTimeout(() => node.classList.remove('flash'), 1600); } requirementFocus = null; });
   }
   function requirementLink(req) {
     const button = element('button', req.title, 'source-link');
@@ -228,6 +243,7 @@
     const select = element('select'); select.id = 'edit-field-' + req.requirement_id;
     const labels = {behavior: '功能内容', acceptance_criteria: '验收标准', rules: '业务规则', exceptions: '出错时怎么处理', role: '使用者', title: '需求名称'};
     for (const [key, label] of Object.entries(labels)) { const option = element('option', label); option.value = key; select.append(option); }
+    if (editorField && labels[editorField]) { select.value = editorField; editorField = null; }
     const fieldLabel = element('label', '改哪一项'); fieldLabel.htmlFor = select.id;
     const text = element('textarea'); text.id = 'edit-value-' + req.requirement_id; text.rows = 4;
     const textLabel = element('label', '改成'); textLabel.htmlFor = text.id;
@@ -284,12 +300,45 @@
     const decided = (serverState?.review?.decisions || []).filter(item => item.target === target && (item.review_stage || 'definition') === 'definition').at(-1);
     return decided || null;
   }
+  // Open questions the AI left on a requirement. Each can be answered (or set aside for this release) from the
+  // requirement card; the answer is a definition note on "<id>#question-<n>" that the next revision reads.
+  function openQuestions(req) {
+    return (req.open_questions || []).map((text, index) => {
+      const target = req.requirement_id + '#question-' + (index + 1);
+      const decided = pendingVerdict(target);
+      return {req, text, target, answer: decided ? {outcome: decided.outcome, text: decided.comment.replace(/^问题：.*\n回答：/s, '')} : null};
+    });
+  }
+  // Gaps the generator's checks found (e.g. missing exception handling), grouped by reason with the requirements
+  // they concern; the AI's own questions are listed separately and skipped here.
+  function ruleFindings() {
+    const asked = new Set(requirements.flatMap(req => req.open_questions || []));
+    const findings = new Map();
+    for (const item of data.review.questions || []) {
+      if (item.reason === '核对依据、范围与确认状态' || asked.has(item.reason)) continue;
+      const owner = requirements.find(req => req.requirement_id === item.target);
+      if (!findings.has(item.reason)) findings.set(item.reason, Object.assign([], {field: item.field}));
+      if (owner) findings.get(item.reason).push(owner);
+    }
+    return findings;
+  }
+  async function answerQuestion(question, outcome, answer) {
+    const comment = '问题：' + question.text + '\n回答：' + (outcome === 'parked' ? '不影响本期' : answer);
+    try {
+      const result = await localRequest('/api/review', {method: 'POST', body: JSON.stringify({revision: serverState.review.revision, review_stage: 'definition', target: question.target, outcome, comment, reviewer: ''})});
+      serverState.review = result.review; questionMessage = '';
+    } catch (error) { questionMessage = error.message; }
+    render();
+  }
   function statusView(item) {
     const target = item.requirement_id || item.nfr_id;
     const pending = pendingVerdict(target);
-    if (!pending) return {status: item.review_status, label: states[item.review_status] || '草稿', pending: false};
-    const status = {confirmed: 'confirmed', needs_changes: 'draft', parked: 'parked'}[pending.outcome];
-    return {status, label: {confirmed: '确认', needs_changes: '需修改', parked: '暂缓'}[pending.outcome] + '（待生效）', pending: true};
+    const view = !pending ? {status: item.review_status, label: states[item.review_status] || '草稿', pending: false}
+      : {status: {confirmed: 'confirmed', needs_changes: 'draft', parked: 'parked'}[pending.outcome], label: {confirmed: '确认', needs_changes: '需修改', parked: '暂缓'}[pending.outcome] + '（待生效）', pending: true};
+    // A requirement with unanswered questions is not settled yet, whatever its verdict says.
+    const unanswered = item.requirement_id ? openQuestions(item).filter(question => !question.answer).length : 0;
+    if (view.status === 'confirmed' && unanswered) return {status: 'questions', label: '待定', pending: false, questions: unanswered};
+    return view;
   }
   function requirementChoice(req, current, onSelect) {
     const button = element('button', null, 'requirement-choice'); button.type = 'button';
@@ -359,6 +408,41 @@
     card.append(body, reviewActions(nfr.nfr_id));
     return card;
   }
+  // Each open question with its answer, or a box to answer it; answers take effect in the next version.
+  function questionList(req) {
+    const list = element('ol', null, 'question-list');
+    for (const done of req.answered_questions || []) {
+      const item = element('li', null, 'question-entry'); item.dataset.state = done.outcome === 'deferred' ? 'parked' : 'confirmed';
+      item.append(element('p', done.question, 'question-entry-text'), element('div', done.outcome === 'deferred' ? '不影响本期' : '回答：' + done.answer, 'question-answer'));
+      list.append(item);
+    }
+    for (const question of openQuestions(req)) {
+      const item = element('li', null, 'question-entry'); item.dataset.state = question.answer ? question.answer.outcome : 'open';
+      item.append(element('p', question.text, 'question-entry-text'));
+      if (question.answer) {
+        const line = element('div', null, 'question-answer');
+        line.append(element('span', question.answer.outcome === 'parked' ? '不影响本期' : '回答：' + question.answer.text), element('span', '生成新版本后生效', 'question-answer-note'));
+        if (serverState) { const change = element('button', '改', 'button ghost small'); change.type = 'button'; change.addEventListener('click', () => { item.replaceWith(questionForm(question)); }); line.append(change); }
+        item.append(line);
+      } else if (serverState) item.append(questionForm(question, true));
+      list.append(item);
+    }
+    if (questionMessage) list.append(element('li', questionMessage, 'inline-note'));
+    return list;
+  }
+  function questionForm(question, inline = false) {
+    const form = element(inline ? 'div' : 'li', null, 'question-form');
+    if (!inline) form.append(element('p', question.text, 'question-entry-text'));
+    const input = element('textarea', null, 'page-review-input'); input.rows = 2; input.placeholder = '写下结论，比如：先做静态时序，按步播放放到下一期';
+    input.setAttribute('aria-label', '回答：' + question.text); if (question.answer?.outcome === 'confirmed') input.value = question.answer.text;
+    const actions = element('div', null, 'document-actions');
+    const save = element('button', '保存回答', 'button primary small'); save.type = 'button';
+    save.addEventListener('click', () => { if (!input.value.trim()) { input.focus(); return; } answerQuestion(question, 'confirmed', input.value.trim()); });
+    const skip = element('button', '不影响本期', 'button ghost small'); skip.type = 'button';
+    skip.addEventListener('click', () => answerQuestion(question, 'parked', ''));
+    actions.append(save, skip); form.append(input, actions);
+    return form;
+  }
   function requirementCard(req) {
     const card = panel(req.title);
     card.classList.add('requirement-inspector');
@@ -371,7 +455,7 @@
     evidence.dataset.evidence = req.evidence_type || 'unknown';
     const view = statusView(req);
     const status = element('span', '状态：' + view.label, 'status-tag');
-    status.title = view.pending ? '评审结论已保存，生成新版本后生效' : statusHelp[req.review_status] || statusHelp.draft;
+    status.title = view.questions ? '还有 ' + view.questions + ' 个问题没回答，回答后才算确认' : view.pending ? '评审结论已保存，生成新版本后生效' : statusHelp[req.review_status] || statusHelp.draft;
     status.dataset.status = view.status; if (view.pending) status.dataset.pending = 'true';
     identity.append(evidence, status, element('span', req.requirement_id, 'requirement-code'));
     const head = element('header', null, 'requirement-head'); head.append(card.firstElementChild, identity);
@@ -389,9 +473,9 @@
       behavior.append(valueNode(req.behavior)); body.append(behavior);
       const acceptance = section('验收标准', 'decided', 'requirement-acceptance');
       acceptance.append(valueNode(req.acceptance_criteria)); body.append(acceptance);
-      if (req.open_questions?.length) {
+      if (req.open_questions?.length || req.answered_questions?.length) {
         const questions = section('需要确认', 'pending', 'requirement-questions');
-        questions.append(valueNode(req.open_questions)); body.append(questions);
+        questions.append(questionList(req)); body.append(questions);
       }
       const known = [['使用者', req.role], ['什么时候用', req.trigger], ['输入', req.inputs], ['输出', req.outputs], ['业务规则', req.rules], ['出错时', req.exceptions]].filter(([, value]) => display(value) !== '待确认');
       if (known.length) {
@@ -500,7 +584,8 @@
     definition.append(facts);
     content.append(definition);
 
-    const confirmed = requirements.filter(req => req.review_status === 'confirmed').length;
+    const confirmed = requirements.filter(req => statusView(req).status === 'confirmed').length;
+    const openCount = requirements.flatMap(req => openQuestions(req)).filter(item => !item.answer).length + ruleFindings().size;
     const meetings = project.meetings || [];
     const day = value => { const date = new Date(String(value || '').replace(' ', 'T')); return Number.isNaN(date.getTime()) ? '' : (date.getMonth() + 1) + ' 月 ' + date.getDate() + ' 日'; };
     const versionNumber = /(\d+)\s*$/.exec(String(project.artifact_version || ''))?.[1];
@@ -511,7 +596,7 @@
       ['当前版本', project.artifact_version, day(data.generated_at) ? day(data.generated_at) + '生成' : ''],
       ['已迭代', versionNumber ? versionNumber + ' 版' : '—', project.baseline_version ? '上一版 ' + project.baseline_version : ''],
       ['会议', meetings.length + ' 次', day(lastMeeting) ? '最近 ' + day(lastMeeting) : ''],
-      ['当前进度', stage, requirements.length ? confirmed + ' / ' + requirements.length + ' 条需求已确认' : ''],
+      ['当前进度', stage, requirements.length ? confirmed + ' / ' + requirements.length + ' 条需求已确认' + (openCount ? '，' + openCount + ' 个问题待定' : '') : ''],
     ]) {
       const item = element('div', null, 'overview-stat'); const figure = element('dd', value);
       item.append(element('dt', label), figure); if (note) item.append(element('dd', note, 'stat-note'));
@@ -521,15 +606,13 @@
 
     const outputs = panel('成果', 'documents');
     outputs.classList.add('overview-outputs');
-    const explicit = requirements.flatMap(req => (req.open_questions || []).map(reason => ({target: req.requirement_id, reason})));
-    const pending = new Set((explicit.length ? explicit : data.review.questions || []).map(item => item.reason)).size;
     const stages = [
       ['materials', '会议素材', (project.materials || []).length ? (project.materials || []).length + ' 份素材' : '', (project.materials || []).length > 0],
       ['modules', '功能需求', requirements.length ? requirements.length + ' 条 · ' + confirmed + ' 条已确认' : '', requirements.length > 0],
       ['documents', '方案文档', '方案 · PRD', Boolean(data.documents?.['proposal.md'])],
       ['prototype', '原型预览', prototypeAvailable ? '已生成' : '', prototypeAvailable],
       ['technical', '技术设计', [project.technical_architecture?.components?.length ? '架构' : '', project.business_model?.entities?.length ? '数据模型' : ''].filter(Boolean).join(' · '), Boolean(project.technical_architecture?.components?.length) || hasArtifact(['diagrams/', 'data-model/'])],
-      ['review', '评审记录', pending ? pending + ' 个问题待确认' : '暂无待确认问题', true],
+      ['review', '评审记录', openCount ? openCount + ' 个问题待定' : '暂无待定问题', true],
     ];
     // Hand-off to development: the generated agent prompt, usable once at least one requirement is confirmed.
     const handoffReady = confirmed > 0 && Boolean(data.documents?.['agent-prompt.md']);
@@ -548,21 +631,29 @@
     const columns = element('div', null, 'overview-sections');
     columns.append(outputs);
     const followUp = panel('待确认事项', 'pending');
-    // Two origins: questions the AI raised while reading the meeting (open_questions on a requirement),
-    // and gaps found by the generator's checks (missing acceptance, vague wording, unconfirmed items).
-    const questions = [...explicit.map(item => ({...item, origin: 'AI 读会议时提出'})), ...(data.review.questions || []).filter(item => item.reason !== '核对依据、范围与确认状态').map(item => ({...item, origin: '规则检查发现'}))];
-    const unique = questions.filter((item, index) => questions.findIndex(other => item.reason === other.reason) === index);
-    if (unique.length) followUp.append(element('p', '共 ' + unique.length + ' 项，显示前 3 项；点开到评审记录回答', 'inline-note'));
-    for (const question of unique.slice(0, 3)) {
+    // An index of what is still open; each row jumps to where it is settled. AI questions are answered on the
+    // requirement card; checker findings (e.g. missing exception handling) are fixed by editing the requirement.
+    const open = requirements.flatMap(req => openQuestions(req)).filter(item => !item.answer);
+    const findings = ruleFindings();
+    const rows = [
+      ...open.map(item => ({text: item.text, origin: 'AI 读会议时提出 · 需求「' + item.req.title + '」', go: () => openRequirement(item.req, 'questions')})),
+      ...[...findings].map(([reason, owners]) => ({text: reason, origin: '规则检查发现 · ' + (owners.length > 1 ? owners.length + ' 条需求' : owners.length ? '需求「' + owners[0].title + '」' : '评审记录'), go: () => owners.length ? openRequirement(owners[0], 'edit', owners.field) : (reviewTab = 'records', navigate('review'))})),
+    ];
+    // Settled so far: questions answered here (pending) or closed in earlier versions.
+    const settled = requirements.flatMap(req => openQuestions(req)).filter(item => item.answer).length + requirements.reduce((sum, req) => sum + (req.answered_questions || []).length, 0);
+    const heading = followUp.firstElementChild;
+    const head = element('header', null, 'panel-head'); heading.replaceWith(head);
+    const progress = element('span', settled + ' / ' + (settled + rows.length), 'panel-count'); progress.title = '已处理 ' + settled + ' 项，共 ' + (settled + rows.length) + ' 项';
+    head.append(heading, progress);
+    for (const row of rows) {
       const item = element('button', null, 'output-row question-item'); item.type = 'button';
       const text = element('span', null, 'question-text');
-      const owner = requirements.find(req => req.requirement_id === question.target);
-      text.append(element('span', question.reason), element('small', question.origin + (owner ? ' · 需求「' + owner.title + '」' : ''), 'question-origin'));
+      text.append(element('span', row.text), element('small', row.origin, 'question-origin'));
       item.append(text, element('span', '→'));
-      item.addEventListener('click', () => { const req = requirements.find(entry => entry.requirement_id === question.target); if (req) openRequirement(req); else { reviewTab = 'records'; navigate('review'); } });
+      item.addEventListener('click', row.go);
       followUp.append(item);
     }
-    if (!unique.length) followUp.append(element('p', '暂无待确认事项', 'inline-note'));
+    if (!rows.length) followUp.append(element('p', '暂无待确认事项', 'inline-note'));
     columns.append(followUp); content.append(columns);
   }
   async function localRequest(path, options = {}) {
@@ -1029,7 +1120,7 @@
     host.replaceChildren();
     const head = element('div', null, 'module-detail-head');
     const heading = element('h2'); heading.append(element('span', '模块', 'module-kicker'), document.createTextNode(group.title));
-    head.append(heading, element('span', group.items.length + ' 条需求，左侧选择一条查看', 'module-count'));
+    head.append(heading);
     head.append(sectionTabs([['requirements', '需求'], ['related', '相关内容']], moduleDetailTab, '模块内容', key => { moduleDetailTab = key; moduleDetails(group, host); }));
     host.append(head);
     if (moduleDetailTab === 'related') {
@@ -1097,27 +1188,31 @@
     const roleList = req => (Array.isArray(req.role) ? req.role : req.role ? [req.role] : []).filter(role => typeof role === 'string' && role.trim());
     const roles = [...new Set(items.flatMap(item => roleList(item.req)))];
     if (!items.length || !roles.length) return empty('角色与功能关系待补充');
-    const height = Math.max(240, items.length * 76 + 80, roles.length * 120 + 50);
-    const svg = svgNode('svg', {viewBox: '0 0 920 ' + height, role: 'group', 'aria-label': '用例图：角色与功能'});
-    svg.append(svgNode('rect', {x: 310, y: 18, width: 590, height: height - 36, rx: 12, class: 'usecase-boundary'}));
-    svg.append(svgNode('text', {x: 330, y: 45, class: 'diagram-label'}, project.name || '功能范围'));
-    const rolePositions = new Map(roles.map((role, index) => [role, 70 + index * ((height - 120) / Math.max(1, roles.length - 1))]));
-    items.forEach(({req}, index) => roleList(req).forEach(role => svg.append(svgNode('line', {x1: 150, y1: rolePositions.get(role) + 24, x2: 450, y2: 90 + index * 76, class: 'usecase-link'}))));
+    // Drawn at its natural size (see .usecase-diagram) so it reads like the rest of the page instead of stretching.
+    const step = 52, top = 84, rowY = index => top + index * step;
+    const height = Math.max(200, rowY(items.length - 1) + 56, roles.length * 110 + 40);
+    const svg = svgNode('svg', {viewBox: '0 0 760 ' + height, role: 'group', 'aria-label': '用例图：角色与功能'});
+    svg.append(svgNode('rect', {x: 220, y: 16, width: 524, height: height - 32, rx: 12, class: 'usecase-boundary'}));
+    svg.append(svgNode('text', {x: 240, y: 44, class: 'diagram-label'}, project.name || '功能范围'));
+    // Actors are spread over the span of the use cases, so a single actor sits level with the middle of the list.
+    const first = rowY(0), last = rowY(items.length - 1);
+    const rolePositions = new Map(roles.map((role, index) => [role, roles.length === 1 ? (first + last) / 2 - 36 : first - 20 + index * ((last - first) / (roles.length - 1))]));
+    items.forEach(({req}, index) => roleList(req).forEach(role => svg.append(svgNode('line', {x1: 112, y1: rolePositions.get(role) + 36, x2: 302, y2: rowY(index), class: 'usecase-link'}))));
     roles.forEach(role => {
       const y = rolePositions.get(role);
-      const actor = svgNode('g'); actor.append(svgNode('circle', {cx: 125, cy: y, r: 12, class: 'usecase-actor'}));
-      actor.append(svgNode('path', {d: `M125 ${y + 12}v32m-22 -20h44m-22 20l-20 27m20 -27l20 27`, class: 'usecase-actor'}));
-      actor.append(svgNode('text', {x: 125, y: y + 92, 'text-anchor': 'middle', class: 'diagram-label'}, role)); svg.append(actor);
+      const actor = svgNode('g'); actor.append(svgNode('circle', {cx: 90, cy: y, r: 11, class: 'usecase-actor'}));
+      actor.append(svgNode('path', {d: `M90 ${y + 11}v28m-20 -18h40m-20 18l-17 24m17 -24l17 24`, class: 'usecase-actor'}));
+      actor.append(svgNode('text', {x: 90, y: y + 84, 'text-anchor': 'middle', class: 'diagram-label'}, role)); svg.append(actor);
     });
     items.forEach(({req, group}, index) => {
-      const y = 90 + index * 76;
+      const y = rowY(index);
       const node = svgNode('g', {role: 'button', tabindex: 0, 'aria-label': '查看功能：' + req.title, 'data-usecase-id': req.requirement_id});
-      node.append(svgNode('ellipse', {cx: 660, cy: y, rx: 210, ry: 27, class: 'usecase-function'}));
-      node.append(svgNode('text', {x: 660, y: y + 5, 'text-anchor': 'middle', class: 'diagram-label'}, req.title));
+      node.append(svgNode('ellipse', {cx: 482, cy: y, rx: 180, ry: 20, class: 'usecase-function'}));
+      node.append(svgNode('text', {x: 482, y: y + 5, 'text-anchor': 'middle', class: 'diagram-label'}, req.title));
       const choose = () => onSelect(group.key, req.requirement_id);
       node.addEventListener('click', choose); node.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') {event.preventDefault(); choose();} }); svg.append(node);
     });
-    const wrapper = element('div', null, 'content-diagram'); wrapper.append(svg); return wrapper;
+    const wrapper = element('div', null, 'content-diagram usecase-diagram'); wrapper.append(svg); return wrapper;
   }
   function architectureDetails(architecture, frame = null) {
     const nodes = architecture.components;
@@ -1129,11 +1224,10 @@
       button.addEventListener('click', () => select(node.id)); picker.append(button);
     });
     // Nothing is selected on arrival: the card appears once a component is picked in the diagram.
-    const hint = element('p', '点选图中的组件，查看它的开发内容和交付标准', 'inline-note diagram-hint');
     detail.hidden = true;
     function select(id, reveal = false) {
       const node = nodes.find(item => item.id === id); if (!node) return;
-      selectedArchitecture = id; detail.hidden = false; hint.remove();
+      selectedArchitecture = id; detail.hidden = false;
       picker.querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.componentId === id)));
       detail.replaceChildren(element('h2', node.name)); detail.dataset.componentId = id;
       const layer = architecture.layers.find(item => item.id === node.layer);
@@ -1155,7 +1249,7 @@
       if (reveal) detail.querySelector('h2')?.scrollIntoView?.({block: 'nearest'});
     }
     // With the live diagram, nodes are clicked in the diagram itself; the chip row is only kept for the plain SVG fallback.
-    host.append(...(frame ? [] : [picker]), hint, detail);
+    host.append(...(frame ? [] : [picker]), detail);
     if (nodes.some(node => node.id === selectedArchitecture)) select(selectedArchitecture);
     return {host, select};
   }
@@ -1576,7 +1670,7 @@
         const controls = element('div', null, 'document-actions');
         controls.setAttribute('role', 'group');
         controls.setAttribute('aria-label', '原型预览尺寸');
-        for (const [key, label] of [['desktop', '桌面'], ['tablet', '平板'], ['mobile', '手机']]) {
+        for (const [key, label] of [['desktop', '电脑'], ['tablet', '平板'], ['mobile', '手机']]) {
           const button = element('button', label, 'button small');
           button.type = 'button';
           button.setAttribute('aria-pressed', String(key === previewDevice));
@@ -1610,7 +1704,7 @@
   let selectedPrototypePage = null;
   let prototypeAnnotate = false;
   // Page-by-page review of the prototype, recorded as release-stage verdicts on "prototype/index.html#<page_id>".
-  let prototypeCommentPage = null;
+  let prototypeDraft = null; // {page_id, location}: a place picked in the prototype, waiting for its comment
   let prototypeReviewBusy = false;
   let prototypeReviewMessage = '';
   // The page itself cannot design a prototype: the Skill in the host (Claude Code, 码道…) designs pages from confirmed
@@ -1689,14 +1783,12 @@
     const pages = design.pages;
     const nfrs = project.nfrs || [];
     if (!pages.some(page => page.page_id === selectedPrototypePage)) selectedPrototypePage = design.start_page_id || pages[0].page_id;
+    // Any page can be checked at any width; the devices the design targets open first and are marked.
     const devices = design.positioning?.target_devices?.length ? design.positioning.target_devices : ['desktop'];
-    if (!devices.includes(previewDevice)) previewDevice = devices[0];
+    if (!previewDeviceChosen) previewDevice = devices[0];
     const widths = {desktop: '100%', tablet: '768px', mobile: '390px'};
-    const covered = new Set(pages.flatMap(page => page.requirement_ids || []));
-    const confirmedNfrs = nfrs.filter(item => item.review_status === 'confirmed');
-    const shown = confirmedNfrs.filter(item => item.prototype_treatment?.kind === 'shown').length;
     const toolbar = element('div', null, 'prototype-toolbar');
-    toolbar.append(iconLabel(element('span', [artifact.artifact_version || project.artifact_version, '覆盖 ' + covered.size + ' 条需求', confirmedNfrs.length ? '体现 ' + shown + ' 条非功能需求' : ''].filter(Boolean).join(' · '), 'prototype-summary'), 'prototype'));
+    const switcher = element('div', null, 'device-switch'); switcher.setAttribute('role', 'group'); switcher.setAttribute('aria-label', '预览尺寸');
     const tools = element('div', null, 'document-actions');
     const frame = element('iframe', null, 'workbench-preview prototype-frame');
     frame.title = '交互原型';
@@ -1712,18 +1804,24 @@
       const base = '../' + artifact.path.split('/').map(encodeURIComponent).join('/');
       frame.src = base + (prototypeAnnotate ? '?annotate=1' : '') + '#' + encodeURIComponent(selectedPrototypePage);
     }
-    frame.style.width = widths[previewDevice];
-    if (devices.length > 1) for (const device of devices) {
-      const button = iconLabel(element('button', {desktop: '桌面', tablet: '平板', mobile: '手机'}[device], 'button ghost small'), device === 'desktop' ? 'prototype' : 'mobile'); button.type = 'button';
-      button.setAttribute('aria-pressed', String(device === previewDevice));
-      button.addEventListener('click', () => { previewDevice = device; frame.style.width = widths[device]; tools.querySelectorAll('[data-device]').forEach(item => item.setAttribute('aria-pressed', String(item === button))); });
-      button.dataset.device = device; tools.append(button);
+    const applyDevice = () => { frame.dataset.device = previewDevice; frame.style.width = widths[previewDevice]; switcher.querySelectorAll('[data-device]').forEach(item => item.setAttribute('aria-pressed', String(item.dataset.device === previewDevice))); };
+    for (const device of ['desktop', 'tablet', 'mobile']) {
+      const button = iconLabel(element('button', {desktop: '电脑', tablet: '平板', mobile: '手机'}[device], 'button ghost small'), device === 'desktop' ? 'prototype' : 'mobile'); button.type = 'button';
+      button.dataset.device = device;
+      if (devices.includes(device)) { button.dataset.target = 'true'; button.title = '原型按这种设备设计'; }
+      button.addEventListener('click', () => { previewDevice = device; previewDeviceChosen = true; applyDevice(); });
+      switcher.append(button);
     }
     const annotate = iconLabel(element('button', '标注需求', 'button ghost small'), 'modules'); annotate.type = 'button';
     annotate.setAttribute('aria-pressed', String(prototypeAnnotate));
     annotate.addEventListener('click', () => { prototypeAnnotate = !prototypeAnnotate; annotate.setAttribute('aria-pressed', String(prototypeAnnotate)); frame.contentWindow?.postMessage({type: 'prototype:annotate', on: prototypeAnnotate}, '*'); });
+    // Change requests are made on the prototype itself: pick a place in it, then say what to change there.
+    const pick = iconLabel(element('button', '提修改意见', 'button small'), 'edit'); pick.type = 'button';
+    pick.setAttribute('aria-pressed', 'false');
+    pick.addEventListener('click', () => { const on = pick.getAttribute('aria-pressed') !== 'true'; pick.setAttribute('aria-pressed', String(on)); frame.contentWindow?.postMessage({type: 'prototype:pick', on}, '*'); });
+    if (serverState) tools.append(pick);
     tools.append(annotate, fileLink(artifact.path, '独立打开'));
-    toolbar.append(tools);
+    toolbar.append(switcher, tools);
     content.append(toolbar);
     const fileTarget = artifact.path;
     const pageTarget = id => fileTarget + '#' + id;
@@ -1732,28 +1830,46 @@
       for (const item of serverState?.review?.decisions || []) if (item.review_stage === 'release') latest.set(item.target, item);
       return latest;
     }
-    // Pages are fine unless someone says otherwise: only change requests are recorded per page, and one
-    // confirmation of the whole prototype releases it to the customer.
-    const pageComment = (latest, page) => { const item = latest.get(pageTarget(page.page_id)); return item?.outcome === 'needs_changes' ? item : null; };
+    // A page's change request holds one line per picked place: "【位置】意见". Older single comments count as 整页.
+    const pageNotes = (latest, page) => {
+      const item = latest.get(pageTarget(page.page_id));
+      if (item?.outcome !== 'needs_changes') return [];
+      return String(item.comment || '').split('\n').map(line => line.trim()).filter(Boolean).map(line => { const match = line.match(/^【(.+?)】(.*)$/); return match ? {location: match[1], text: match[2].trim()} : {location: '整页', text: line}; });
+    };
+    const notesText = notes => notes.map(note => '【' + note.location + '】' + note.text).join('\n');
+    async function saveNotes(page, notes) {
+      prototypeReviewBusy = true; prototypeReviewMessage = ''; drawReviewBar();
+      try {
+        const body = notes.length ? {outcome: 'needs_changes', comment: notesText(notes)} : {outcome: 'confirmed', comment: '撤回修改意见'};
+        const result = await localRequest('/api/review', {method: 'POST', body: JSON.stringify({revision: serverState.review.revision, review_stage: 'release', target: pageTarget(page.page_id), reviewer: '', ...body})});
+        serverState.review = result.review; prototypeDraft = null;
+      } catch (error) {
+        prototypeReviewMessage = error.message;
+        try { await refreshLocal(); } catch { /* keep the first error */ }
+      } finally { prototypeReviewBusy = false; }
+      drawReviewBar();
+    }
     const reviewBar = element('section', null, 'prototype-review-bar'); reviewBar.setAttribute('aria-label', '原型评审');
     if (serverState) content.append(reviewBar);
     function drawReviewBar() {
       if (!serverState) return;
       const latest = verdicts();
-      const changes = pages.filter(page => pageComment(latest, page));
+      const noted = pages.map(page => ({page, notes: pageNotes(latest, page)})).filter(item => item.notes.length);
+      const total = noted.reduce((sum, item) => sum + item.notes.length, 0);
       const released = latest.get(fileTarget)?.outcome === 'confirmed';
       const releases = (serverState.releases || []).filter(item => item.artifact_version === project.artifact_version);
       reviewBar.replaceChildren();
+      const head = element('div', null, 'prototype-review-head');
       const summary = element('div', null, 'prototype-review-progress');
-      if (changes.length) summary.append(element('strong', changes.length + ' 页有修改意见'), element('span', '复制指令交给 Skill 修改，生成新版本后再看', 'prototype-review-note'));
-      else if (releases.length) summary.append(element('strong', '交付包已生成'), element('span', '可以预览或下载发给客户', 'prototype-review-note'));
-      else summary.append(element('strong', '没有修改意见'), element('span', '看完原型没问题，就可以生成交付包；哪页要改，点原型上方的「这页要改」', 'prototype-review-note'));
-      reviewBar.append(summary);
+      if (total) summary.append(element('strong', total + ' 条修改意见'));
+      else if (releases.length) summary.append(element('strong', '交付包已生成'));
+      else summary.append(element('strong', '没有修改意见'), element('span', '点「提修改意见」，再点原型上要改的地方', 'prototype-review-note'));
+      head.append(summary);
       const actions = element('div', null, 'document-actions');
-      if (changes.length) {
+      if (total) {
         const lines = ['用「产品需求落地」Skill 修改项目《' + (project.name || project.project_id) + '》的原型（版本 ' + project.artifact_version + '）。', '修改意见：'];
-        changes.forEach(page => lines.push('- ' + page.name + '（' + page.page_id + '）：' + pageComment(latest, page).comment));
-        lines.push('按 references/prototype.md 只改这些页面，意见涉及需求变化时先改需求卡并告诉我；生成新版本后停下，等我在工作台复核。');
+        noted.forEach(({page, notes}) => notes.forEach(note => lines.push('- ' + page.name + '（' + page.page_id + '）› ' + note.location + '：' + note.text)));
+        lines.push('按 references/prototype.md 只改这些位置，意见涉及需求变化时先改需求卡并告诉我；生成新版本后停下，等我在工作台复核。');
         const copy = iconLabel(element('button', '复制修改指令', 'button primary small'), 'copy'); copy.type = 'button';
         copy.addEventListener('click', async () => {
           try { await navigator.clipboard.writeText(lines.join('\n')); prototypeReviewMessage = '已复制，粘贴到 Claude Code、码道等装了这个 Skill 的工具里'; } catch { prototypeReviewMessage = '浏览器未允许复制'; }
@@ -1777,135 +1893,89 @@
         const download = iconLabel(element('a', '下载 ZIP', 'button small'), 'download'); download.href = '/api/releases/' + release.release_id + '/package'; download.download = project.project_id + '-' + release.artifact_version + '.zip';
         actions.append(preview, download);
       }
-      reviewBar.append(actions);
+      head.append(actions);
+      reviewBar.append(head);
+      // The place just picked in the prototype, waiting for what should change there.
+      const draftPage = prototypeDraft && pages.find(page => page.page_id === prototypeDraft.page_id);
+      if (draftPage) {
+        const box = element('div', null, 'page-review');
+        const label = element('label', null, 'page-review-label');
+        label.append(element('span', draftPage.name + ' › ' + prototypeDraft.location, 'prototype-note-place'), document.createTextNode(' 要改什么'));
+        const note = element('textarea', null, 'page-review-input'); note.rows = 2; note.placeholder = '比如：按钮改成「提交审核」；这里缺少按状态筛选'; label.append(note);
+        const buttons = element('div', null, 'document-actions page-review-actions');
+        const save = element('button', '保存意见', 'button primary small'); save.type = 'button'; save.disabled = prototypeReviewBusy;
+        save.addEventListener('click', () => { if (!note.value.trim()) { note.focus(); return; } saveNotes(draftPage, [...pageNotes(latest, draftPage), {location: prototypeDraft.location, text: note.value.trim().replace(/\s*\n\s*/g, ' ')}]); });
+        const cancel = element('button', '取消', 'button ghost small'); cancel.type = 'button';
+        cancel.addEventListener('click', () => { prototypeDraft = null; drawReviewBar(); });
+        buttons.append(save, cancel); box.append(label, buttons); reviewBar.append(box);
+        setTimeout(() => note.focus());
+      }
+      if (total) {
+        const list = element('ul', null, 'prototype-notes');
+        for (const {page, notes} of noted) notes.forEach((note, index) => {
+          const item = element('li');
+          const text = element('div', null, 'prototype-note-text');
+          text.append(element('span', page.name + ' › ' + note.location, 'prototype-note-place'), element('p', note.text));
+          const remove = element('button', '删除', 'button ghost small'); remove.type = 'button'; remove.disabled = prototypeReviewBusy;
+          remove.addEventListener('click', () => saveNotes(page, notes.filter((_, other) => other !== index)));
+          item.append(text, remove); list.append(item);
+        });
+        reviewBar.append(list);
+      }
       const message = prototypeReviewMessage || (workflowMessage && !workflowBusy && !releases.length ? workflowMessage : '');
       if (message) { const status = element('p', message, 'inline-note prototype-review-message'); status.setAttribute('role', 'status'); reviewBar.append(status); }
     }
     const layout = element('div', null, 'prototype-layout');
-    const list = element('nav', null, 'selection-list'); list.setAttribute('aria-label', '原型页面');
     const side = element('div', null, 'prototype-stage');
     const mapping = element('section', null, 'panel prototype-mapping'); mapping.setAttribute('aria-label', '当前页说明');
-    const pageBar = element('div', null, 'prototype-page-bar');
+    // One card for the page on screen: what it is for, then the requirements it carries.
     function drawMapping() {
       const page = pages.find(item => item.page_id === selectedPrototypePage);
-      list.querySelectorAll('[data-selection-key]').forEach(node => { if (node.dataset.selectionKey === page.page_id) node.setAttribute('aria-current', 'true'); else node.removeAttribute('aria-current'); });
-      pageBar.replaceChildren(pageReview(page));
-      mapping.replaceChildren(element('h2', '这一页做什么'), element('p', page.purpose, 'prototype-purpose'));
+      const head = element('header', null, 'page-spec-head');
+      head.append(element('span', '当前页', 'page-spec-eyebrow'), element('h2', page.name), element('p', page.purpose, 'prototype-purpose'));
+      const spec = element('dl', null, 'page-spec');
+      const row = (label, body) => { const value = element('dd'); value.append(body); spec.append(element('dt', label), value); };
       const reqs = (page.requirement_ids || []).map(id => requirements.find(req => req.requirement_id === id)).filter(Boolean);
       if (reqs.length) {
-        mapping.append(element('h3', '对应的功能需求'));
         const rows = element('ul', null, 'prototype-links');
-        reqs.forEach(req => { const row = element('li'); row.append(requirementLink(req), element('span', req.requirement_id, 'muted-id')); rows.append(row); });
-        mapping.append(rows);
+        reqs.forEach(req => { const item = element('li'); item.append(element('span', req.requirement_id, 'req-id'), requirementLink(req)); rows.append(item); });
+        row('功能需求', rows);
       }
       const pageNfrs = (page.nfr_ids || []).map(id => nfrs.find(item => item.nfr_id === id)).filter(Boolean);
-      if (pageNfrs.length) {
-        mapping.append(element('h3', '这一页体现的非功能需求'));
-        const rows = element('ul', null, 'prototype-nfrs');
-        pageNfrs.forEach(item => { const row = element('li'); row.append(element('strong', item.title), element('span', nfrCategories[item.category] || item.category, 'nfr-category'), element('p', item.prototype_treatment?.note || item.statement)); rows.append(row); });
-        mapping.append(rows);
-      }
+      if (pageNfrs.length) row('非功能需求', specItems(pageNfrs.map(item => [item.title, nfrCategories[item.category] || item.category, item.prototype_treatment?.note || item.statement])));
       const stateNames = {empty: '空数据', loading: '加载中', error: '出错', denied: '无权限', success: '成功'};
       const roleNames = Object.fromEntries((design.roles || []).map(role => [role.role_id, role.name]));
-      const extra = [];
-      if (page.states?.length) extra.push(['可演示的状态', page.states.map(state => stateNames[state] || state).join('、')]);
-      if (page.roles?.length) extra.push(['可见角色', page.roles.map(role => roleNames[role] || role).join('、')]);
-      if (extra.length) fields(mapping, extra);
-      const overall = (design.positioning?.nfr_ids || []).map(id => nfrs.find(item => item.nfr_id === id)).filter(Boolean);
-      if (overall.length) {
-        mapping.append(element('h3', '每页都要满足'));
-        const rows = element('ul', null, 'prototype-nfrs');
-        overall.forEach(item => { const row = element('li'); row.append(element('strong', item.title), element('span', nfrCategories[item.category] || item.category, 'nfr-category'), element('p', item.prototype_treatment?.note || item.statement)); rows.append(row); });
-        mapping.append(rows);
-      }
+      if (page.states?.length) row('可演示状态', chips(page.states.map(state => stateNames[state] || state)));
+      if (page.roles?.length) row('可见角色', chips(page.roles.map(role => roleNames[role] || role)));
+      mapping.replaceChildren(head);
+      if (spec.children.length) mapping.append(spec);
     }
-    function openPage(id) { selectedPrototypePage = id; frame.contentWindow?.postMessage({type: 'prototype:go', page_id: id}, '*'); drawMapping(); }
-    function drawPages() {
-      const latest = verdicts();
-      list.replaceChildren();
-      for (const page of pages) {
-        const button = element('button', null, 'selection-button prototype-page-chip'); button.type = 'button'; button.dataset.selectionKey = page.page_id;
-        const comment = pageComment(latest, page);
-        button.append(element('strong', page.name));
-        // Only pages with a change request are marked; the chip otherwise just names the page.
-        if (comment) { button.dataset.verdict = 'needs_changes'; const mark = element('span', '要改', 'page-change-mark'); button.append(mark); button.setAttribute('aria-label', page.name + '：有修改意见'); }
-        button.addEventListener('click', () => openPage(page.page_id));
-        list.append(button);
-      }
+    function chips(names) { const list = element('ul', null, 'spec-chips'); names.forEach(name => list.append(element('li', name))); return list; }
+    // Requirement-like entries: title and category tag on one line, the note underneath.
+    function specItems(items) {
+      const list = element('ul', null, 'spec-items');
+      items.forEach(([title, tag, note]) => { const item = element('li'); const line = element('div', null, 'spec-item-title'); line.append(element('strong', title), element('span', tag, 'nfr-category')); item.append(line); if (note) item.append(element('p', note)); list.append(item); });
+      return list;
     }
-    async function savePageComment(page, outcome, comment) {
-      prototypeReviewBusy = true; prototypeReviewMessage = ''; drawMapping();
-      try {
-        const result = await localRequest('/api/review', {method: 'POST', body: JSON.stringify({revision: serverState.review.revision, review_stage: 'release', target: pageTarget(page.page_id), outcome, comment, reviewer: ''})});
-        serverState.review = result.review; prototypeCommentPage = null;
-      } catch (error) {
-        prototypeReviewMessage = error.message;
-        try { await refreshLocal(); } catch { /* keep the first error */ }
-      } finally { prototypeReviewBusy = false; }
-      drawPages(); drawReviewBar(); drawMapping();
-    }
-    // One row above the preview, on every screen width: the page name and, if any, its change request.
-    function pageReview(page) {
-      const box = element('section', null, 'page-review'); box.setAttribute('aria-label', '这一页的修改意见');
-      const comment = pageComment(verdicts(), page);
-      if (comment) box.dataset.verdict = 'needs_changes';
-      const head = element('div', null, 'page-review-head');
-      head.append(element('strong', page.name, 'page-review-name'));
-      box.append(head);
-      if (!serverState) return box;
-      if (prototypeCommentPage === page.page_id) {
-        const label = element('label', '这一页要改什么', 'page-review-label');
-        const note = element('textarea', null, 'page-review-input'); note.rows = 2; note.value = comment?.comment || '';
-        note.placeholder = '比如：列表缺少按状态筛选；提交后应回到详情页'; label.append(note);
-        const actions = element('div', null, 'document-actions page-review-actions');
-        const save = element('button', '保存意见', 'button primary small'); save.type = 'button'; save.disabled = prototypeReviewBusy;
-        save.addEventListener('click', () => { if (!note.value.trim()) { note.focus(); return; } savePageComment(page, 'needs_changes', note.value.trim()); });
-        const cancel = element('button', '取消', 'button ghost small'); cancel.type = 'button';
-        cancel.addEventListener('click', () => { prototypeCommentPage = null; drawMapping(); });
-        actions.append(save, cancel); box.append(label, actions);
-        setTimeout(() => note.focus());
-        return box;
-      }
-      const actions = element('div', null, 'document-actions page-review-actions');
-      const edit = element('button', comment ? '改意见' : '这页要改', 'button small'); edit.type = 'button'; edit.disabled = prototypeReviewBusy;
-      edit.addEventListener('click', () => { prototypeCommentPage = page.page_id; drawMapping(); });
-      actions.append(edit);
-      if (comment) {
-        head.append(element('span', '有修改意见', 'page-review-status'));
-        const withdraw = element('button', '撤回', 'button ghost small'); withdraw.type = 'button'; withdraw.disabled = prototypeReviewBusy;
-        withdraw.addEventListener('click', () => savePageComment(page, 'confirmed', '撤回修改意见'));
-        actions.append(withdraw);
-      }
-      head.append(actions);
-      if (comment) box.append(element('p', comment.comment, 'page-review-comment'));
-      return box;
-    }
-    drawPages();
     const listener = event => {
       if (!frame.isConnected) { window.removeEventListener('message', listener); return; }
-      if (event.source !== frame.contentWindow || event.data?.type !== 'prototype:page' || !pages.some(page => page.page_id === event.data.page_id)) return;
-      if (selectedPrototypePage !== event.data.page_id) { selectedPrototypePage = event.data.page_id; drawMapping(); }
+      if (event.source !== frame.contentWindow || typeof event.data?.type !== 'string') return;
+      const known = pages.some(page => page.page_id === event.data.page_id);
+      if (event.data.type === 'prototype:page' && known && selectedPrototypePage !== event.data.page_id) { selectedPrototypePage = event.data.page_id; drawMapping(); }
+      if (event.data.type === 'prototype:pick-end') pick.setAttribute('aria-pressed', 'false');
+      if (event.data.type === 'prototype:picked' && known && serverState) {
+        pick.setAttribute('aria-pressed', 'false');
+        prototypeDraft = {page_id: event.data.page_id, location: String(event.data.location || '整页').replace(/[【】\n]/g, ' ').trim().slice(0, 60) || '整页'};
+        drawReviewBar();
+      }
     };
     window.addEventListener('message', listener);
-    // Phone and tablet previews get a device-sized viewport instead of a strip of the desktop canvas.
-    const applyDevice = () => { frame.dataset.device = previewDevice; frame.style.width = widths[previewDevice]; };
     applyDevice();
-    tools.querySelectorAll('[data-device]').forEach(button => button.addEventListener('click', applyDevice));
-    side.append(pageBar, frame);
-    layout.append(list, side, mapping);
+    side.append(frame);
+    layout.append(side, mapping);
     content.append(layout);
     drawMapping();
     drawReviewBar();
-    const excluded = design.excluded_requirements || [];
-    const skipped = confirmedNfrs.filter(item => item.prototype_treatment?.kind === 'not_applicable');
-    if (excluded.length || skipped.length) {
-      const card = panel('不在原型中');
-      card.append(element('p', '这些需求已确认，但不需要或没法在原型里演示，开发时照常实现。', 'inline-note'));
-      const rows = element('ul', null, 'prototype-nfrs');
-      excluded.forEach(item => { const row = element('li'); row.append(element('strong', requirements.find(req => req.requirement_id === item.requirement_id)?.title || item.requirement_id), element('span', '功能需求', 'nfr-category'), element('p', item.reason)); rows.append(row); });
-      skipped.forEach(item => { const row = element('li'); row.append(element('strong', item.title), element('span', nfrCategories[item.category] || item.category, 'nfr-category'), element('p', item.prototype_treatment.note)); rows.append(row); });
-      card.append(rows); content.append(card);
-    }
   }
   function prototype() {
     const artifact = data.artifacts.find(item => item.path === 'prototype/index.html');
@@ -1962,11 +2032,10 @@
       const card = element('section', null, 'panel diagram-card'); card.setAttribute('aria-label', '数据模型');
       card.append(diagramOpenIcon('data-model/index.html', '在新页面打开数据模型'));
       const frame = element('iframe', null, 'architecture-preview data-model-frame'); frame.title = 'Schema Canvas 数据模型'; frame.setAttribute('sandbox', 'allow-scripts');
-      const hint = element('p', '点选图中的表，查看字段和关系', 'inline-note diagram-hint');
       const slot = element('div', null, 'entity-detail-slot');
       function show(key) {
         const entity = entitiesById.get(key); if (!entity) return;
-        selectedEntity = key; hint.remove();
+        selectedEntity = key;
         slot.replaceChildren(entityDetail(entity, links, entitiesById));
       }
       const bridge = `(() => {
@@ -1995,7 +2064,7 @@
         if (selectedEntity && entitiesById.has(selectedEntity)) frame.contentWindow?.postMessage({type: 'product-requirements:schema-state', id: selectedEntity}, '*');
       });
       frame.srcdoc = data.data_model_diagram.replace('</head>', '<scr' + 'ipt>document.documentElement.dataset.embedded="true";</scr' + 'ipt></head>').replace('</body>', '<scr' + 'ipt>' + bridge + '</scr' + 'ipt></body>');
-      card.append(frame); content.append(card, hint, slot);
+      card.append(frame); content.append(card, slot);
       if (selectedEntity && entitiesById.has(selectedEntity)) show(selectedEntity);
       return;
     }
@@ -2252,23 +2321,53 @@
         content.append(versionCard);
       }
       versionHistory();
-      const records = [...(data.review.decisions || []), ...(serverState?.review.decisions || [])];
-      const seen = new Set();
-      const labels = {confirmed: '已确认', needs_changes: '需要修改', parked: '暂缓'};
-      records.forEach(record => {
-        const identity = JSON.stringify(record); if (seen.has(identity) || !matches(record)) return; seen.add(identity);
-        const req = requirements.find(item => item.requirement_id === record.target);
-        const card = panel(req?.title || record.target || '评审意见', 'review');
-        card.classList.add('review-entry'); card.dataset.outcome = record.outcome;
-        const note = iconLabel(element('p', labels[record.outcome] || record.outcome, 'review-decision'), record.outcome === 'confirmed' ? 'decided' : record.outcome === 'parked' ? 'pause' : 'edit');
-        const head = element('header', null, 'review-entry-head');
-        head.append(card.firstElementChild, note); card.append(head);
-        fields(card, [['意见', record.comment], ['记录人', record.reviewer], ['时间', record.decided_at || record.created_at || record.created]].filter(([, value]) => value));
-        content.append(card);
-      });
+      // Saved notes, newest first. A later note on the same item replaces the earlier one (as when the version is
+      // generated), and a withdrawn page comment leaves nothing to show.
+      const pending = new Set((serverState?.review.decisions || []).map(record => JSON.stringify(record)));
+      const latest = new Map();
+      for (const record of [...(data.review.decisions || []), ...(serverState?.review.decisions || [])]) latest.set(record.target, record);
+      const entries = [...latest.values()].filter(record => record.comment !== '撤回修改意见' && matches(record)).reverse();
+      const seen = new Set(entries.map(record => record.target));
+      if (entries.length) {
+        const card = panel('评审意见', 'review');
+        card.classList.add('review-log');
+        const list = element('ul', null, 'review-log-list');
+        for (const record of entries) {
+          const item = element('li', null, 'review-entry'); item.dataset.outcome = record.outcome;
+          const {name, outcome, comment} = reviewSubject(record);
+          const head = element('div', null, 'review-entry-head');
+          head.append(element('strong', name), element('span', outcome, 'review-decision'));
+          if (pending.has(JSON.stringify(record))) { const tag = element('span', '待生效', 'review-pending'); tag.title = '生成新版本后生效'; head.append(tag); }
+          const when = record.decided_at || record.created_at || record.created;
+          if (when) head.append(element('time', shortTime(when), 'review-time'));
+          item.append(head);
+          if (comment) item.append(element('p', comment, 'review-comment-text'));
+          list.append(item);
+        }
+        card.append(list); content.append(card);
+      }
       if (!seen.size && !changes.length && !conflicts.length && !(data.history || []).length) content.append(empty('还没有评审记录。在「功能需求」里对需求给出结论或修改后，会记在这里'));
       return;
     }
+  }
+  // What a review note is about, in words: a requirement, one of its questions, or a page of the prototype.
+  function reviewSubject(record) {
+    const target = String(record.target || '');
+    const labels = {confirmed: '确认', needs_changes: '需要修改', parked: '暂缓'};
+    const [owner, question] = target.split('#question-');
+    if (question) {
+      const req = requirements.find(item => item.requirement_id === owner);
+      const [, asked, answer] = String(record.comment || '').match(/^问题：(.*)\n回答：(.*)$/s) || [null, '', record.comment];
+      return {name: (req?.title || owner) + ' · 问题 ' + question, outcome: record.outcome === 'parked' ? '不影响本期' : '已回答',
+        comment: (asked ? asked + ' → ' : '') + (answer || '')};
+    }
+    if (target.startsWith('prototype/')) {
+      const id = target.split('#')[1];
+      const page = (project.prototype_design?.pages || []).find(item => item.page_id === id);
+      return {name: '原型 · ' + (page?.name || id || '整体'), outcome: record.outcome === 'needs_changes' ? '这页要改' : labels[record.outcome] || record.outcome, comment: record.comment};
+    }
+    const req = requirements.find(item => item.requirement_id === target);
+    return {name: req?.title || nfrTitle(target) || target || '评审意见', outcome: labels[record.outcome] || record.outcome, comment: record.comment};
   }
   // How each version came to be, newest first: analysis, verdicts applied (with the decisions), generation, edits.
   function versionHistory() {
@@ -2283,19 +2382,22 @@
     for (const entry of history) {
       const item = element('li', null, entry.version === project.artifact_version ? 'current' : '');
       const head = element('div', null, 'version-history-head');
-      head.append(element('strong', entry.version), element('span', kinds[entry.kind] || entry.kind, 'pr-kind'), element('span', '基于 ' + (entry.baseline_version || '—') + ' · ' + String(entry.created || '').slice(0, 16).replace('T', ' '), 'inline-note'));
+      head.append(element('strong', entry.version), element('span', kinds[entry.kind] || entry.kind, 'pr-kind'), element('span', (entry.baseline_version ? '基于 ' + entry.baseline_version + ' · ' : '') + shortTime(entry.created), 'inline-note'));
       item.append(head);
       const facts = [];
       if (entry.decisions?.length) {
-        const counts = {};
-        entry.decisions.forEach(decision => { counts[decision.outcome] = (counts[decision.outcome] || 0) + 1; });
-        facts.push(entry.decisions.length + ' 条结论（' + Object.entries(counts).map(([key, count]) => (outcomes[key] || key) + ' ' + count).join('、') + '）');
+        facts.push(entry.decisions.length + ' 条评审结论生效');
       }
       if (entry.changes) facts.push(entry.changes + ' 处内容变化');
       if (entry.conflicts) facts.push(entry.conflicts + ' 处需核对');
       if (entry.document) facts.push('修改 ' + entry.document);
       const made = (entry.generated || []).filter(item => item.status === 'success');
-      if (made.length) facts.push('成果：' + made.map(item => (capabilities[item.capability] || item.capability) + (item.reused_from ? '（沿用 ' + item.reused_from + '）' : '')).join('、'));
+      // Outputs regenerated in this version vs. carried over unchanged from an earlier one.
+      const name = item => capabilities[item.capability] || item.capability;
+      const fresh = made.filter(item => !item.reused_from);
+      if (fresh.length) facts.push('新生成：' + fresh.map(name).join('、'));
+      const reused = made.filter(item => item.reused_from);
+      if (reused.length) facts.push('沿用' + (reused.every(item => item.reused_from === entry.baseline_version) ? '上一版' : '旧版') + '：' + reused.map(name).join('、'));
       if (facts.length) item.append(element('p', facts.join(' · '), 'version-history-facts'));
       if (entry.decisions?.length) {
         const rows = element('ul', null, 'version-history-decisions');

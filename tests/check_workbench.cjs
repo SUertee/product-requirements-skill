@@ -8,7 +8,8 @@ const run = path.resolve(process.argv[2]);
 const repository = path.resolve(__dirname, '..');
 const errors = [];
 const consoleCapture = new VirtualConsole();
-consoleCapture.on('jsdomError', error => errors.push(error.message));
+// jsdom cannot parse @container rules; the browser can, so that notice is not a page error.
+consoleCapture.on('jsdomError', error => { if (error.message !== 'Could not parse CSS stylesheet') errors.push(error.message); });
 const dom = new JSDOM(fs.readFileSync(path.join(run, 'workbench/index.html'), 'utf8'), {
   url: 'http://127.0.0.1:8765/workbench/index.html',
   runScripts: 'outside-only',
@@ -34,6 +35,8 @@ payload.sources.push({...timedSource, source_id: 'OTHER-SOURCE', material_id: 'o
 payload.project.materials.push({material_id: 'other-meeting', name: '其他会议', kind: 'transcript', source_ids: ['OTHER-SOURCE']});
 const lastSourceId = 'SRC-PAGING-34';
 payload.project.requirements[0].source_refs.push(lastSourceId);
+const questioned = payload.project.requirements[1];
+Object.assign(questioned, {review_status: 'confirmed', open_questions: ['本期是否需要导出？']});
 document.getElementById('workbench-data').textContent = JSON.stringify(payload);
 const jobId = 'JOB-' + 'a'.repeat(24);
 const requests = [];
@@ -185,6 +188,9 @@ async function settle() {
   assert.equal(JSON.parse(requests.find(item => item.url === '/api/review').options.body).target, 'REQ-001');
   navigate('review');
   assert.match(document.getElementById('page-content').textContent, /合成评审：需要核对验收/);
+  const logged = document.querySelector('.review-log .review-entry');
+  assert.equal(logged.querySelector('strong').textContent, payload.project.requirements[0].title, 'review notes name the requirement, not its ID');
+  assert(logged.querySelector('.review-pending'), 'a saved note not yet applied is marked 待生效');
   navigate('modules');
   assert(document.querySelector('.review-pending-bar'), 'pending verdicts and edits shown on the requirement page');
   assert.match(document.querySelector('.requirement-identity .status-tag').textContent, /需修改（待生效）/, 'saved verdict shows right away as pending');
@@ -196,6 +202,19 @@ async function settle() {
     {target: 'REQ-001', field: 'acceptance_criteria', value: '主题必填，提交后显示唯一编号'},
     {target: 'REQ-001', field: 'locked_fields', value: []}
   ]);
+  navigate('modules');
+  document.querySelector('.requirement-choice[data-requirement-id="' + questioned.requirement_id + '"]').click();
+  const questionedStatus = () => document.querySelector('.requirement-identity .status-tag');
+  assert.match(questionedStatus().textContent, /待定/, 'a confirmed requirement with an unanswered question is not shown as confirmed');
+  assert.equal(document.querySelector('.requirement-choice[data-requirement-id="' + questioned.requirement_id + '"] .requirement-choice-status').textContent, '待定');
+  const questionForm = document.querySelector('.question-form');
+  questionForm.querySelector('textarea').value = '本期不导出';
+  [...questionForm.querySelectorAll('button')].find(item => item.textContent === '保存回答').click();
+  await settle();
+  assert.equal(JSON.parse(requests.filter(item => item.url === '/api/review').at(-1).options.body).target, questioned.requirement_id + '#question-1');
+  assert.match(questionedStatus().textContent, /已确认/, 'answering the last question settles the requirement');
+  navigate('overview');
+  assert.match(document.querySelector('.panel-count').textContent, /^1 \/ \d+$/, 'the open-items card counts what is settled');
   navigate('documents');
   assert(document.querySelectorAll('.selection-list button').length >= 3);
   button('PRD').click();
@@ -239,7 +258,7 @@ async function settle() {
   assert.equal(document.querySelector('.generation-results'), null);
   button('手机').click();
   assert.equal(document.querySelector('iframe').style.width, '390px');
-  button('桌面').click();
+  button('电脑').click();
   assert.equal(document.querySelector('iframe').style.width, '100%');
   assert.equal(document.querySelector('[aria-label="原型视图"]'), null);
   navigate('technical');

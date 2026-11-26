@@ -67,6 +67,9 @@ class WorkbenchServer(ThreadingHTTPServer):
         allowed = {item['requirement_id'] for item in project['requirements']} | {item['nfr_id'] for item in project.get('nfrs', []) if isinstance(item, dict) and item.get('nfr_id')}
         review = json.loads((run_dir / 'review.json').read_text(encoding='utf-8'))
         allowed.update(item['target'] for item in review['questions'])
+        # Answers to a requirement's open questions: "<requirement_id>#question-<n>" (1-based). They are notes for the
+        # next revision and leave the requirement's own review status alone.
+        allowed.update(item['requirement_id'] + '#question-' + str(index) for item in project['requirements'] for index, _ in enumerate(item.get('open_questions') or [], 1))
         if stage == 'release':
             manifest = json.loads((run_dir / 'manifest.json').read_text())
             allowed = {item['path'] for item in manifest['artifacts'] if item['path'].startswith('prototype/') and item['path'].endswith('.html')}

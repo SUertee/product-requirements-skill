@@ -271,6 +271,22 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(actual['baseline_version'], 'v1')
         self.assertEqual(self.workflow.apply_review(self.run, self.notes(), 'v2')['id'], result['id'])
 
+    def test_review_closes_answered_open_questions(self):
+        baseline = json.loads((Path(self.run) / 'project.json').read_text())
+        baseline['requirements'][0]['open_questions'] = ['首版做哪种场景？', '要不要导出 PPT？', '设备导出够不够？']
+        notes = {'project_id': 'demo', 'artifact_version': 'v1', 'review_stage': 'definition', 'decisions': [
+            {'decision_id': 'D1', 'target': 'REQ-001#question-1', 'outcome': 'confirmed', 'comment': '问题：首版做哪种场景？\n回答：先做 FDE 现场交付', 'artifact_version': 'v1'},
+            {'decision_id': 'D2', 'target': 'REQ-001#question-2', 'outcome': 'parked', 'comment': '问题：要不要导出 PPT？\n回答：不影响本期', 'artifact_version': 'v1'}]}
+        result, _ = apply_review(baseline, notes, 'v2')
+        requirement = result['requirements'][0]
+        self.assertEqual(requirement['open_questions'], ['设备导出够不够？'])
+        self.assertEqual([(item['question'], item['answer'], item['outcome']) for item in requirement['answered_questions']],
+                         [('首版做哪种场景？', '先做 FDE 现场交付', 'answered'), ('要不要导出 PPT？', '不影响本期', 'deferred')])
+        self.assertEqual(requirement['review_status'], baseline['requirements'][0]['review_status'], 'answers leave the requirement status alone')
+        notes['decisions'][0]['target'] = 'REQ-001#question-9'
+        with self.assertRaises(ValueError):
+            apply_review(baseline, notes, 'v2')
+
     def test_review_rejects_other_version(self):
         notes = self.notes()
         notes['artifact_version'] = 'other'

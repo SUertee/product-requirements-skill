@@ -222,12 +222,17 @@ def schema_canvas(project, root):
             raise ValueError('Relation references an unknown field.')
         verified_fk = relation.get('kind') == 'foreign_key' and bool(relation.get('database_evidence'))
         relations.append({'from': source, 'to': target, 'fromColumn': from_field, 'toColumn': to_field, 'kind': 'fk' if verified_fk else 'logical', 'cardinality': relation.get('cardinality') or '待确认', 'label': relation.get('label') or ('外键依据已提供' if verified_fk else '候选逻辑关系')})
+    # Each domain box is only as wide as its tables (up to four per row), and boxes are centred on a canvas
+    # that fits the widest one, so a small model does not sit in the corner of an empty canvas.
+    grid = {domain: min(4, sum(table['domain'] == domain for table in tables)) for domain in domains}
+    width = max(320, max(40 + 220 * columns for columns in grid.values()) + 40)
     positions = {}
     y = 20
     for domain in domains:
         count = sum(table['domain'] == domain for table in tables)
-        height = 90 + ((count + 3) // 4) * 92
-        positions[domain] = [20, y, 930, height]
+        box_width = 40 + 220 * grid[domain]
+        height = 90 + ((count + grid[domain] - 1) // grid[domain]) * 92
+        positions[domain] = [(width - box_width) // 2, y, box_width, height]
         y += height + 25
     height = max(280, y)
     payload = {'tables': tables, 'domains': domains, 'relations': relations,
@@ -236,14 +241,14 @@ def schema_canvas(project, root):
     template = re.sub(r'(<script type="application/json" id="schemaData">).*?(</script>)', lambda match: match[1] + safe_json(payload) + match[2], template, flags=re.S)
     start = template.index('const pos=')
     end = template.index('const byId=', start)
-    template = template[:start] + 'const pos=' + safe_json(positions) + ';const grid=' + safe_json({key: 4 for key in domains}) + ';let selected=' + safe_json(tables[0]['id']) + ",domain='all',relatedOnly=false,showLogical=true,query='';" + template[end:]
+    template = template[:start] + 'const pos=' + safe_json(positions) + ';const grid=' + safe_json(grid) + ';let selected=' + safe_json(tables[0]['id']) + ",domain='all',relatedOnly=false,showLogical=true,query='';" + template[end:]
     template = re.sub(r'<section class="audit">.*?</section>', '', template, flags=re.S)
     title = html.escape(project.get('name', project['project_id']) + ' · 数据模型')
     template = template.replace('FinDesk 数据库关系图', title)
     template = re.sub(r'<title>.*?</title>', '<title>' + title + '</title>', template, count=1, flags=re.S)
     template = re.sub(r'<p class="lead">.*?</p>', '<p class="lead">候选业务模型 · ' + html.escape(project['artifact_version']) + '</p>', template, count=1, flags=re.S)
     template = template.replace('Schema 覆盖', '实体覆盖').replace('当前结构，不包含数据库记录或个人财务数据', '候选模型，字段与关系依据当前项目需求')
-    template = template.replace('width:1500px', 'width:1000px').replace('height:1130px', f'height:{height}px').replace('width="1500" height="1130" viewBox="0 0 1500 1130"', f'width="1000" height="{height}" viewBox="0 0 1000 {height}"')
+    template = template.replace('width:1500px', f'width:{width}px;margin:0 auto').replace('height:1130px', f'height:{height}px').replace('width="1500" height="1130" viewBox="0 0 1500 1130"', f'width="{width}" height="{height}" viewBox="0 0 {width} {height}"')
     embedded_style = """
 :root{--bg:#f3f5f8;--paper:#fdfefe;--ink:#202d40;--muted:#5f6e83;--line:#dfe5ed;--blue:#2863d6;--blueSoft:#edf3ff}
 .tableNode b{font-size:14px}.tableNode span{font-size:12px}.columns,.columns code{font-size:13px}.domainBox strong{font-size:14px}.domainBox small{font-size:12px}.canvasWrap{min-height:280px}.panelHead p{font-size:13px}.rel b,.rel span{font-size:12px}
