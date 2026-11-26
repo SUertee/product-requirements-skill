@@ -19,6 +19,9 @@ NFR_CATEGORIES = {
     'compliance': '审计与合规', 'other': '其他',
 }
 DEVICES = {'desktop', 'tablet', 'mobile'}
+# Prototype archetypes (原型形态). Each has its own shell layout and build rules in references/prototype.md; all of them
+# share the one UI spec in assets/ui.css. Designs written before archetypes existed are treated as workspace.
+ARCHETYPES = {'workspace', 'dashboard', 'mobile_app', 'chat', 'website', 'flow'}
 STATES = {'empty', 'loading', 'error', 'denied', 'success'}
 IDENTITY = re.compile(r'^[a-z][a-z0-9-]{0,47}$')
 MAX_PAGE_MARKUP = 200_000
@@ -118,6 +121,8 @@ def check_design(project):
     positioning = design.get('positioning')
     require(isinstance(positioning, dict) and text(positioning.get('product_type')) and text(positioning.get('main_flow')),
             'positioning needs product_type and main_flow')
+    archetype = positioning.get('archetype', 'workspace')
+    require(archetype in ARCHETYPES, 'positioning.archetype must be one of ' + ', '.join(sorted(ARCHETYPES)))
     devices = positioning.get('target_devices')
     require(isinstance(devices, list) and devices and set(devices) <= DEVICES, 'positioning.target_devices must use desktop, tablet or mobile')
     global_nfrs = positioning.get('nfr_ids', [])
@@ -218,6 +223,7 @@ def check_design(project):
         'pages': page_reports,
         'requirements': {'in_scope': len(in_scope), 'covered': sorted(covered_reqs), 'excluded': excluded},
         'nfrs': nfr_rows,
+        'archetype': archetype,
         'target_devices': devices,
         'global_nfr_ids': global_nfrs,
     }

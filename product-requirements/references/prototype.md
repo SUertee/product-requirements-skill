@@ -12,11 +12,31 @@
 
 按顺序完成，结果写入 project.json 的 `nfrs` 和 `prototype_design`。
 
-1. **项目定位**：从需求画像和 design_context 判断产品类型、主要角色、目标设备和一条核心主流程。产品类型的页面结构参照 [内置 UI 规范](ui-design.md)。
+1. **项目定位**：先确定原型形态（见下节），再定主要角色、目标设备和一条核心主流程。形态决定外壳布局和页面写法，所有形态共用 [内置 UI 规范](ui-design.md)。
 2. **整理 NFR**：分析时已整理的先核对补全；没有的从原话中识别性能与数据量、权限与安全、兼容与设备、可靠性与失败处理、易用性、无障碍、审计与合规等约束。每条保留原话依据和证据类型，模型推断的标为 inferred，初始为 draft，等待人工确认。
 3. **信息架构**：确定导航、页面清单、各角色可见的页面，以及每条已确认 FR 落在哪个页面。不需要界面的需求写入 `excluded_requirements` 并说明原因。
 4. **页面设计**：每页写目的、关联 FR／NFR、需要演示的状态（空数据、加载中、出错、无权限、成功），再写页面内容和交互脚本。
 5. **示例数据**：按业务数据模型准备足够演示分页、筛选和角色差异的示例记录，标明为示例。
+
+## 原型形态
+
+一个原型只对应一种形态，写入 `positioning.archetype`。外壳按形态换骨架和导航；颜色、字号、圆角、按钮、表单、卡片、表格和状态在所有形态里一致，都用 assets/ui.css。
+
+| 形态 | archetype | 适用 | 外壳 | 页面怎么写 | 默认设备 |
+| --- | --- | --- | --- | --- | --- |
+| 工作台／管理后台 | `workspace` | 内部业务系统、CRM、工单、审核后台 | 左侧深色导航 | 页面标题和主操作在上，筛选 + 列表（`ui-table-scroll`），点行进详情（`nav: false`）；批量和危险操作二次确认 | desktop |
+| 数据看板 | `dashboard` | 经营分析、监控、报表 | 左侧导航，内容区更宽 | 顶部时间与维度筛选，`ui-grid` 放 `ui-stat` 指标卡（写口径），下面趋势与明细表，注明数据来源和更新时间 | desktop |
+| 移动应用 | `mobile_app` | App、小程序、H5 服务 | 顶部标题栏 + 底部标签栏（3–5 个导航页） | 单列：`ui-list` 列表行、卡片、单列表单；主操作放在内容末尾，触控目标至少 44px；详情、编辑页不进标签栏 | mobile |
+| 对话／聊天 | `chat` | 客服、AI 助手、社群、即时消息 | 顶部导航条 | 会话页用 `ui-chat`：`ui-messages` 里放 `ui-message`（自己的加 `mine`），底部 `ui-composer` 输入框；演示发送中、发送失败可重发、空会话；AI 回复标明来源或“生成中” | desktop、mobile |
+| 网站／落地页 | `website` | 官网、产品介绍、活动页、内容站 | 顶部浅色导航条，内容最宽 1120px | 首屏 `ui-hero`（标题、一句话价值、主按钮），其后 `ui-section` 分段，表单留资；不放后台式表格 | desktop、mobile |
+| 流程／表单 | `flow` | 报名、申请、审批发起、开户、下单 | 顶部导航条，内容最宽 760px | 每页一步，顶部 `ui-steps`（当前步 `aria-current="step"`），单列表单、就近校验，最后一步是确认与结果 | desktop、mobile |
+
+判断方法：
+
+- 从需求画像、角色、使用场景和会议原话判断。比如“客户在手机上下单”是 `mobile_app` 或 `flow`，“主管看每日数据”是 `dashboard`，“坐席回复客户消息”是 `chat`。
+- 需求里没说清，或同时有多种端（例如用户端 App 和管理后台），设计前问用户一次：列出候选形态和各自依据，请用户选本期原型做哪一种。另一端在后续版本单独出原型。
+- 无人值守运行时取最贴近核心主流程的形态，并在 `design_context` 记下理由，留给复核。
+- 旧设计没有 `archetype` 时按 `workspace` 处理。
 
 ## NFR 在原型中的体现
 
@@ -41,7 +61,7 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| positioning | product_type、target_devices（desktop／tablet／mobile）、main_flow，可选 nfr_ids |
+| positioning | archetype（见原型形态）、product_type（具体业务说法）、target_devices（desktop／tablet／mobile）、main_flow，可选 nfr_ids |
 | roles | 可选，role_id（小写字母、数字、连字符）与 name。多于一个角色时原型显示角色切换 |
 | start_page_id | 默认打开的页面 |
 | sample_data | 示例数据，页面脚本通过 `P.data` 读写 |
@@ -53,7 +73,7 @@
 
 ## 页面内容约定
 
-- `markup` 是页面主体 HTML，使用 assets/ui.css 的 `ui-card`、`ui-field`、`ui-button primary`、`ui-actions`、`ui-table-scroll`、`ui-stack`、`ui-title` 等类。不写 script、iframe、外部链接与资源、内联事件。
+- `markup` 是页面主体 HTML，使用 assets/ui.css 的通用类：`ui-title`、`ui-card`、`ui-stack`、`ui-grid`、`ui-field`、`ui-button primary`、`ui-actions`、`ui-table-scroll`、`ui-list`、`ui-stat`、`ui-badge`，以及形态专用的 `ui-chat`／`ui-messages`／`ui-message`／`ui-composer`、`ui-hero`／`ui-section`、`ui-steps`。先用这些类，确实不够再写页面 css。不写 script、iframe、外部链接与资源、内联事件。
 - 在实现某条 FR 的元素上写 `data-req="REQ-001"`，体现 NFR 的元素上写 `data-nfr="NFR-001"`，多个编号用空格分隔。页面声明的编号都要标在元素上，未声明的编号不能出现。工作台用这些标注做“标注需求”高亮。
 - `data-goto="page_id"` 跳转页面，`data-param-id="T-1001"` 这类属性随跳转传参。`data-roles="agent,supervisor"` 限定元素对哪些角色可见。
 - `data-state="error"` 的元素默认隐藏，`P.setState('error')` 或带 `data-show-state="error"` 的按钮显示它。页面声明的每个状态都要有对应元素。

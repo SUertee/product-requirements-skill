@@ -8,7 +8,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'product-requirements/scripts'))
-from prototype_design import check_design, validate_nfrs
+from prototype_design import build, check_design, validate_nfrs
 from prototype_fixture import exercise_designed, service_desk_project
 
 
@@ -30,6 +30,17 @@ class PrototypeDesignChecks(unittest.TestCase):
         kinds = {row['nfr_id']: row['kind'] for row in report['nfrs']}
         self.assertEqual(kinds['NFR-007'], 'not_applicable')
         self.assertEqual(kinds['NFR-002'], 'shown')
+
+    def test_archetype_defaults_to_workspace_and_must_be_known(self):
+        _, report = check_design(confirmed_project())
+        self.assertEqual(report['archetype'], 'workspace')
+        project = confirmed_project()
+        project['prototype_design']['positioning']['archetype'] = 'mobile_app'
+        design, report = check_design(project)
+        self.assertEqual(report['archetype'], 'mobile_app')
+        self.assertIn('"archetype": "mobile_app"', build(project, design, report))
+        project['prototype_design']['positioning']['archetype'] = '小程序'
+        self.assertRejected(project, 'positioning.archetype must be one of')
 
     def assertRejected(self, project, fragment):
         with self.assertRaises(ValueError) as caught:
