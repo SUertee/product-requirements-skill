@@ -4,7 +4,7 @@
 <style>__PROTOTYPE_STYLE__
 html,body{overflow-x:clip}
 .ui-nav{display:flex;flex-direction:column;gap:20px}
-.ui-nav h1{font-size:var(--ui-text-lg);line-height:1.4;margin:0}
+.ui-nav h1{font-size:var(--ui-text-md);font-weight:600;line-height:1.5;margin:0;padding:0 12px}
 .ui-nav nav{display:grid;gap:4px}
 .ui-nav a[aria-current="page"]{background:var(--ui-nav-active)}
 .pt-role{display:grid;gap:6px;font-size:var(--ui-text-sm)}
@@ -20,6 +20,10 @@ html[data-annotate] [data-req],html[data-annotate] [data-nfr]{outline:2px dashed
 html[data-annotate] [data-nfr]:not([data-req]){outline-color:var(--ui-warning-mark)}
 html[data-annotate] [data-req]::before,html[data-annotate] [data-nfr]::before{content:attr(data-req) " " attr(data-nfr);position:absolute;top:-11px;right:4px;padding:0 6px;border-radius:var(--ui-radius-sm);background:var(--ui-accent);color:var(--ui-on-accent);font-size:var(--ui-text-xs);line-height:18px;font-weight:600;white-space:nowrap;z-index:5;pointer-events:none}
 html[data-annotate] [data-nfr]:not([data-req])::before{background:var(--ui-warning-mark)}
+.pt-nav-group{margin:16px 12px 4px;font-size:var(--ui-text-xs);font-weight:600;color:var(--ui-nav-muted);letter-spacing:.02em}
+.pt-nav-group:first-child{margin-top:4px}
+html:not([data-archetype="workspace"]):not([data-archetype="dashboard"]) .pt-nav-group{display:none}
+@media (max-width:899px){.pt-nav-group{display:none}}
 /* Archetype skeletons: one UI spec, different navigation. workspace/dashboard keep the side nav, mobile_app uses .pt-mobile. */
 html[data-archetype="website"] .ui-shell,html[data-archetype="flow"] .ui-shell,html[data-archetype="chat"] .ui-shell{display:block}
 html[data-archetype="website"] .ui-nav,html[data-archetype="flow"] .ui-nav,html[data-archetype="chat"] .ui-nav{position:sticky;top:0;z-index:10;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 24px;padding:12px 32px}
@@ -45,6 +49,7 @@ html[data-archetype="dashboard"] .ui-main{max-width:1600px}
 @media (max-width:599px){.ui-main .pt-page{overflow-wrap:anywhere}.ui-main .pt-page img,.ui-main .pt-page video{max-width:100%;height:auto}.ui-actions .ui-button{flex:1 1 auto}}
 .pt-feedback{position:fixed;right:24px;bottom:24px;z-index:15;box-shadow:var(--ui-shadow-overlay)}
 .pt-mobile .pt-feedback{right:16px;bottom:84px}
+html[data-archetype="chat"] .pt-feedback{bottom:104px}
 .pt-pickbar{position:fixed;left:50%;top:16px;transform:translateX(-50%);z-index:30;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;max-width:calc(100vw - 32px);padding:10px 12px 10px 16px;border-radius:var(--ui-radius);background:var(--ui-nav);color:var(--ui-nav-ink);box-shadow:var(--ui-shadow-overlay);font-size:var(--ui-text-sm)}
 .pt-pickbar .ui-button{min-height:36px;padding:4px 12px;font-size:var(--ui-text-sm)}
 html[data-picking] #screen,html[data-picking] #screen *{cursor:crosshair !important}
@@ -104,8 +109,14 @@ html[data-picking] #screen,html[data-picking] #screen *{cursor:crosshair !import
   }
   function drawNav() {
     const nav = document.getElementById('pages'); nav.replaceChildren();
+    // Side navigation follows the solution's business modules: a heading whenever the module changes.
+    const moduleNames = Object.fromEntries((data.modules || []).map(item => [item.module_id, item.name]));
+    const grouped = (data.modules || []).length > 1;
+    let lastModule;
     for (const page of data.pages) {
       if (page.nav === false || !allowed(page)) continue;
+      if (grouped && page.module_id && page.module_id !== lastModule && moduleNames[page.module_id]) nav.append(h('p', {class: 'pt-nav-group', text: moduleNames[page.module_id]}));
+      lastModule = page.module_id;
       const link = h('a', {href: '#' + encodeURIComponent(page.page_id), 'data-page': page.page_id, text: page.name});
       if (page.page_id === current) link.setAttribute('aria-current', 'page');
       nav.append(link);
@@ -277,6 +288,16 @@ html[data-picking] #screen,html[data-picking] #screen *{cursor:crosshair !import
   document.addEventListener('click', event => {
     const goto = event.target.closest('[data-goto]');
     if (goto) { event.preventDefault(); const values = {}; for (const [key, value] of Object.entries(goto.dataset)) if (key.startsWith('param')) values[key.slice(5).toLowerCase()] = value; P.go(goto.dataset.goto, values); return; }
+    // In the workbench preview (srcdoc) a "#page" link resolves against the workbench URL and would load the workbench
+    // into the frame, so in-page anchors switch pages here instead of navigating.
+    const anchor = event.target.closest('a[href^="#"]');
+    if (anchor && !event.defaultPrevented) {
+      event.preventDefault();
+      let id = ''; try { id = decodeURIComponent(anchor.getAttribute('href').slice(1)); } catch { /* ignore */ }
+      if (pages.has(id)) P.go(anchor.dataset.page || id);
+      else if (id) document.getElementById(id)?.scrollIntoView();
+      return;
+    }
     const state = event.target.closest('[data-show-state]');
     if (state) { event.preventDefault(); setState(state.dataset.showState); }
   });

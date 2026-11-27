@@ -135,6 +135,9 @@ def read_inputs(project_path, sources_path):
         page_ids.add(page_id)
         refs = page.get('requirement_ids')
         require(isinstance(refs, list) and all(nonempty(ref) and ref in requirement_ids for ref in refs), f'{page_id} has invalid requirement_ids')
+    # Technical design is derived from the prototype: APIs and components name the prototype pages they serve.
+    design_pages = (project.get('prototype_design') or {}).get('pages') if isinstance(project.get('prototype_design'), dict) else None
+    prototype_page_ids = {item.get('page_id') for item in design_pages or [] if isinstance(item, dict)} or page_ids
     for field, identity in [('modules', 'module_id'), ('apis', 'api_id'), ('meetings', 'meeting_id'), ('materials', 'material_id')]:
         records = project.get(field, [])
         require(isinstance(records, list), f'{field} must be an array')
@@ -147,6 +150,9 @@ def read_inputs(project_path, sources_path):
             if field in {'modules', 'apis'}:
                 refs = record.get('requirement_ids', [])
                 require(isinstance(refs, list) and all(nonempty(ref) and ref in requirement_ids for ref in refs), f'{key} has invalid requirement_ids')
+            if field == 'apis':
+                refs = record.get('page_ids', [])
+                require(isinstance(refs, list) and all(nonempty(ref) and ref in prototype_page_ids for ref in refs), f'{key} has invalid page_ids; use prototype page IDs')
             if field == 'materials':
                 refs = record.get('source_ids', [])
                 require(isinstance(refs, list) and all(nonempty(ref) and ref in sources for ref in refs), f'{key} has invalid source_ids')
@@ -172,7 +178,7 @@ def read_inputs(project_path, sources_path):
                 values = component.get(key, [])
                 require(isinstance(values, list) and all(nonempty(value) for value in values), 'Component ' + key + ' must contain text items')
             require(component.get('responsibility') is None or nonempty(component.get('responsibility')), 'Component responsibility must be text')
-            for key, allowed in [('requirement_ids', requirement_ids), ('source_refs', sources)]:
+            for key, allowed in [('requirement_ids', requirement_ids), ('source_refs', sources), ('page_ids', prototype_page_ids)]:
                 refs = component.get(key, [])
                 require(isinstance(refs, list) and all(nonempty(ref) and ref in allowed for ref in refs), 'Component has invalid ' + key)
 
@@ -442,7 +448,10 @@ def render_agent_prompt(project, sources, questions):
         for page in pages:
             refs = '、'.join(page.get('requirement_ids', [])) or '无'
             states = '、'.join({'empty': '空数据', 'loading': '加载中', 'error': '出错', 'denied': '无权限', 'success': '成功'}.get(state, state) for state in page.get('states', []))
-            lines.append(f'- **{page.get("name") or page["page_id"]}**：{page.get("purpose") or page.get("task") or ""}（需求 {refs}' + (f'；状态 {states}' if states else '') + '）')
+            serves = [item.get('name') or item.get('api_id') for item in project.get('apis', []) if page['page_id'] in item.get('page_ids', [])]
+            serves += [item['name'] for item in (project.get('technical_architecture') or {}).get('components', []) if page['page_id'] in item.get('page_ids', [])]
+            lines.append(f'- **{page.get("name") or page["page_id"]}**：{page.get("purpose") or page.get("task") or ""}（需求 {refs}' + (f'；状态 {states}' if states else '')
+                         + (f'；技术实现 {"、".join(serves)}' if serves else '') + '）')
         lines.append('')
     entities = (project.get('business_model') or {}).get('entities') or []
     if entities:

@@ -1245,6 +1245,11 @@
         const links = element('div', null, 'component-requirements'); links.append(element('h3', '关联需求'));
         related.forEach(req => links.append(requirementLink(req))); detail.append(links);
       }
+      const pages = prototypePages().filter(page => node.page_ids?.includes(page.page_id));
+      if (pages.length) {
+        const links = element('div', null, 'component-requirements'); links.append(element('h3', '服务页面'));
+        pages.forEach(page => links.append(prototypePageLink(page))); detail.append(links);
+      }
       frame?.contentWindow?.postMessage({type: 'product-requirements:architecture-state', selected: nodes.indexOf(node)}, '*');
       if (reveal) detail.querySelector('h2')?.scrollIntoView?.({block: 'nearest'});
     }
@@ -1704,6 +1709,7 @@
   let selectedPrototypePage = null;
   let prototypeAnnotate = false;
   // Page-by-page review of the prototype, recorded as release-stage verdicts on "prototype/index.html#<page_id>".
+  let prototypeSpecOpen = false;
   let prototypeDraft = null; // {page_id, location}: a place picked in the prototype, waiting for its comment
   let prototypeReviewBusy = false;
   let prototypeReviewMessage = '';
@@ -1820,9 +1826,15 @@
     pick.setAttribute('aria-pressed', 'false');
     pick.addEventListener('click', () => { const on = pick.getAttribute('aria-pressed') !== 'true'; pick.setAttribute('aria-pressed', String(on)); frame.contentWindow?.postMessage({type: 'prototype:pick', on}, '*'); });
     if (serverState) tools.append(pick);
-    tools.append(annotate, fileLink(artifact.path, '独立打开'));
+    // The project's design spec (positioning.theme): what the prototype's colours, type and shapes were built from.
+    const spec = designSpec(design.positioning || {});
+    const specButton = iconLabel(element('button', '设计规范', 'button ghost small'), 'documents'); specButton.type = 'button';
+    specButton.setAttribute('aria-pressed', String(prototypeSpecOpen));
+    specButton.addEventListener('click', () => { prototypeSpecOpen = !prototypeSpecOpen; specButton.setAttribute('aria-pressed', String(prototypeSpecOpen)); spec.hidden = !prototypeSpecOpen; });
+    spec.hidden = !prototypeSpecOpen;
+    tools.append(specButton, annotate, fileLink(artifact.path, '独立打开'));
     toolbar.append(switcher, tools);
-    content.append(toolbar);
+    content.append(toolbar, spec);
     const fileTarget = artifact.path;
     const pageTarget = id => fileTarget + '#' + id;
     function verdicts() {
@@ -1935,6 +1947,8 @@
       head.append(element('span', '当前页', 'page-spec-eyebrow'), element('h2', page.name), element('p', page.purpose, 'prototype-purpose'));
       const spec = element('dl', null, 'page-spec');
       const row = (label, body) => { const value = element('dd'); value.append(body); spec.append(element('dt', label), value); };
+      const module = pageModule(page);
+      if (module) row('所属模块', element('span', module.name));
       const reqs = (page.requirement_ids || []).map(id => requirements.find(req => req.requirement_id === id)).filter(Boolean);
       if (reqs.length) {
         const rows = element('ul', null, 'prototype-links');
@@ -1947,6 +1961,10 @@
       const roleNames = Object.fromEntries((design.roles || []).map(role => [role.role_id, role.name]));
       if (page.states?.length) row('可演示状态', chips(page.states.map(state => stateNames[state] || state)));
       if (page.roles?.length) row('可见角色', chips(page.roles.map(role => roleNames[role] || role)));
+      const servers = pageServers(page.page_id);
+      const links = items => { const box = element('div', null, 'index-links'); items.forEach(item => box.append(item)); return box; };
+      if (servers.apis.length) row('接口', links(servers.apis.map(item => indexLink(item.name || item.api_id, () => openApi(item.api_id)))));
+      if (servers.components.length) row('架构构件', links(servers.components.map(item => indexLink(item.name, () => openComponent(item.id)))));
       mapping.replaceChildren(head);
       if (spec.children.length) mapping.append(spec);
     }
@@ -1976,6 +1994,37 @@
     content.append(layout);
     drawMapping();
     drawReviewBar();
+  }
+  function designSpec(positioning) {
+    const theme = positioning.theme || {};
+    const archetype = positioning.archetype || 'workspace';
+    const card = element('section', null, 'panel design-spec'); card.setAttribute('aria-label', '设计规范');
+    const sources = {'ui-ux-pro-max': '由 UI/UX Pro Max 按产品类型推荐', brand: '客户品牌色', default: '内置默认'};
+    const source = theme.source || (theme.accent ? 'brand' : 'default');
+    const head = element('header', null, 'design-spec-head');
+    head.append(element('h2', theme.style || '统一规范'), element('span', sources[source] || source, 'design-spec-source'));
+    card.append(head);
+    if (theme.keywords) card.append(element('p', theme.keywords, 'design-spec-keywords'));
+    const colours = [['主色', theme.accent || '#2863d6'], ['页面底色', theme.page || '#f3f5f8'], ['卡片', theme.surface || '#ffffff'],
+      ['文字', theme.ink || '#202d40'], ['次要文字', theme.muted || '#5f6e83'], ['边框', theme.border || '#dfe5ed']];
+    const swatches = element('ul', null, 'design-swatches');
+    for (const [name, value] of colours) {
+      const item = element('li'); const chip = element('span', null, 'design-swatch'); chip.style.background = value;
+      item.append(chip, element('strong', name), element('code', value.toUpperCase())); swatches.append(item);
+    }
+    const names = {
+      archetype: {workspace: '工作台／管理后台', dashboard: '数据看板', mobile_app: '移动应用', chat: '对话／聊天', website: '网站／落地页', flow: '流程／表单'},
+      font: {sans: '无衬线', serif: '衬线', rounded: '圆体', mono: '等宽'}, radius: {sharp: '方正', default: '适中', round: '圆润'},
+      density: {compact: '紧凑', default: '适中', comfortable: '宽松'}, elevation: {flat: '平面', soft: '浅阴影'}, nav: {light: '浅色', dark: '深色'},
+    };
+    const nav = theme.nav || (['workspace', 'dashboard'].includes(archetype) ? 'dark' : 'light');
+    const facts = element('dl', null, 'design-spec-facts');
+    for (const [label, value] of [['形态', names.archetype[archetype]], ['导航', names.nav[nav]], ['字体', names.font[theme.font || 'sans']],
+      ['圆角', names.radius[theme.radius || 'default']], ['密度', names.density[theme.density || 'default']], ['卡片', names.elevation[theme.elevation || 'flat']]]) {
+      const pair = element('div'); pair.append(element('dt', label), element('dd', value || '—')); facts.append(pair);
+    }
+    card.append(swatches, facts, element('p', (source === 'ui-ux-pro-max' ? '风格名和关键词来自推荐，只换算成上面的颜色、字体、圆角、密度和卡片层次，特效不带入原型。' : '') + '字号、间距、按钮、表单、表格和状态色在所有项目里一致，见内置 UI 规范。要改哪一项，用「提修改意见」写在原型上。', 'inline-note'));
+    return card;
   }
   function prototype() {
     const artifact = data.artifacts.find(item => item.path === 'prototype/index.html');
@@ -2087,6 +2136,23 @@
     map.append(grid);
     content.append(map, entityDetail(current, links, entitiesById));
   }
+  // Technical design is drawn from the prototype: pages, APIs and components index each other by page_ids.
+  function prototypePages() { return project.prototype_design?.pages || []; }
+  function pageServers(pageId) {
+    return {apis: (project.apis || []).filter(item => item.page_ids?.includes(pageId)),
+      components: (project.technical_architecture?.components || []).filter(item => item.page_ids?.includes(pageId))};
+  }
+  function pageModule(page) { return (project.modules || []).find(module => module.module_id === page.module_id); }
+  function openPrototypePage(pageId) { selectedPrototypePage = pageId; navigate('prototype'); }
+  let selectedApi = null;
+  function openApi(apiId) { selectedApi = apiId; technicalTab = 'api'; navigate('technical'); }
+  function openComponent(id) { selectedArchitecture = id; technicalTab = 'diagrams'; navigate('technical'); }
+  function indexLink(label, open) { const link = element('button', label, 'source-link'); link.type = 'button'; link.addEventListener('click', open); return link; }
+  function prototypePageLink(page) {
+    const link = element('button', page.name, 'source-link'); link.type = 'button';
+    link.addEventListener('click', () => openPrototypePage(page.page_id));
+    return link;
+  }
   // ParTrace-style API table: header row, one group per business module, one row per endpoint; click a row for request / response / errors.
   function apiModule(item) {
     const modules = project.modules || [];
@@ -2110,7 +2176,8 @@
       title.append(element('strong', (index + 1) + '. ' + (group.module?.name || '未归属模块')), element('span', group.items.length + ' 个接口'));
       list.append(title);
       for (const item of group.items) {
-        const row = element('details', null, 'api-row');
+        const row = element('details', null, 'api-row'); row.dataset.apiId = item.api_id;
+        if (item.api_id === selectedApi) { row.open = true; selectedApi = null; requestAnimationFrame(() => row.scrollIntoView?.({block: 'center'})); }
         const summary = element('summary');
         const method = element('span', String(item.method || '—').toUpperCase(), 'api-method'); method.dataset.method = String(item.method || '').toUpperCase();
         summary.append(method, element('code', display(item.path), 'api-path'), element('span', item.name || item.api_id, 'api-name'), element('span', states[item.review_status] || item.review_status || '草稿', 'api-status'));
@@ -2124,6 +2191,8 @@
         }
         const related = requirements.filter(req => item.requirement_ids?.includes(req.requirement_id));
         if (related.length) { const links = element('p', '关联需求：', 'inline-note api-related'); related.forEach(req => links.append(requirementLink(req))); body.append(links); }
+        const callers = prototypePages().filter(page => item.page_ids?.includes(page.page_id));
+        if (callers.length) { const links = element('p', '调用页面：', 'inline-note api-related'); callers.forEach(page => links.append(prototypePageLink(page))); body.append(links); }
         row.append(body); list.append(row);
       }
     });

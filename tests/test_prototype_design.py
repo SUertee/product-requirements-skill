@@ -56,7 +56,40 @@ class PrototypeDesignChecks(unittest.TestCase):
         _, report = check_design(project)
         self.assertEqual((report['theme']['nav'], report['theme']['notes']), ('dark', []))
         positioning['theme'] = {'accent': 'orange'}
-        self.assertRejected(project, 'positioning.theme needs accent as #RRGGBB')
+        self.assertRejected(project, 'positioning.theme.accent must be #RRGGBB')
+
+    def test_design_spec_sets_colours_font_radius_density_and_elevation(self):
+        project = confirmed_project()
+        positioning = project['prototype_design']['positioning']
+        positioning.update(archetype='website', theme={'source': 'ui-ux-pro-max', 'style': 'Minimalism', 'accent': '#0369a1', 'page': '#f8fafc',
+                                                       'ink': '#0f172a', 'font': 'serif', 'radius': 'sharp', 'density': 'comfortable', 'elevation': 'soft'})
+        design, report = check_design(project)
+        self.assertEqual((report['theme']['source'], report['theme']['font'], report['theme']['radius']), ('ui-ux-pro-max', 'serif', 'sharp'))
+        html = build(project, design, report)
+        for token in ('--ui-page:#f8fafc;', '--ui-radius-sm:4px;', '--ui-control-height:48px;', '--ui-card-shadow:0 1px 2px', '--ui-font-heading:"Noto Serif SC"'):
+            self.assertIn(token, html)
+        positioning['theme'] = {'page': '#111827'}
+        self.assertRejected(project, 'positioning.theme.page must be a light background')
+        positioning['theme'] = {'ink': '#9ca3af'}
+        self.assertRejected(project, 'positioning.theme.ink needs 7:1 contrast')
+        positioning.update(archetype='mobile_app', theme={'density': 'compact'})
+        self.assertRejected(project, 'density cannot be compact')
+        positioning['theme'] = {'shadow': 'big'}
+        self.assertRejected(project, 'positioning.theme fields')
+
+    def test_ui_design_system_converts_to_a_design_spec(self):
+        from prototype_design import theme_from_design_system
+        result = {'design_system': {'style': {'name': 'Claymorphism', 'keywords': 'Soft 3D, chunky, playful, bubbly'},
+                                    'colors': {'primary': '#0F172A', 'accent': '#0369A1', 'background': '#EFF6FF', 'foreground': '#0F172A',
+                                               'card': '#FFFFFF', 'muted_foreground': '#475569', 'border': '#E4ECFC'},
+                                    'typography': {'heading': 'Baloo 2', 'body': 'Comic Neue', 'mood': 'kids'}}}
+        theme = theme_from_design_system(result, 'website')
+        self.assertEqual(theme['accent'], '#0369a1', 'a near-black primary hands over to the CTA colour')
+        self.assertEqual((theme['page'], theme['font'], theme['radius'], theme['elevation'], theme['nav']), ('#eff6ff', 'rounded', 'round', 'soft', 'light'))
+        dark = {'colors': {'primary': '#22C55E', 'background': '#020617', 'foreground': '#F8FAFC'}, 'style': {'name': 'Dark Mode (OLED)'}, 'typography': {'heading': 'Fira Code'}}
+        theme = theme_from_design_system(dark, 'dashboard')
+        self.assertNotIn('page', theme, 'dark palettes are not carried into the light prototype')
+        self.assertEqual((theme['accent'], theme['font'], theme['density']), ('#22c55e', 'mono', 'compact'))
 
     def test_page_css_must_fit_a_phone(self):
         from prototype_design import rigid_layout
@@ -70,6 +103,42 @@ class PrototypeDesignChecks(unittest.TestCase):
         project = confirmed_project()
         project['prototype_design']['pages'][0]['css'] = '.svc-x{display:grid;grid-template-columns:repeat(3,1fr)}'
         self.assertRejected(project, 'without an @media rule for narrow screens')
+
+    def test_pages_follow_solution_modules(self):
+        project = confirmed_project()
+        project['modules'] = [{'module_id': 'desk', 'name': '工单处理', 'requirement_ids': ['REQ-001', 'REQ-002', 'REQ-004']},
+                              {'module_id': 'dispatch', 'name': '指派', 'requirement_ids': ['REQ-003']}]
+        self.assertRejected(project, 'needs module_id')
+        for page in project['prototype_design']['pages']:
+            page['module_id'] = 'desk'
+        # The tickets page carries REQ-003, which the solution puts in another module.
+        self.assertRejected(project, 'carries REQ-003 from another module')
+        project['modules'][1]['requirement_ids'] = []
+        project['modules'][0]['requirement_ids'].append('REQ-003')
+        _, report = check_design(project)
+        self.assertEqual(report['pages'][0]['module_id'], 'desk')
+        self.assertEqual(report['modules'][0]['page_ids'], ['tickets', 'create', 'detail'])
+        self.assertEqual(report['modules'][1]['page_ids'], [])
+        payload = build(project, *check_design(project))
+        self.assertIn('"module_id": "desk"', payload)
+        project['prototype_design']['pages'][0]['module_id'] = 'nope'
+        self.assertRejected(project, 'needs module_id')
+
+    def test_page_styles_use_design_tokens(self):
+        from prototype_design import loose_styles
+        self.assertEqual(loose_styles('.a{color:#fff;background:rgb(0 0 0/.2);border:1px solid red}'),
+                         ['color: #fff', 'background: rgb(', 'border: red'])
+        self.assertEqual(loose_styles('.a{font-size:13px;font-family:Georgia;border-radius:12px}'),
+                         ['font-size: 13px', 'font-family: Georgia', 'border-radius: 12px'])
+        self.assertEqual(loose_styles('#red-row .a:hover{color:var(--ui-ink);border-radius:0;font-size:var(--ui-text-sm);'
+                                      'background:color-mix(in srgb, var(--ui-accent) 12%, var(--ui-surface));--x:#fff}'), [])
+        project = confirmed_project()
+        project['prototype_design']['pages'][0]['css'] += '.svc-x{background:#fde68a}'
+        self.assertRejected(project, 'css hard-codes background: #fde68a')
+        project = confirmed_project()
+        page = project['prototype_design']['pages'][0]
+        page['markup'] = page['markup'].replace('<section class="ui-card"', '<section style="color:#333" class="ui-card"', 1)
+        self.assertRejected(project, 'style attribute hard-codes color: #333')
 
     def assertRejected(self, project, fragment):
         with self.assertRaises(ValueError) as caught:

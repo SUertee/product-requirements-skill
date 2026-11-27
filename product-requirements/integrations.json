@@ -12,5 +12,12 @@
     "skill_subdirectory": ".",
     "license": "MIT",
     "environment_variable": "SCHEMA_CANVAS_SKILL_DIR"
+  },
+  "ui-ux-pro-max": {
+    "repository": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill",
+    "commit": "b73ee96f8d4ff7bbc279c52dadcd907ffe23629c",
+    "skill_subdirectory": ".claude/skills/ui-ux-pro-max",
+    "license": "MIT",
+    "environment_variable": "UI_UX_PRO_MAX_SKILL_DIR"
   }
 }

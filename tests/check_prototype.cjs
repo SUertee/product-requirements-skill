@@ -98,6 +98,12 @@ const createId = data.project.prototype_design.pages.find(item => item.name.star
 pw.dispatchEvent(new pw.MessageEvent('message', {source: frame.contentWindow, data: {type: 'prototype:page', page_id: createId}}));
 assert.match(mapping(), /提交失败可重试/);
 assert.equal(frame.getAttribute('srcdoc'), initialSrcdoc, 'following the frame does not reload it');
+const specButton = [...pd.querySelectorAll('.prototype-toolbar button')].find(node => node.textContent.trim() === '设计规范');
+assert.ok(pd.querySelector('.design-spec').hidden, 'the design spec is folded away by default');
+specButton.click();
+assert.equal(pd.querySelector('.design-spec').hidden, false);
+assert.equal(pd.querySelectorAll('.design-swatches li').length, 6, 'accent, page, card, text, secondary text and border');
+assert.match(pd.querySelector('.design-spec-facts').textContent, /形态.*导航.*字体.*圆角.*密度.*卡片/);
 const mobile = [...pd.querySelectorAll('.device-switch button')].find(node => node.textContent.trim() === '手机');
 mobile.click();
 assert.equal(frame.dataset.device, 'mobile');

@@ -183,18 +183,18 @@ CSS = r"""
 .svc-search{display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin-bottom:8px}
 .svc-search .ui-field{flex:1;min-width:200px}
 .svc-scope{margin:0 0 12px}
-.svc-status{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;background:#fff4e5;color:#92400e}
-.svc-status[data-status="已解决"]{background:#e8f5ee;color:#166534}
+.svc-status{display:inline-block;padding:2px 10px;border-radius:var(--ui-radius-pill);font-size:var(--ui-text-xs);background:var(--ui-warning-soft);color:var(--ui-warning)}
+.svc-status[data-status="已解决"]{background:var(--ui-success-soft);color:var(--ui-success)}
 .svc-pager{display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-top:12px}
 .svc-placeholder{padding:20px;text-align:center;color:var(--ui-muted)}
-.svc-error{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:12px 16px;border-radius:8px;background:#fdecec;color:var(--ui-danger)}
-.svc-success{padding:12px 16px;border-radius:8px;background:#e8f5ee;color:var(--ui-success)}
-.svc-demo{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--ui-muted)}
+.svc-error{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:12px 16px;border-radius:var(--ui-radius-sm);background:var(--ui-danger-soft);color:var(--ui-danger)}
+.svc-success{padding:12px 16px;border-radius:var(--ui-radius-sm);background:var(--ui-success-soft);color:var(--ui-success)}
+.svc-demo{display:flex;gap:8px;align-items:center;font-size:var(--ui-text-sm);color:var(--ui-muted)}
 .svc-meta{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:0 0 20px}
 .svc-meta dt{color:var(--ui-muted)}.svc-meta dd{margin:0}
-.svc-timeline{margin:0;padding-left:20px}.svc-timeline li{margin-bottom:10px}.svc-timeline time{display:block;font-size:12px;color:var(--ui-muted)}
-.svc-dialog{width:min(420px,calc(100vw - 32px));padding:24px;border:1px solid var(--ui-border);border-radius:12px}
-.svc-dialog::backdrop{background:rgb(23 36 56/.3)}.svc-dialog h2{margin-top:0}
+.svc-timeline{margin:0;padding-left:20px}.svc-timeline li{margin-bottom:10px}.svc-timeline time{display:block;font-size:var(--ui-text-xs);color:var(--ui-muted)}
+.svc-dialog{width:min(420px,calc(100vw - 32px));padding:24px;border:1px solid var(--ui-border);border-radius:var(--ui-radius)}
+.svc-dialog::backdrop{background:var(--ui-backdrop)}.svc-dialog h2{margin-top:0}
 .svc-denied{color:var(--ui-muted);text-align:center;padding:40px 24px}
 """
 

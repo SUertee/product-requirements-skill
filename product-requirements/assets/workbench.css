@@ -1034,7 +1034,6 @@ video { width: 100%; max-height: 520px; margin-top: 20px; background: var(--ui-n
 .page-spec dd { margin: 0 0 10px; min-width: 0; }
 @container (min-width: 560px) {
   .page-spec { grid-template-columns: 112px minmax(0, 1fr); gap: 14px 20px; }
-  .page-spec dt { padding-top: 2px; }
   .page-spec dd { margin: 0; }
 }
 .prototype-links { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
@@ -1072,4 +1071,32 @@ video { width: 100%; max-height: 520px; margin-top: 20px; background: var(--ui-n
 .prototype-note-text p { margin: 0; font-size: var(--ui-text-sm); color: var(--ui-ink); }
 .prototype-note-place { font-size: var(--ui-text-xs); font-weight: 600; color: var(--ui-warning); }
 .prototype-toolbar .button[aria-pressed="true"] .label-icon { color: inherit; }
+/* 原型预览 · 设计规范 */
+.design-spec { margin: 0 0 12px; padding: 18px 20px; }
+.design-spec[hidden] { display: none; }
+.design-spec-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.design-spec-head h2 { margin: 0; font-size: var(--ui-text-lg); }
+.design-spec-source { color: var(--ui-muted); font-size: var(--ui-text-sm); }
+.design-spec-keywords { margin: 6px 0 0; color: var(--ui-ink-2); font-size: var(--ui-text-sm); }
+.design-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin: 16px 0; padding: 0; list-style: none; }
+.design-swatches li { display: grid; grid-template-columns: 32px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 10px; align-items: center; }
+.design-swatch { grid-row: span 2; width: 32px; height: 32px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); }
+.design-swatches strong { font-size: var(--ui-text-sm); }
+.design-swatches code { color: var(--ui-muted); font-size: var(--ui-text-xs); }
+.design-spec-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 16px; margin: 0 0 12px; }
+.design-spec-facts dt { color: var(--ui-muted); font-size: var(--ui-text-xs); }
+.design-spec-facts dd { margin: 0; font-weight: 600; font-size: var(--ui-text-sm); }
+.design-spec-facts div { display: grid; gap: 2px; }
+.design-spec .inline-note { margin: 0; }
 
+
+/* 原型当前页 → 接口、构件的索引链接 */
+.index-links { display: flex; flex-wrap: wrap; gap: 0 16px; }
+/* 当前页卡片：标签和每行内容共用 24px 行高，第一行文字对齐 */
+.page-spec dt, .page-spec dd { line-height: 24px; }
+.page-spec .source-link { padding: 0; min-height: 0; line-height: 24px; }
+.page-spec .prototype-links { gap: 4px; }
+.page-spec .spec-items { gap: 8px; }
+.page-spec .spec-item-title { display: flex; align-items: center; min-height: 24px; }
+.page-spec .spec-items p { margin-top: 2px; line-height: 1.6; }
+.page-spec .spec-chips li { padding: 0 10px; line-height: 22px; }

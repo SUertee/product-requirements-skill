@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Adapt project evidence to configured diagram skills and registered HTML artifacts.
 
-Run `python3 scripts/generate_artifacts.py --locate archify` (or schema-canvas) to print a dependency's SKILL.md entrypoint.
+Run `python3 scripts/generate_artifacts.py --locate archify` (or schema-canvas, ui-ux-pro-max) to print a dependency's SKILL.md entrypoint.
 """
 import argparse
 from datetime import datetime, timezone
@@ -297,7 +297,7 @@ def generate(project, sources, root, kinds):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--locate', choices=['archify', 'schema-canvas'], required=True)
+    parser.add_argument('--locate', choices=['archify', 'schema-canvas', 'ui-ux-pro-max'], required=True)
     args = parser.parse_args()
     try:
         print(json.dumps({'capability': args.locate, 'entrypoint': str(resolve(args.locate) / 'SKILL.md')}, ensure_ascii=False))
