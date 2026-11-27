@@ -114,7 +114,7 @@
 
 ## 页面内容约定
 
-- `markup` 是页面主体 HTML，使用 assets/ui.css 的通用类：`ui-title`、`ui-card`、`ui-stack`、`ui-grid`、`ui-field`、`ui-button primary`、`ui-actions`、`ui-table-scroll`、`ui-list`、`ui-stat`、`ui-badge`，以及形态专用的 `ui-chat`／`ui-messages`／`ui-message`／`ui-composer`、`ui-hero`／`ui-section`、`ui-steps`。先用这些类，确实不够再写页面 css。不写 script、iframe、外部链接与资源、内联事件。
+- `markup` 是页面主体 HTML，使用 assets/ui.css 的通用类：`ui-page-head`、`ui-title`、`ui-split`、`ui-card`、`ui-stack`、`ui-grid`、`ui-field`、`ui-button primary`、`ui-actions`、`ui-table-scroll`、`ui-list`、`ui-stat`、`ui-badge`、`ui-choices`／`ui-choice`、`ui-check`、`ui-note`、`ui-demo`，以及形态专用的 `ui-chat`／`ui-messages`／`ui-message`／`ui-composer`、`ui-hero`／`ui-section`、`ui-steps`。先用这些类，确实不够再写页面 css。不写 script、iframe、外部链接与资源、内联事件。
 - 在实现某条 FR 的元素上写 `data-req="REQ-001"`，体现 NFR 的元素上写 `data-nfr="NFR-001"`，多个编号用空格分隔。页面声明的编号都要标在元素上，未声明的编号不能出现。工作台用这些标注做“标注需求”高亮。
 - `data-goto="page_id"` 跳转页面，`data-param-id="T-1001"` 这类属性随跳转传参。`data-roles="agent,supervisor"` 限定元素对哪些角色可见。
 - `data-state="error"` 的元素默认隐藏，`P.setState('error')` 或带 `data-show-state="error"` 的按钮显示它。页面声明的每个状态都要有对应元素。
