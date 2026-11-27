@@ -2,6 +2,7 @@
 name: product-requirements
 description: 将客户会议录音、逐字稿与前情资料整理为带依据的产品需求，生成内部 PRD、HTML 工作台及经确认的交互原型，并处理后续反馈与需求变更。适用于 PM、FDE 的客户需求沟通和开发准备。
 metadata:
+  version: 0.3.0
   requires:
     bins: ["python3"]
   optional:

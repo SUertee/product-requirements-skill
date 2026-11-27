@@ -28,12 +28,28 @@
 **1. 安装**
 
 ```bash
-npx skills add SUertee/product-requirements-skill
+npx skills add SUertee/product-requirements-skill -g
 ```
 
-也可以手动把 `product-requirements/` 目录复制到所用工具的 Skill 目录，例如 Claude Code 的 `~/.claude/skills/product-requirements`。
+`-g` 装到用户目录（Claude Code 是 `~/.claude/skills/`），所有项目都能用；不加 `-g` 只装到当前项目的 `.claude/skills/`。也可以手动把 `product-requirements/` 目录复制到所用工具的 Skill 目录。
 
 运行需要 Python 3.10 及以上（只用标准库）。macOS／Linux 用 `python3`，Windows 用 `python` 或 `py -3`。可选：`lark-cli` 用于读取飞书妙记，`ffmpeg` 用于处理录音录屏，Archify 图示需要 Node.js。`npx skills add` 需要 Node.js 22.20 及以上。
+
+**更新**
+
+`npx skills` 不经过打包或发布：安装时直接从 GitHub 拉取仓库里的 `product-requirements/`，并在 `skills-lock.json` 记下当时的提交。仓库 main 分支合入新改动后，用户这样更新：
+
+```bash
+npx skills check
+```
+
+```bash
+npx skills update product-requirements -g
+```
+
+`check` 列出有新提交的 Skill，`update` 拉到最新提交（项目内安装的去掉 `-g`）。需要固定某个版本时，按标签安装，例如 `npx skills add SUertee/product-requirements-skill@v0.3.0 -g`。手动复制安装的，重新复制目录即可。
+
+更新只影响之后的生成。已经生成的工作台和原型是单个 HTML，模板打包在文件里，不会自动变；下一次分析会议或在工作台生成新版本时才用上新模板。
 
 **2. 在 Claude Code、码道等工具里直接说**
 
@@ -112,6 +128,13 @@ python3 product-requirements/scripts/serve_workbench.py \
 ```
 
 分析、评审、生成和客户包的完整命令见 [运行流程](product-requirements/references/execution.md)，飞书和音视频接入见 [本地运行说明](docs/features/intake.md)。
+
+## 更新记录
+
+版本号写在 [SKILL.md](product-requirements/SKILL.md) 的 `metadata.version`，发布时打同名 Git 标签。
+
+- **0.3.0**（2026-11-27）：原型按「功能需求 → 方案模块 → UI 规范 → 页面实现」构建，页面标所属模块，样式只能用设计变量；用 UI/UX Pro Max 为每个项目定设计规范；技术设计按原型页面整理，原型页、接口、架构构件互相索引；原型新增页头、两栏、选项卡片、提示条、演示条等基础组件；修复工作台内点原型导航会载入整个工作台的问题。
+- 0.3.0 之前的版本没有打标签，改动见 [实现进展](docs/progress/implementation.md)。
 
 ## 仓库结构
 
