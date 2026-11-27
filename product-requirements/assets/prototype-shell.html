@@ -288,6 +288,16 @@ html[data-picking] #screen,html[data-picking] #screen *{cursor:crosshair !import
   document.addEventListener('click', event => {
     const goto = event.target.closest('[data-goto]');
     if (goto) { event.preventDefault(); const values = {}; for (const [key, value] of Object.entries(goto.dataset)) if (key.startsWith('param')) values[key.slice(5).toLowerCase()] = value; P.go(goto.dataset.goto, values); return; }
+    // In the workbench preview (srcdoc) a "#page" link resolves against the workbench URL and would load the workbench
+    // into the frame, so in-page anchors switch pages here instead of navigating.
+    const anchor = event.target.closest('a[href^="#"]');
+    if (anchor && !event.defaultPrevented) {
+      event.preventDefault();
+      let id = ''; try { id = decodeURIComponent(anchor.getAttribute('href').slice(1)); } catch { /* ignore */ }
+      if (pages.has(id)) P.go(anchor.dataset.page || id);
+      else if (id) document.getElementById(id)?.scrollIntoView();
+      return;
+    }
     const state = event.target.closest('[data-show-state]');
     if (state) { event.preventDefault(); setState(state.dataset.showState); }
   });
