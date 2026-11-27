@@ -1034,7 +1034,6 @@ video { width: 100%; max-height: 520px; margin-top: 20px; background: var(--ui-n
 .page-spec dd { margin: 0 0 10px; min-width: 0; }
 @container (min-width: 560px) {
   .page-spec { grid-template-columns: 112px minmax(0, 1fr); gap: 14px 20px; }
-  .page-spec dt { padding-top: 2px; }
   .page-spec dd { margin: 0; }
 }
 .prototype-links { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
@@ -1092,4 +1091,12 @@ video { width: 100%; max-height: 520px; margin-top: 20px; background: var(--ui-n
 
 
 /* 原型当前页 → 接口、构件的索引链接 */
-.index-links { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.index-links { display: flex; flex-wrap: wrap; gap: 0 16px; }
+/* 当前页卡片：标签和每行内容共用 24px 行高，第一行文字对齐 */
+.page-spec dt, .page-spec dd { line-height: 24px; }
+.page-spec .source-link { padding: 0; min-height: 0; line-height: 24px; }
+.page-spec .prototype-links { gap: 4px; }
+.page-spec .spec-items { gap: 8px; }
+.page-spec .spec-item-title { display: flex; align-items: center; min-height: 24px; }
+.page-spec .spec-items p { margin-top: 2px; line-height: 1.6; }
+.page-spec .spec-chips li { padding: 0 10px; line-height: 22px; }
