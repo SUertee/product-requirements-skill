@@ -1245,6 +1245,11 @@
         const links = element('div', null, 'component-requirements'); links.append(element('h3', '关联需求'));
         related.forEach(req => links.append(requirementLink(req))); detail.append(links);
       }
+      const pages = prototypePages().filter(page => node.page_ids?.includes(page.page_id));
+      if (pages.length) {
+        const links = element('div', null, 'component-requirements'); links.append(element('h3', '服务页面'));
+        pages.forEach(page => links.append(prototypePageLink(page))); detail.append(links);
+      }
       frame?.contentWindow?.postMessage({type: 'product-requirements:architecture-state', selected: nodes.indexOf(node)}, '*');
       if (reveal) detail.querySelector('h2')?.scrollIntoView?.({block: 'nearest'});
     }
@@ -1957,13 +1962,9 @@
       if (page.states?.length) row('可演示状态', chips(page.states.map(state => stateNames[state] || state)));
       if (page.roles?.length) row('可见角色', chips(page.roles.map(role => roleNames[role] || role)));
       const servers = pageServers(page.page_id);
-      if (servers.apis.length || servers.components.length) {
-        const list = chips([...servers.apis.map(item => item.name || item.api_id), ...servers.components.map(item => item.name)]);
-        const more = element('button', '看页面对照', 'source-link'); more.type = 'button';
-        more.addEventListener('click', () => { technicalTab = 'pages'; navigate('technical'); });
-        const box = element('div'); box.append(list, more);
-        row('技术实现', box);
-      }
+      const links = items => { const box = element('div', null, 'index-links'); items.forEach(item => box.append(item)); return box; };
+      if (servers.apis.length) row('接口', links(servers.apis.map(item => indexLink(item.name || item.api_id, () => openApi(item.api_id)))));
+      if (servers.components.length) row('架构构件', links(servers.components.map(item => indexLink(item.name, () => openComponent(item.id)))));
       mapping.replaceChildren(head);
       if (spec.children.length) mapping.append(spec);
     }
@@ -2135,7 +2136,7 @@
     map.append(grid);
     content.append(map, entityDetail(current, links, entitiesById));
   }
-  // Technical design is drawn from the prototype: each prototype page lists the APIs and components that serve it.
+  // Technical design is drawn from the prototype: pages, APIs and components index each other by page_ids.
   function prototypePages() { return project.prototype_design?.pages || []; }
   function pageServers(pageId) {
     return {apis: (project.apis || []).filter(item => item.page_ids?.includes(pageId)),
@@ -2143,39 +2144,14 @@
   }
   function pageModule(page) { return (project.modules || []).find(module => module.module_id === page.module_id); }
   function openPrototypePage(pageId) { selectedPrototypePage = pageId; navigate('prototype'); }
+  let selectedApi = null;
+  function openApi(apiId) { selectedApi = apiId; technicalTab = 'api'; navigate('technical'); }
+  function openComponent(id) { selectedArchitecture = id; technicalTab = 'diagrams'; navigate('technical'); }
+  function indexLink(label, open) { const link = element('button', label, 'source-link'); link.type = 'button'; link.addEventListener('click', open); return link; }
   function prototypePageLink(page) {
     const link = element('button', page.name, 'source-link'); link.type = 'button';
     link.addEventListener('click', () => openPrototypePage(page.page_id));
     return link;
-  }
-  function pageMapping() {
-    const pages = prototypePages();
-    if (!pages.length) { content.append(empty('还没有原型。技术设计按原型页面整理：先在「原型预览」生成原型，再让 Skill 为每个页面补接口和构件')); return; }
-    const served = pages.filter(page => { const s = pageServers(page.page_id); return s.apis.length || s.components.length; });
-    const card = element('section', null, 'panel requirement-card page-tech');
-    card.setAttribute('aria-label', '原型页面与技术实现');
-    const head = element('header', null, 'panel-head');
-    head.append(element('h2', '原型页面 → 技术实现'), element('span', served.length + ' / ' + pages.length, 'panel-count'));
-    card.append(head, element('p', '技术设计从原型出发：每个页面读写的数据落成接口，接口归到架构构件，用到的数据进数据模型。', 'inline-note'));
-    const modules = project.modules || [];
-    const groups = [...modules.map(module => [module.name, pages.filter(page => page.module_id === module.module_id)]),
-      ['未归属模块', pages.filter(page => !modules.some(module => module.module_id === page.module_id))]].filter(([, list]) => list.length);
-    for (const [name, list] of groups) {
-      if (groups.length > 1 || modules.length) card.append(element('h3', name, 'page-tech-group'));
-      const rows = element('ul', null, 'page-tech-list');
-      for (const page of list) {
-        const {apis, components} = pageServers(page.page_id);
-        const row = element('li', null, 'page-tech-row');
-        const title = element('div', null, 'page-tech-page'); title.append(prototypePageLink(page), element('span', page.purpose || '', 'inline-note'));
-        const body = element('div', null, 'page-tech-servers');
-        if (!apis.length && !components.length) body.append(element('span', '还没落到技术设计', 'ui-badge warning'));
-        if (apis.length) { const ul = element('ul', null, 'spec-chips page-tech-apis'); apis.forEach(item => ul.append(element('li', String(item.method || '').toUpperCase() + ' ' + (item.path || item.name || item.api_id)))); body.append(ul); }
-        if (components.length) { const ul = element('ul', null, 'spec-chips'); components.forEach(item => ul.append(element('li', item.name))); body.append(ul); }
-        row.append(title, body); rows.append(row);
-      }
-      card.append(rows);
-    }
-    content.append(card);
   }
   // ParTrace-style API table: header row, one group per business module, one row per endpoint; click a row for request / response / errors.
   function apiModule(item) {
@@ -2200,7 +2176,8 @@
       title.append(element('strong', (index + 1) + '. ' + (group.module?.name || '未归属模块')), element('span', group.items.length + ' 个接口'));
       list.append(title);
       for (const item of group.items) {
-        const row = element('details', null, 'api-row');
+        const row = element('details', null, 'api-row'); row.dataset.apiId = item.api_id;
+        if (item.api_id === selectedApi) { row.open = true; selectedApi = null; requestAnimationFrame(() => row.scrollIntoView?.({block: 'center'})); }
         const summary = element('summary');
         const method = element('span', String(item.method || '—').toUpperCase(), 'api-method'); method.dataset.method = String(item.method || '').toUpperCase();
         summary.append(method, element('code', display(item.path), 'api-path'), element('span', item.name || item.api_id, 'api-name'), element('span', states[item.review_status] || item.review_status || '草稿', 'api-status'));
@@ -2505,7 +2482,7 @@
     content.append(card);
   }
   function technical() {
-    const tabs = {pages: '页面对照', diagrams: '技术架构', database: '数据模型', api: '接口'};
+    const tabs = {diagrams: '技术架构', database: '数据模型', api: '接口'};
     const navigation = element('div', null, 'technical-tabs page-tabs');
     navigation.setAttribute('role', 'tablist');
     navigation.setAttribute('aria-label', '技术设计分类');
@@ -2515,7 +2492,7 @@
     panelNode.setAttribute('aria-labelledby', 'tab-' + technicalTab);
     content.append(navigation, panelNode);
     for (const [key, label] of Object.entries(tabs)) {
-      const button = iconLabel(element('button', label), {pages: 'prototype', diagrams: 'technical', database: 'database', api: 'api'}[key]);
+      const button = iconLabel(element('button', label), {diagrams: 'technical', database: 'database', api: 'api'}[key]);
       button.id = 'tab-' + key;
       button.type = 'button';
       button.setAttribute('role', 'tab');
@@ -2542,7 +2519,6 @@
     const before = new Set(content.children);
     if (technicalTab === 'database') database();
     else if (technicalTab === 'api') api();
-    else if (technicalTab === 'pages') pageMapping();
     else technicalArchitecture();
     Array.from(content.children).filter(child => !before.has(child)).forEach(child => panelNode.append(child));
   }
