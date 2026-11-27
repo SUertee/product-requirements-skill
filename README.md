@@ -28,12 +28,40 @@
 **1. 安装**
 
 ```bash
-npx skills add SUertee/product-requirements-skill
+npx skills add SUertee/product-requirements-skill -g
 ```
 
-也可以手动把 `product-requirements/` 目录复制到所用工具的 Skill 目录，例如 Claude Code 的 `~/.claude/skills/product-requirements`。
+这条命令用 `npx`（Node.js 自带，临时下载并运行 npm 包）跑 [skills](https://github.com/vercel-labs/skills) 安装器，从 GitHub 拉取本仓库的 `product-requirements/`。加 `-g` 装到用户目录，所有项目可用；不加只装到当前项目。装完的位置（以 `-g` 为例）：
 
-运行需要 Python 3.10 及以上（只用标准库）。macOS／Linux 用 `python3`，Windows 用 `python` 或 `py -3`。可选：`lark-cli` 用于读取飞书妙记，`ffmpeg` 用于处理录音录屏，Archify 图示需要 Node.js。`npx skills add` 需要 Node.js 22.20 及以上。
+| 位置 | 内容 |
+| --- | --- |
+| `~/.agents/skills/product-requirements/` | Skill 正本，Codex 等直接读取 |
+| `~/.claude/skills/product-requirements` | 指向正本的符号链接，Claude Code 读取 |
+| `~/.agents/.skill-lock.json` | 锁文件：记录来源仓库、提交和 Skill 文件夹的哈希，用来判断有没有新版本 |
+
+默认装给本机检测到的 Agent，也可以用 `-a claude-code codex` 指定。也可以手动把 `product-requirements/` 目录复制到所用工具的 Skill 目录。
+
+运行需要 Python 3.10 及以上（只用标准库）。macOS／Linux 用 `python3`，Windows 用 `python` 或 `py -3`。可选：`lark-cli` 用于读取飞书妙记，`ffmpeg` 用于处理录音录屏，Archify 图示需要 Node.js。`npx skills` 需要 Node.js 22.20 及以上。
+
+**更新**
+
+没有打包或发布这一步：改动合进 main 就是新版本。用户这边不会自动收到提醒，需要自己检查和更新：
+
+```bash
+npx skills check -g
+```
+
+```bash
+npx skills update product-requirements -g
+```
+
+- `check` 只检查不改动，有新版本时提示 `product-requirements has an update`；`update` 下载新版本并改写锁文件，Claude Code 的链接指向同一份正本，一起生效。项目内安装的去掉 `-g`。
+- 是否有新版本只看 `product-requirements/` 文件夹在 GitHub 上的哈希：只改 README、docs、tests 不会触发更新。
+- 刚推送时 `check` 偶尔还读到旧结果，过一会儿再查即可。
+- 要固定版本，按标签安装，例如 `npx skills add SUertee/product-requirements-skill#v0.3.0 -g`；锁文件会记住这个标签，之后 `check` 只和该标签比，想跟随最新版就按上面不带标签的命令重装。手动复制安装的，重新复制目录即可。
+- 已经生成的工作台和原型是单个 HTML，模板打包在文件里，不会随 Skill 更新而改变；下一次分析会议或在工作台生成新版本时才用上新模板。
+
+以上在 skills 1.9.0 上实测过（2026-11-27）。
 
 **2. 在 Claude Code、码道等工具里直接说**
 
@@ -112,6 +140,13 @@ python3 product-requirements/scripts/serve_workbench.py \
 ```
 
 分析、评审、生成和客户包的完整命令见 [运行流程](product-requirements/references/execution.md)，飞书和音视频接入见 [本地运行说明](docs/features/intake.md)。
+
+## 更新记录
+
+版本号写在 [SKILL.md](product-requirements/SKILL.md) 的 `metadata.version`，发布时打同名 Git 标签。
+
+- **0.3.0**（2026-11-27）：原型按「功能需求 → 方案模块 → UI 规范 → 页面实现」构建，页面标所属模块，样式只能用设计变量；用 UI/UX Pro Max 为每个项目定设计规范；技术设计按原型页面整理，原型页、接口、架构构件互相索引；原型新增页头、两栏、选项卡片、提示条、演示条等基础组件；修复工作台内点原型导航会载入整个工作台的问题。
+- 0.3.0 之前的版本没有打标签，改动见 [实现进展](docs/progress/implementation.md)。
 
 ## 仓库结构
 
