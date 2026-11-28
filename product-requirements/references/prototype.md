@@ -130,7 +130,7 @@ python3 product-requirements/scripts/prototype_design.py runs/.../project.json
 python3 product-requirements/scripts/workflow.py --workspace <workspace> generate --run-dir <已确认版本> --version <新版本> --kind prototype
 ```
 
-第一条在写入版本前检查设计稿并输出覆盖报告；第二条生成 prototype/index.html，覆盖报告写入 generation.json。检查项包括 FR／NFR 确认状态、需求覆盖或排除原因、NFR 体现或不适用原因、页面所属模块、标注、跳转、状态、角色、写死的样式和外部资源。脚本运行错误在页面内显示并记录到 `window.__prototypeErrors`，浏览器复核需另行完成。
+第一条在写入版本前检查设计稿并输出覆盖报告；第二条生成 prototype/index.html，覆盖报告写入 generation.json。检查项包括 FR／NFR 确认状态、需求覆盖或排除原因、NFR 体现或不适用原因、页面所属模块、标注、跳转、状态、角色、写死的样式和外部资源。检查是全有或全无：任一检查不通过即退出、整个原型不生成，修好报错指出的字段后重新运行；生成前先按主 SKILL.md「交付检查」做前置物检查，缺什么先报缺什么。脚本运行错误在页面内显示并记录到 `window.__prototypeErrors`，浏览器复核需另行完成。
 
 ## 客户意见
 

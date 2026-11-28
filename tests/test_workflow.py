@@ -91,6 +91,11 @@ class WorkflowTests(unittest.TestCase):
             self.workflow.save_document(self.run, 'v2', 'proposal.md', '方案乙', sha)
 
     def test_document_edit_retains_generated_module_map(self):
+        try:
+            from generate_artifacts import resolve
+            resolve('archify')
+        except ValueError as error:
+            self.skipTest(str(error))
         project = copy.deepcopy(self.project)
         project['modules'] = [{'module_id': 'tickets', 'name': '工单', 'requirement_ids': ['REQ-001']}]
         base = self.root / 'with-modules'

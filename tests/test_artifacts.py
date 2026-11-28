@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'product-requirements/scripts'))
 import build_documents as build
-from generate_artifacts import archify_architecture, archify_modules, generate, schema_canvas
+from generate_artifacts import archify_architecture, archify_modules, generate, resolve, schema_canvas
 from prototype import generate_prototype
 from workflow import Workflow
 
@@ -55,6 +55,10 @@ class ArtifactTests(unittest.TestCase):
         self.assertIn('module_diagram', text)
 
     def test_technical_architecture_is_generated_separately(self):
+        try:
+            resolve('archify')
+        except ValueError as error:
+            self.skipTest(str(error))
         self.project['technical_architecture'] = {
             'layers': [{'id': 'input', 'name': '输入层'}, {'id': 'service', 'name': '理解层'}],
             'components': [{'id': 'client', 'name': '材料接收', 'layer': 'input'}, {'id': 'analysis', 'name': '需求分析', 'layer': 'service'}],

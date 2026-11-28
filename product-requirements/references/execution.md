@@ -97,7 +97,7 @@ python3 product-requirements/scripts/intake_runner.py \
 - 只给两个选项：下载，或跳过并使用内置的简易图示／默认规范。
 - 用户在当前对话中已明确同意自动下载缺失依赖时，直接下载，不再询问。
 - 无法询问用户的无人值守运行默认跳过下载。
-- 跳过或下载失败时照常运行生成器，缺失依赖的成果在 generation.json 中记为 failed 并保留原因，其余成果继续生成。
+- 跳过或下载失败时照常运行生成器，缺失依赖的成果在 generation.json 中记为 failed 并保留原因，其余成果继续生成。工作台上该成果显示“待补充（缺依赖）”，内置简易图示只是占位预览，不得记为 success，也不得冒充已生成的图。
 
 从 `product-requirements/` 运行以下 Bash 命令，`capability` 取 `archify`、`schema-canvas` 或 `ui-ux-pro-max`，缺几个就各运行一次。下载完成并定位成功后，读取返回的 `SKILL.md` 和该任务需要的上游参考，再在带有同一环境变量（`ARCHIFY_SKILL_DIR`、`SCHEMA_CANVAS_SKILL_DIR` 或 `UI_UX_PRO_MAX_SKILL_DIR`）的环境中运行生成器或查询脚本。UI/UX Pro Max 的脚本只用 Python 标准库、不联网，结果只当建议，不覆盖用户要求和本 Skill 的规则。若下一条工具调用启动了新 shell，显式传入这个环境变量。
 
